@@ -1,0 +1,28 @@
+[graph]
+momtrop_edge_weight = 0.555555555555
+
+[gammaloop_state]
+state_name = "physical_1L_6photons_output"
+integration_state_name = "physical_euclidean_1L_6photons"
+process_name = "physical_1L_6photons"
+
+[integrator.madnis]
+batch_size = 8192
+discrete_model = "transformer"
+
+[integrator.madnis.transformer]
+embedding_dim = 128
+feedforward_dim = 256
+heads = 2
+mlp_units = 128
+transformer_layers = 2
+
+[layered_integrand]
+integrand_type = "gammaloop"
+training_phase = "real"
+n_cores = 64
+
+[plotting_params.training_prog]
+n_training_steps = 2000
+n_samples = 100000
+n_samples_after_training = 1000000

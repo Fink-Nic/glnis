@@ -1,0 +1,48 @@
+[graph]
+from_state = false
+dot_path = "/home/nic/Master/tropnis/sunset.dot"
+momtrop_edge_weight = 0.75
+is_vacuum = true
+
+[model]
+from_state = false
+model_path = "/home/nic/Master/tropnis/kaapo_scalars.json"
+
+[layered_integrator]
+integrator_type = "naive"
+
+[integrator.madnis]
+batch_size = 8196
+
+[integrator.madnis.transformer]
+embedding_dim = 128
+feedforward_dim = 256
+heads = 8
+mlp_units = 128
+transformer_layers = 2
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "kaapo"
+mu = 0.0
+a = 1.0
+b = 1.0
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "inv_spherical"
+conformal_scale = 1.0
+
+[layered_parameterisation.layer_2]
+parameterisation_type = "momtrop"
+
+[layered_integrand]
+integrand_type = "kaapo"
+path_to_example = "/home/nic/Master/kaapos_dev/kaapos/examples/sunset"
+params = [6.283185307179586, 0.0, 1.0]
+use_prec = false
+n_cores = 4
+
+[integrand.kaapo.symbolica_integrand_kwargs]
+force_rebuild = false
+
+[integrand.kaapo.symbolica_integrand_prec_kwargs]
+prec = 100

@@ -1,0 +1,242 @@
+# type: ignore
+import vegas
+import numpy as np
+import torch
+from abc import ABC, abstractmethod
+from typing import Dict, Tuple, Any, List, Callable
+from numpy.typing import NDArray
+from torch.types import Tensor
+
+import madnis.integrator as madnis_integrator
+from glnis.core.accumulator import Accumulator, TrainingData, GraphProperties, LayerData
+from glnis.core.integrand import MPIntegrand
+from glnis.core.parser import SettingsParser
+
+
+class Integrator(ABC):
+    IDENTIFIER = "ABCIntegrator"
+
+    def __init__(self,
+                 integrand: MPIntegrand,):
+        self.integrand = integrand
+        self.continuous_dim = integrand.continuous_dim
+        self.discrete_dims = integrand.discrete_dims
+        self.num_discrete_dims = len(integrand.discrete_dims)
+        self.input_dim = self.continuous_dim + self.num_discrete_dims
+
+    @abstractmethod
+    def integrate(self, n_points: int) -> Accumulator:
+        pass
+
+    def train(self, nitn: int = 10, batch_size: int = 10000, ):
+        print(f"Training not available for Integrator {self.IDENTIFIER}.")
+
+    def _cont_to_discr(self, continuous: NDArray
+                       ) -> Tuple[NDArray, NDArray]:
+        n = len(continuous)
+        if not continuous.shape[1] == len(self.discrete_dims):
+            raise ValueError(
+                "Shape of sampler output does not match discrete dims of stack.")
+
+        indices = np.zeros((n, 0), dtype=np.uint64)
+        prob = np.ones((n,))
+        for i in range(len(self.discrete_dims)):
+            unnorm_probs = self.integrand.discrete_prior_prob_function(
+                indices[:, :i], i)
+            cdf = np.cumsum(unnorm_probs, axis=1)
+            norm = cdf[:, -1]
+            cdf = cdf / norm[:, None]
+            r = np.random.random_sample((n, 1))
+            samples = np.sum(cdf < r, axis=1).reshape(-1, 1)
+            indices = np.hstack((indices, samples))
+            prob = prob * \
+                np.take_along_axis(unnorm_probs, samples, axis=1)[:, 0] / norm
+
+        return indices, (1/prob).reshape(-1, 1)
+
+    def init_layer_data(self, n_points: int) -> LayerData:
+        return LayerData(
+            n_points,
+            n_mom=3*self.integrand.graph_properties.n_loops,
+            n_cont=self.continuous_dim,
+            n_disc=len(self.discrete_dims),
+            dtype=self.integrand.dtype,
+        )
+
+    @staticmethod
+    def from_dicts(
+            graph_properties: GraphProperties,
+            parameterisation_kwargs: List[Dict[str, Any]],
+            integrand_kwargs: Dict[str, Any],
+            integrator_kwargs: Dict[str, Any],) -> 'Integrator':
+
+        n_cores = integrand_kwargs.pop('n_cores')
+        integrator_type = integrator_kwargs.pop('integrator_type')
+
+        integrand = MPIntegrand(
+            graph_properties=graph_properties,
+            param_kwargs=parameterisation_kwargs,
+            integrand_kwargs=integrand_kwargs,
+            n_cores=n_cores,
+        )
+
+        match integrator_type:
+            case 'naive':
+                return NaiveIntegrator(integrand)
+            case 'vegas':
+                return VegasIntegrator(integrand)
+            case 'madnis':
+                return MadnisIntegrator(integrand,
+                                        integrator_kwargs=integrator_kwargs,)
+            case _:
+                return NaiveIntegrator(integrand)
+
+    @staticmethod
+    def from_settings_file(settings_path: str) -> 'Integrator':
+        Parser = SettingsParser(settings_path)
+        graph_properties = Parser.get_graph_properties()
+        parameterisation_kwargs = Parser.get_parameterisation_kwargs()
+        integrand_kwargs = Parser.get_integrand_kwargs()
+        integrator_kwargs = Parser.get_integrator_kwargs()
+
+        gl_result = Parser.get_gammaloop_integration_result()
+        if gl_result is not None:
+            integrand_kwargs['target_real'] = gl_result['result']['re']
+            integrand_kwargs['target_imag'] = gl_result['result']['im']
+
+        return Integrator.from_dicts(
+            graph_properties=graph_properties,
+            parameterisation_kwargs=parameterisation_kwargs,
+            integrand_kwargs=integrand_kwargs,
+            integrator_kwargs=integrator_kwargs
+        )
+
+
+class NaiveIntegrator(Integrator):
+    IDENTIFIER = 'naive sampler'
+
+    def __init__(self,
+                 integrand: MPIntegrand,
+                 rng=None,):
+        super().__init__(
+            integrand=integrand,)
+        self.rng = rng
+
+    def integrate(self, n_points: int) -> Accumulator:
+        layer_input = self.init_layer_data(n_points)
+        layer_input.continuous = np.random.random_sample(
+            (n_points, self.continuous_dim))
+        discrete = np.random.random_sample(
+            (n_points, len(self.discrete_dims)))
+        layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
+        layer_input.update(self.IDENTIFIER)
+
+        return self.integrand.eval_integrand(layer_input)
+
+
+class VegasIntegrator(Integrator):
+    IDENTIFIER = 'vegas sampler'
+
+    def __init__(self,
+                 integrand: MPIntegrand,
+                 **vegas_init_kwargs,):
+        super().__init__(
+            integrand=integrand,)
+        self.integrator = vegas.Integrator(
+            self.input_dim*[[0, 1],], **vegas_init_kwargs)
+
+    def integrate(self, n_points: int) -> Accumulator:
+        sampling_wgt, samples = self.integrator.sample(n_points, mode="lbatch")
+        sampling_wgt = sampling_wgt.reshape(-1, 1)
+        n_points = len(sampling_wgt)
+        layer_input = self.init_layer_data(n_points)
+        layer_input.continuous = samples[:, :self.continuous_dim]
+        layer_input.discrete, disc_wgt = self._cont_to_discr(
+            samples[:, self.continuous_dim:])
+        total_wgt = sampling_wgt*disc_wgt
+        layer_input.wgt *= total_wgt
+        layer_input.update(self.IDENTIFIER)
+
+        return self.integrand.eval_integrand(layer_input)
+
+    def train(self, nitn: int = 10, batch_size: int = 10000, ) -> vegas._vegas.RAvg:
+        return self.integrator(self._vegas_wrapper, nitn=nitn, neval=batch_size)
+
+    @vegas.batchintegrand
+    def _vegas_wrapper(self, x: NDArray) -> NDArray:
+        layer_input = self.init_layer_data(len(x))
+        layer_input.continuous = x[:, :self.continuous_dim]
+        layer_input.discrete, layer_input.wgt = self._cont_to_discr(
+            x[:, self.continuous_dim:])
+        accumulated_result: TrainingData = self.integrand.eval_integrand(
+            layer_input, 'training').modules[-1]
+
+        return accumulated_result.training_result[0]
+
+
+class MadnisIntegrator(Integrator):
+    IDENTIFIER = 'madnis sampler'
+
+    def __init__(self,
+                 integrand: MPIntegrand,
+                 integrator_kwargs: Dict[str, Any] = dict(
+                     batch_size=1024,
+                     discrete_model="transformer",
+                     transformer=dict(
+                         embedding_dim=64,
+                         feedforward_dim=64,
+                         heads=4,
+                         mlp_units=64,
+                         transformer_layers=1,),
+                 ),
+                 callback: Callable[[object], None] | None = None,
+                 ):
+        super().__init__(integrand)
+        madnis_integrand = madnis_integrator.Integrand(
+            function=self._madnis_eval,
+            input_dim=self.input_dim,
+            discrete_dims=self.discrete_dims,
+            discrete_dims_position="first",
+            discrete_prior_prob_function=self._madnis_discrete_prior_prob_function,
+        )
+        discrete_model = integrator_kwargs['discrete_model']
+
+        self.batch_size = integrator_kwargs['batch_size']
+        self.madnis = madnis_integrator.Integrator(
+            madnis_integrand,
+            discrete_model=discrete_model,
+            discrete_flow_kwargs=integrator_kwargs[discrete_model],
+            batch_size=self.batch_size,
+        )
+        self.callback = self._default_callback if callback is None else callback
+
+    def integrate(self, n_points: int) -> madnis_integrator.IntegrationMetrics:
+        return self.madnis.integration_metrics(n_points)
+
+    def train(self, nitn: int = 10, batch_size: int = 10000):
+        self.madnis.train(nitn, self.callback, True)
+
+    def _madnis_eval(self, x_all: Tensor) -> Tensor:
+        layer_input = self.init_layer_data(x_all.shape[0])
+        layer_input.discrete = x_all[:,
+                                     :self.num_discrete_dims].numpy(force=True)
+        layer_input.continuous = x_all[:,
+                                       self.num_discrete_dims:].numpy(force=True)
+        layer_input.update('madnis_training')
+
+        output = self.integrand.eval_integrand(
+            layer_input, 'training')
+        if self.integrand.verbose:
+            print(output.str_report())
+        output: TrainingData = output.modules[-1]
+        weighted_func_val = output.training_result[0].flatten()
+        return torch.from_numpy(weighted_func_val.astype(np.float64))
+
+    def _madnis_discrete_prior_prob_function(self, indices: Tensor, dim: int = 0) -> Tensor:
+        numpy_output = self.integrand.discrete_prior_prob_function(
+            indices.numpy(force=True).astype(np.uint64), dim)
+        return torch.from_numpy(numpy_output.astype(np.float64))
+
+    @staticmethod
+    def _default_callback(status) -> None:
+        print(f"Step {status.step+1}: Loss={status.loss}")

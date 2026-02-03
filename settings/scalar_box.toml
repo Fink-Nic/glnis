@@ -1,0 +1,28 @@
+[gammaloop_state]
+state_name = "scalar_box_output"
+integration_state_name = "scalar_box_integration"
+process_name = "scalar_box"
+
+[layered_integrator]
+integrator_type = "madnis"
+
+[integrator.madnis]
+batch_size = 2048
+discrete_model = "transformer"
+
+[integrator.madnis.transformer]
+embedding_dim = 128
+feedforward_dim = 256
+heads = 2
+mlp_units = 128
+transformer_layers = 2
+
+[layered_integrand]
+integrand_type = "gammaloop"
+training_phase = "real"
+n_cores = 32
+
+[plotting_params.training_prog]
+n_training_steps = 500
+n_samples = 100000
+n_samples_after_training = 1000000

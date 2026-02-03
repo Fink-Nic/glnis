@@ -1,0 +1,228 @@
+# -------------------------------------------------------------------------------------------
+# Default settings file, remember to point to this file in resources/PATHS.json
+# Setting files should not include parameters that are not specified in here
+# -------------------------------------------------------------------------------------------
+[overwrite]
+# Any parameter specified here will be overwritten. Example:
+# 'plotting_params.training_prog.n_training_steps' = 1337
+
+[gammaloop_state]
+# Name of the gammaloop state folder. REQUIRED TO BE OVERWRITTEN
+state_folder = "default"
+# Name of the process inside the gammaloop state. REQUIRED TO BE OVERWRITTEN
+state_name = "default"
+# Name of the gammaloop integration state
+integration_state_name = ""
+# Name of the integration results file inside the integration_state_name folder
+integration_result_file = "integration_results.txt"
+process_id = 0
+integrand_name = "default"
+# Name of the model file inside the state_name folder
+model_name = "model.json"
+# Name of the runcard file inside the state_name folder
+runcard_name = "run.toml"
+
+[graph]
+# If true, will attempt to get the dot graph from the gammaloop state
+from_state = true
+# If from_state is false, will use this path instead
+dot_path = ""
+# Can be one of the following:
+# "default": Automatically sets a weight, pretty likely to lead to divergent subgraphs
+# float: Sets all edge weights to the same value
+# list[float]: Specify a weight for each edge. Length must match the number of internal edges.
+momtrop_edge_weight = "default"
+is_vacuum = false
+# If true, will set graph properties to graph.graph_properties
+overwrite_graph_properties = false
+
+# The default is set to 1L_6photons graph kinematics
+[graph.graph_properties]
+edge_src_dst_vertices = [
+    [3, 4], 
+    [4, 5], 
+    [5, 0], 
+    [0, 1], 
+    [1, 2], 
+    [2, 3]
+]
+edge_masses = [
+    1500.0, 
+    1500.0,
+    1500.0, 
+    1500.0, 
+    1500.0, 
+    1500.0
+]
+edge_momentum_shifts = [
+    [
+        -231.8312618377385,
+        -659.5630405248305,
+        450.2378756570221
+    ],
+    [
+        -231.8312618377385,
+        -359.5630405248305,
+        50.23787565702207
+    ],
+    [
+        -209.73057155004852,
+        -399.64339371651585,
+        126.0433066139587
+    ],
+    [
+        -105.8809596665922,
+        -97.7096383269757,
+        49.54838522679282
+    ],
+    [
+        0.0, 
+        0.0, 
+        0.0
+    ],
+    [
+        -231.8312618377385,
+        -359.5630405248305,
+        50.23787565702207
+    ]
+]
+graph_external_vertices = [0, 1, 2, 3, 4, 5]
+graph_signature = [
+    [1], [1], [1], [1], [1], [1]
+]
+momtrop_edge_weight = [
+    0.555555555555, 
+    0.555555555555, 
+    0.555555555555,
+    0.555555555555, 
+    0.555555555555, 
+    0.555555555555
+]
+
+[model]
+# If true, will attempt to get the model from the gammaloop state
+from_state = true
+# If from_state is false, will use this path instead
+model_path = ""
+
+[parameterisation.spherical]
+identifier = "spherical param"
+conformal_scale = 1.0
+origins = []
+
+[parameterisation.inv_spherical]
+identifier = "inverse spherical param"
+conformal_scale = 1.0
+origins = []
+
+[parameterisation.kaapo]
+identifier = "kaapo param"
+mu = [3.141592653589793, 3.141592653589793, 0.0]
+m_e = 0.0
+a = 0.9
+b = 1.0
+
+[parameterisation.momtrop]
+identifier = "momtrop param"
+# Can be one of the following:
+# false or false equivalent: Uses the values from graph properties
+# float: Sets all edge weights to the same value
+# list[float]: Specify a weight for each edge. Length must match the number of internal edges.
+overwrite_edge_weight = false
+
+[layered_integrator]
+integrator_type = "madnis"
+
+[integrator.naive]
+identifier = "naive sampler"
+
+[integrator.vegas]
+identifier = "vegas sampler"
+
+[integrator.madnis]
+identifier = "madnis sampler"
+batch_size = 1024
+discrete_model = "transformer"
+
+# Parameters for the transformer model, should be passed as kwargs, see training_prog.py
+[integrator.madnis.transformer]
+embedding_dim = 64
+feedforward_dim = 64
+heads = 4
+mlp_units = 64
+transformer_layers = 1
+
+# Haven't bothered with the non-transformer model yet, will use default params set by madnis
+[integrator.madnis.made]
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "momtrop"
+
+[layered_integrand]
+integrand_type = "gammaloop"
+continuous_dim = 0 
+discrete_dims = []
+training_phase = "real"
+n_cores = 1
+
+[integrand.gammaloop]
+identifier = "gammaloop integrand"
+gammaloop_state_path =  "/shared/vhirshi/gammaloop_hedge_numerator/gl_states/physical_1L_6photons_output"
+process_id = 0
+integrand_name = "default"
+use_f128 = false
+momentum_space = true
+
+[integrand.test]
+identifier = "test integrand"
+offset = []
+sigma = 100.0
+const_f = false
+
+[integrand.kaapo]
+identifier = "kaapo integrand"
+path_to_example = "/shared/vhirshi/nic/kaapos_dev/kaapos/examples/sunset"
+# Params are [m_UV, mu, beta]
+params = [6.283185307179586, 3.141592653589793, 1.0]
+use_prec = true
+
+[integrand.kaapo.symbolica_integrand_kwargs]
+force_rebuild = false
+stability_tolerance = 1e-3
+stability_abs_tolerance = 1e-15
+stability_abs_threshold = 1e-12
+escalate_large_weight_multiplier = -1
+escalate_small_momentum_multiplier = 1e-2
+escalate_large_momentum_multiplier = 1e3
+rotation_seed = 1337
+n_shots = 3
+build_eagerly = true
+sum_orientations = true
+runtime_summation = false
+
+[integrand.kaapo.symbolica_integrand_prec_kwargs]
+prec = 200
+stability_tolerance = 1e-3
+stability_abs_tolerance = 1e-15
+stability_abs_threshold = 1e-12
+escalate_large_weight_multiplier = -1
+escalate_small_momentum_multiplier = -1
+escalate_large_momentum_multiplier = -1
+rotation_seed = 1337
+n_shots = 1
+sum_orientations = true
+runtime_summation = false
+
+# Parameters used in the training_prog.py file
+[plotting_params.training_prog]
+n_training_steps = 1000
+# Training steps between callback of loss to console
+n_log = 20
+# Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
+# Will also output the result +- error and rsd to console
+n_plot_rsd = 50
+# Training steps between plotting the loss
+n_plot_loss = 2
+n_samples = 40000
+# Number of samples drawn after the training to compute the final result
+n_samples_after_training = 100000
