@@ -310,6 +310,7 @@ class MPIntegrand(ParameterisedIntegrand):
                  integrand_kwargs: Dict[str, Any],
                  condition_integrand_first: bool = False,
                  n_cores: int = 1,
+                 verbose: bool = False,
                  **kwargs):
         self.n_cores = n_cores
 
@@ -327,7 +328,8 @@ class MPIntegrand(ParameterisedIntegrand):
         super().__init__(graph_properties,
                          param_kwargs,
                          integrand_kwargs,
-                         condition_integrand_first, **kwargs)
+                         condition_integrand_first,
+                         verbose, **kwargs)
         for _ in range(self.n_cores):
             ctx.Process(target=self._integrand_worker,
                         args=worker_args,

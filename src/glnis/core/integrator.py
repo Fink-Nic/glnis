@@ -71,6 +71,7 @@ class Integrator(ABC):
             integrator_kwargs: Dict[str, Any],) -> 'Integrator':
 
         n_cores = integrand_kwargs.pop('n_cores')
+        verbose = integrand_kwargs.pop('verbose')
         integrator_type = integrator_kwargs.pop('integrator_type')
 
         integrand = MPIntegrand(
@@ -78,6 +79,7 @@ class Integrator(ABC):
             param_kwargs=parameterisation_kwargs,
             integrand_kwargs=integrand_kwargs,
             n_cores=n_cores,
+            verbose=verbose,
         )
 
         match integrator_type:
