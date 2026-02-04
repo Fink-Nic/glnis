@@ -304,11 +304,12 @@ class MPIntegrand(ParameterisedIntegrand):
     MIN_CHUNK_SIZE = 10
     IDENTIFIER = "multiprocessing integrand"
 
-    def __init__(self, n_cores: int = 1,
+    def __init__(self,
                  graph_properties: GraphProperties,
                  param_kwargs: List[Dict[str, Any]],
                  integrand_kwargs: Dict[str, Any],
                  condition_integrand_first: bool = False,
+                 n_cores: int = 1,
                  **kwargs):
         self.n_cores = n_cores
 
@@ -340,11 +341,6 @@ class MPIntegrand(ParameterisedIntegrand):
                 raise ValueError(
                     "Unexpected initialization value in queue: {output}")
 
-        self.integrand = ParameterisedIntegrand(
-            self.graph_properties,
-            self.param_kwargs,
-            self.integrand_kwargs,
-            self.condition_integrand_first,)
         self.continuous_dim = self.integrand.continuous_dim
         self.discrete_dims = self.integrand.discrete_dims
         self.dtype = self.integrand.dtype
