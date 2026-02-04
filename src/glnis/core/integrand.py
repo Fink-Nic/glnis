@@ -305,8 +305,11 @@ class MPIntegrand(ParameterisedIntegrand):
     IDENTIFIER = "multiprocessing integrand"
 
     def __init__(self, n_cores: int = 1,
+                 graph_properties: GraphProperties,
+                 param_kwargs: List[Dict[str, Any]],
+                 integrand_kwargs: Dict[str, Any],
+                 condition_integrand_first: bool = False,
                  **kwargs):
-        super().__init__(**kwargs)
         self.n_cores = n_cores
 
         ctx = mp.get_context("spawn")
@@ -315,11 +318,15 @@ class MPIntegrand(ParameterisedIntegrand):
         worker_args = (
             (self.q_in, self.q_out, self.q_discr),
             self.stop_event,
-            self.graph_properties,
-            self.param_kwargs,
-            self.integrand_kwargs,
-            self.condition_integrand_first,
+            deepcopy(graph_properties),
+            deepcopy(param_kwargs),
+            deepcopy(integrand_kwargs),
+            condition_integrand_first,
         )
+        super().__init__(graph_properties,
+                         param_kwargs,
+                         integrand_kwargs,
+                         condition_integrand_first, **kwargs)
         for _ in range(self.n_cores):
             ctx.Process(target=self._integrand_worker,
                         args=worker_args,
