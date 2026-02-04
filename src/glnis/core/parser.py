@@ -255,20 +255,20 @@ class SettingsParser:
             settings_file = PROJECT_ROOT.joinpath(settings_file)
         if not self.settings_path.exists():
             raise FileExistsError(
-                "Settings file at {settings_path} does not exist."
-                "The path to the settings file must be specified either relative "
-                "to the glnis folder or be given as an absolute path."
+                f"""Settings file at {settings_file} does not exist.
+                The path to the settings file must be specified either relative 
+                to the glnis directory or be given as an absolute path."""
             )
         self.verbose = verbose
         self.settings_default_path = PROJECT_ROOT.joinpath(
-            Path("dev_settings", "default.toml"))
+            Path("settings", "default.toml"))
         with self.settings_path.open("rb") as f:
             settings = tomllib.load(f)
         with self.settings_default_path.open("rb") as f:
             default_settings = tomllib.load(f)
         self.settings: Dict[str, Any] = overwrite_settings(
-            default_settings, settings)
-        self.gammaloop_state_path = Path(self.settings['gammaloop_state']['state_folder'],
+            default_settings, settings, overwrite_exists=True)
+        self.gammaloop_state_path = Path(self.settings['gammaloop_state']['state_dir'],
                                          self.settings['gammaloop_state']['state_name'])
         self.settings['integrand']['gammaloop'][
             'gammaloop_state_path'] = str(self.gammaloop_state_path)
@@ -288,7 +288,7 @@ class SettingsParser:
             self.model_path = self.settings['model']['model_path']
 
     def get_gammaloop_integration_result(self) -> Dict | None:
-        result_path = Path(self.settings['gammaloop_state']['state_folder'],
+        result_path = Path(self.settings['gammaloop_state']['state_dir'],
                            self.settings['gammaloop_state']['integration_state_name'],
                            self.settings['gammaloop_state']['integration_result_file'])
         if not result_path.exists():
@@ -316,8 +316,11 @@ class SettingsParser:
 
     def get_integrand_kwargs(self) -> Dict[str, Any]:
         new_kwargs = self.settings['layered_integrand']
+        integrand_type = new_kwargs['integrand_type']
+        if integrand_type == 'gammaloop':
+            new_kwargs['gammaloop_state'] = str(self.gammaloop_state_path)
         old_kwargs = deepcopy(
-            self.settings['integrand'][new_kwargs['integrand_type']])
+            self.settings['integrand'][integrand_type])
 
         return overwrite_settings(old_kwargs, new_kwargs)
 

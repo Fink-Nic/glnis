@@ -28,8 +28,8 @@ class Integrand(ABC):
         self.dtype = np.dtype(
             np.float128) if self.use_f128 else np.dtype(np.float64)
         self.training_phase = training_phase
-        self.target_real = target_real
-        self.target_imag = target_imag
+        self.target_real = None if target_real == 0. else target_real
+        self.target_imag = None if target_imag == 0. else target_imag
 
     @abstractmethod
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
@@ -85,7 +85,7 @@ class TestIntegrand(Integrand):
     IDENTIFIER = "test integrand"
 
     def __init__(self, offset: NDArray | List[List[float]] | List[float] | None = None,
-                 sigma: float = 100.0,
+                 sigma: float = 10.0,
                  const_f: bool = False,
                  **kwargs):
         super().__init__(**kwargs)
@@ -154,23 +154,33 @@ class KaapoIntegrand(Integrand):
                  path_to_example: str,
                  params: List[float],
                  use_prec: bool = True,
-                 symbolica_integrand_kwargs: Dict[str, Any] = {
-                     'force_rebuild': False,
-                     'sum_orientations': True,
-                     'runtime_summation': False,
-                     'stability_tolerance': 1e-14,
-                     'stability_abs_threshold': 1e-15,
-                     'stability_abs_tolerance': 1e-15,
-                     'escalate_large_weight_multiplier': 0.9,
-                     'n_shots': 2,
-                     'rotation_seed': 1337, },
-                 symbolica_integrand_prec_kwargs: Dict[str, Any] = {
-                     'sum_orientations': True,
-                     'runtime_summation': False,
-                     'prec': 200,
-                     'n_shots': 1,
-                     'escalate_large_weight_multiplier': -1.0
-                 },
+                 symbolica_integrand_kwargs: Dict[str, Any] = dict(
+                     force_rebuild=False,
+                     stability_tolerance=1e-3,
+                     stability_abs_tolerance=1e-15,
+                     stability_abs_threshold=1e-12,
+                     escalate_large_weight_multiplier=-1,
+                     escalate_small_momentum_multiplier=1e-2,
+                     escalate_large_momentum_multiplier=1e3,
+                     rotation_seed=1337,
+                     n_shots=3,
+                     build_eagerly=False,
+                     sum_orientations=True,
+                     runtime_summation=False,
+                 ),
+                 symbolica_integrand_prec_kwargs: Dict[str, Any] = dict(
+                     prec=200,
+                     stability_tolerance=1e-3,
+                     stability_abs_tolerance=1e-15,
+                     stability_abs_threshold=1e-12,
+                     escalate_large_weight_multiplier=-1,
+                     escalate_small_momentum_multiplier=-1,
+                     escalate_large_momentum_multiplier=-1,
+                     rotation_seed=1337,
+                     n_shots=1,
+                     sum_orientations=True,
+                     runtime_summation=False,
+                 ),
                  **kwargs):
         try:
             import kaapos.samplers as ksamplers

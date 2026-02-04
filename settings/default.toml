@@ -1,26 +1,138 @@
 # -------------------------------------------------------------------------------------------
-# Default settings file, remember to point to this file in resources/PATHS.json
+# Default settings file. All parameters specified in 
 # Setting files should not include parameters that are not specified in here
 # -------------------------------------------------------------------------------------------
 [overwrite]
-# Any parameter specified here will be overwritten. Example:
+# Any parameter specified here will be overwritten. Example (string quotes required):
 # 'plotting_params.training_prog.n_training_steps' = 1337
 
 [gammaloop_state]
-# Name of the gammaloop state folder. REQUIRED TO BE OVERWRITTEN
-state_folder = "default"
-# Name of the process inside the gammaloop state. REQUIRED TO BE OVERWRITTEN
+# Name of the gammaloop state directory. REQUIRED TO BE OVERWRITTEN
+state_dir = "default"
+# Name of the state inside state_dir.
 state_name = "default"
-# Name of the gammaloop integration state
-integration_state_name = ""
-# Name of the integration results file inside the integration_state_name folder
-integration_result_file = "integration_results.txt"
-process_id = 0
-integrand_name = "default"
+# Name of the gammaloop integration state, if any
+integration_state_name = "default"
 # Name of the model file inside the state_name folder
 model_name = "model.json"
 # Name of the runcard file inside the state_name folder
 runcard_name = "run.toml"
+# Name of the integration results file inside the integration_state_name folder
+integration_result_file = "integration_results.txt"
+process_id = 0
+integrand_name = "default"
+
+# -------------------------------------------------------------------------------------------
+# The type of integrator/integrand/parameterisation is specified under [layered_X.X_type]
+# Parameters specified under [layered_X] take precedence over those in [X.X_type]
+# For parameterisations, they are provided in reverse order as [layered_parameterisation.Y], 
+# where the name of Y does not matter (just don't use duplicates). This means that in order
+# to set up a multichanneling layer, which e.g. calls spherical parameterisation, one can do:
+# [layered_parameterisation.Y1991]
+# parameterisation_type = "spherical"
+# [layered_parameterisation.Y75]
+# parameterisation_type = "mc layer"
+# -------------------------------------------------------------------------------------------
+
+[layered_integrator]
+integrator_type = "madnis"
+
+[layered_integrand]
+integrand_type = "gammaloop"
+# Number of continuous input dimensions above the expected 3 * n_loop
+continuous_dim = 0 
+discrete_dims = []
+use_f128 = false
+n_cores = 1
+# Can be one of "real", "imag", "abs"
+training_phase = "real"
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "momtrop"
+
+[integrator.naive]
+
+[integrator.vegas]
+
+[integrator.madnis]
+batch_size = 1024
+learning_rate = 2e-4
+discrete_model = "transformer"
+
+# Parameters for the transformer model
+[integrator.madnis.transformer]
+embedding_dim = 64
+feedforward_dim = 64
+heads = 4
+mlp_units = 64
+transformer_layers = 1
+
+# Haven't bothered with the non-transformer model yet, will use default params set by madnis
+[integrator.madnis.made]
+
+[integrand.gammaloop]
+# Can set a state manually here, else will use settings from [gammaloop_state]
+gammaloop_state_path = "from_state"
+process_id = 0
+integrand_name = "default"
+momentum_space = true
+
+[integrand.test]
+sigma = 10.0
+const_f = false
+
+[integrand.kaapo]
+path_to_example = "default"
+# Params are [m_UV, mu, beta]
+params = [6.283185307179586, 3.141592653589793, 1.0]
+use_prec = true
+
+[integrand.kaapo.symbolica_integrand_kwargs]
+force_rebuild = false
+stability_tolerance = 1e-3
+stability_abs_tolerance = 1e-15
+stability_abs_threshold = 1e-12
+escalate_large_weight_multiplier = -1
+escalate_small_momentum_multiplier = 1e-2
+escalate_large_momentum_multiplier = 1e3
+rotation_seed = 1337
+n_shots = 3
+build_eagerly = true
+sum_orientations = true
+runtime_summation = false
+
+[integrand.kaapo.symbolica_integrand_prec_kwargs]
+prec = 200
+stability_tolerance = 1e-3
+stability_abs_tolerance = 1e-15
+stability_abs_threshold = 1e-12
+escalate_large_weight_multiplier = -1
+escalate_small_momentum_multiplier = -1
+escalate_large_momentum_multiplier = -1
+rotation_seed = 1337
+n_shots = 1
+sum_orientations = true
+runtime_summation = false
+
+[parameterisation.spherical]
+conformal_scale = 1.0
+origins = 0.0
+
+[parameterisation.inv_spherical]
+conformal_scale = 1.0
+origins = 0.0
+
+[parameterisation.kaapo]
+mu = [3.141592653589793, 3.141592653589793, 0.0]
+a = 0.9
+b = 1.0
+
+[parameterisation.momtrop]
+# Can be one of the following:
+# false or false equivalent: Uses the values from graph properties
+# float: Sets all edge weights to the same value
+# list[float]: Specify a weight for each edge. Length must match the number of internal edges.
+overwrite_edge_weight = false
 
 [graph]
 # If true, will attempt to get the dot graph from the gammaloop state
@@ -32,8 +144,9 @@ dot_path = ""
 # float: Sets all edge weights to the same value
 # list[float]: Specify a weight for each edge. Length must match the number of internal edges.
 momtrop_edge_weight = "default"
+# Set this to true if the graph has no externals (e.g. thermal integrand examples from kaapo)
 is_vacuum = false
-# If true, will set graph properties to graph.graph_properties
+# If true, will set graph properties to [graph.graph_properties]
 overwrite_graph_properties = false
 
 # The default is set to 1L_6photons graph kinematics
@@ -98,124 +211,22 @@ momtrop_edge_weight = [
     0.555555555555, 
     0.555555555555
 ]
+lmb_array = [
+    [0], [1], [2], [3], [4], [5]
+]
 
 [model]
 # If true, will attempt to get the model from the gammaloop state
 from_state = true
 # If from_state is false, will use this path instead
-model_path = ""
+model_path = "default"
 
-[parameterisation.spherical]
-identifier = "spherical param"
-conformal_scale = 1.0
-origins = []
-
-[parameterisation.inv_spherical]
-identifier = "inverse spherical param"
-conformal_scale = 1.0
-origins = []
-
-[parameterisation.kaapo]
-identifier = "kaapo param"
-mu = [3.141592653589793, 3.141592653589793, 0.0]
-m_e = 0.0
-a = 0.9
-b = 1.0
-
-[parameterisation.momtrop]
-identifier = "momtrop param"
-# Can be one of the following:
-# false or false equivalent: Uses the values from graph properties
-# float: Sets all edge weights to the same value
-# list[float]: Specify a weight for each edge. Length must match the number of internal edges.
-overwrite_edge_weight = false
-
-[layered_integrator]
-integrator_type = "madnis"
-
-[integrator.naive]
-identifier = "naive sampler"
-
-[integrator.vegas]
-identifier = "vegas sampler"
-
-[integrator.madnis]
-identifier = "madnis sampler"
-batch_size = 1024
-discrete_model = "transformer"
-
-# Parameters for the transformer model, should be passed as kwargs, see training_prog.py
-[integrator.madnis.transformer]
-embedding_dim = 64
-feedforward_dim = 64
-heads = 4
-mlp_units = 64
-transformer_layers = 1
-
-# Haven't bothered with the non-transformer model yet, will use default params set by madnis
-[integrator.madnis.made]
-
-[layered_parameterisation.layer_0]
-parameterisation_type = "momtrop"
-
-[layered_integrand]
-integrand_type = "gammaloop"
-continuous_dim = 0 
-discrete_dims = []
-training_phase = "real"
-n_cores = 1
-
-[integrand.gammaloop]
-identifier = "gammaloop integrand"
-gammaloop_state_path =  "/shared/vhirshi/gammaloop_hedge_numerator/gl_states/physical_1L_6photons_output"
-process_id = 0
-integrand_name = "default"
-use_f128 = false
-momentum_space = true
-
-[integrand.test]
-identifier = "test integrand"
-offset = []
-sigma = 100.0
-const_f = false
-
-[integrand.kaapo]
-identifier = "kaapo integrand"
-path_to_example = "/shared/vhirshi/nic/kaapos_dev/kaapos/examples/sunset"
-# Params are [m_UV, mu, beta]
-params = [6.283185307179586, 3.141592653589793, 1.0]
-use_prec = true
-
-[integrand.kaapo.symbolica_integrand_kwargs]
-force_rebuild = false
-stability_tolerance = 1e-3
-stability_abs_tolerance = 1e-15
-stability_abs_threshold = 1e-12
-escalate_large_weight_multiplier = -1
-escalate_small_momentum_multiplier = 1e-2
-escalate_large_momentum_multiplier = 1e3
-rotation_seed = 1337
-n_shots = 3
-build_eagerly = true
-sum_orientations = true
-runtime_summation = false
-
-[integrand.kaapo.symbolica_integrand_prec_kwargs]
-prec = 200
-stability_tolerance = 1e-3
-stability_abs_tolerance = 1e-15
-stability_abs_threshold = 1e-12
-escalate_large_weight_multiplier = -1
-escalate_small_momentum_multiplier = -1
-escalate_large_momentum_multiplier = -1
-rotation_seed = 1337
-n_shots = 1
-sum_orientations = true
-runtime_summation = false
-
-# Parameters used in the training_prog.py file
-[plotting_params.training_prog]
+# Parameters used in the tprog subcommand
+[scripts.training_prog]
 n_training_steps = 1000
+n_samples = 40000
+# Number of samples drawn after the training to compute the final result
+n_samples_after_training = 100000
 # Training steps between callback of loss to console
 n_log = 20
 # Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
@@ -223,6 +234,3 @@ n_log = 20
 n_plot_rsd = 50
 # Training steps between plotting the loss
 n_plot_loss = 2
-n_samples = 40000
-# Number of samples drawn after the training to compute the final result
-n_samples_after_training = 100000

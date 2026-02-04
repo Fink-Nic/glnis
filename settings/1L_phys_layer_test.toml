@@ -31,9 +31,9 @@ mu = 0.0
 a = 0.95
 b = 1.0
 
-[layered_parameterisation.gagi]
+[layered_parameterisation.layer_mc]
 param_type = "MC layer"
-mc_weight_type = "e-surface"
+mc_weight_type = "fermi-surface"
 
 [layered_parameterisation.layer_1]
 param_type = "inv_spherical"

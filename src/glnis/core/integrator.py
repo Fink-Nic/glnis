@@ -181,6 +181,7 @@ class MadnisIntegrator(Integrator):
                  integrand: MPIntegrand,
                  integrator_kwargs: Dict[str, Any] = dict(
                      batch_size=1024,
+                     learning_rate=2e-4,
                      discrete_model="transformer",
                      transformer=dict(
                          embedding_dim=64,

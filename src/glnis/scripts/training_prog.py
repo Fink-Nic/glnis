@@ -20,19 +20,19 @@ def run_training_prog(settings_file: str,
                       ) -> None:
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
+        print(f"| > Working on settings {settings_file}")
         Settings = SettingsParser(settings_file)
 
-        print(f"| > Working on settings {settings_file}")
         if not no_output:
-            ROOT_FOLDER = Path(__file__).parents[3]
+            PROJECT_ROOT = Path(__file__).parents[3]
             subfolder_path = Path(
-                ROOT_FOLDER, "outputs", "training_prog")
+                PROJECT_ROOT, "outputs", "training_prog")
             print(f"| > Output will be at {subfolder_path}")
 
         # Training parameters
         torch.set_default_dtype(torch.float64)
         time_last = time()
-        params = Settings.settings['plotting_params']['training_prog']
+        params = Settings.settings['scripts']['training_prog']
         n_training_steps = params['n_training_steps']
         n_log = params['n_log']
         n_plot_rsd = params['n_plot_rsd']
@@ -68,7 +68,7 @@ def run_training_prog(settings_file: str,
 
         integrator.callback = callback
 
-        print(f"""Initializing the Integrand and Integrator took {
+        print(f"""| > Initializing the Integrand and Integrator took {
             - time_last + (time_last := time()):.2f}s""")
 
         # Parse GammaLoop results

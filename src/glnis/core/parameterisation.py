@@ -13,16 +13,13 @@ type ParamOutput = Tuple[NDArray, NDArray, NDArray | None]
 
 class Parameterisation(ABC):
     N_SPATIAL_DIMS = 3
-    identifier = "ABCParameterisation"
+    IDENTIFIER = "ABCParameterisation"
 
     def __init__(self,
                  graph_properties: GraphProperties,
-                 identifier: str = "",
                  next_param: 'Parameterisation' = None,
                  is_first_layer: bool = False,
                  ):
-        if identifier:
-            self.identifier = identifier
         self.graph_properties = graph_properties
         self.next_param = next_param
         self.is_first_layer = is_first_layer
@@ -126,12 +123,12 @@ class Parameterisation(ABC):
         discrete = input.discrete
         if (n_dim := continuous.shape[1]) < self.chain_continuous_dim_in:
             raise ValueError(
-                f"Layer {self.identifier} has received {n_dim}-dimensional continuous input, "
+                f"Layer {self.IDENTIFIER} has received {n_dim}-dimensional continuous input, "
                 + f"expected at least {self.chain_continuous_dim_in}.")
         n_disc = len(self.chain_discrete_dims)
         if (n_dim := discrete.shape[1]) < n_disc:
             raise ValueError(
-                f"Layer {self.identifier} has received {n_dim}-dimensional discrete input, "
+                f"Layer {self.IDENTIFIER} has received {n_dim}-dimensional discrete input, "
                 + f"expected at least {n_disc}.")
 
         continuous = continuous[:, :self.layer_continuous_dim_in]
@@ -177,7 +174,7 @@ class Parameterisation(ABC):
         else:
             layer_input.continuous = cont_param
         layer_input.discrete = disc_param
-        layer_input.update(self.identifier)
+        layer_input.update(self.IDENTIFIER)
 
         return layer_input
 
@@ -234,7 +231,7 @@ class Parameterisation(ABC):
 
 
 class LayeredParameterisation:
-    identifier = "layered parameterisation"
+    IDENTIFIER = "layered parameterisation"
 
     def __init__(self, graph_properties: GraphProperties,
                  param_settings: List[Dict[str, Any]],):
@@ -286,7 +283,7 @@ class LayeredParameterisation:
 
 
 class MomtropParameterisation(Parameterisation):
-    identifier = "momtrop param"
+    IDENTIFIER = "momtrop param"
 
     def __init__(self, overwrite_edge_weight: float | List[float] | bool = False,
                  **kwargs: Dict[str, Any]):
@@ -377,7 +374,7 @@ class MomtropParameterisation(Parameterisation):
 
 
 class SphericalParameterisation(Parameterisation):
-    identifier = "spherical param"
+    IDENTIFIER = "spherical param"
 
     def __init__(self,
                  conformal_scale: float = 1.,
@@ -387,7 +384,7 @@ class SphericalParameterisation(Parameterisation):
         super().__init__(**kwargs)
         self.conformal_scale = conformal_scale
         self.n_loops = self.graph_properties.n_loops
-        if origins is None or origins == []:
+        if origins is None or origins == 0.:
             self.origins = self.n_loops * [None]
         else:
             self.origins = np.array(origins)
@@ -434,7 +431,7 @@ class SphericalParameterisation(Parameterisation):
 
 
 class InverseSphericalParameterisation(Parameterisation):
-    identifier = "inverse spherical param"
+    IDENTIFIER = "inverse spherical param"
 
     def __init__(self,
                  conformal_scale: float,
@@ -444,7 +441,7 @@ class InverseSphericalParameterisation(Parameterisation):
         super().__init__(**kwargs)
         self.conformal_scale = conformal_scale
         self.n_loops = self.graph_properties.n_loops
-        if origins is None or origins == []:
+        if origins is None or origins == 0.:
             self.origins = self.n_loops * [None]
         else:
             self.origins = np.array(origins)
@@ -490,10 +487,9 @@ class InverseSphericalParameterisation(Parameterisation):
 
 
 class KaapoParameterisation(Parameterisation):
-    identifier = "kaapo param"
+    IDENTIFIER = "kaapo param"
 
     def __init__(self, mu: List[float] | float = np.pi,
-                 m_e: float = 0.0,
                  a: float = 0.9,
                  b: float = 1.0, **kwargs):
         super().__init__(**kwargs)
@@ -501,7 +497,6 @@ class KaapoParameterisation(Parameterisation):
         if not type(self.mu) == list:
             self.mu: list[float] = self.graph_properties.n_edges*[self.mu]
 
-        self.m_e = m_e
         self.a = a
         self.b = b
 
@@ -525,7 +520,7 @@ class KaapoParameterisation(Parameterisation):
                 mu = np.array(self.mu)[basis_edge]
             else:
                 basis_edge = self.graph_properties.lmb_array[0, i_loop]
-                m_e = self.m_e
+                m_e = self.graph_properties.edge_masses[basis_edge]
                 mu = self.mu[basis_edge]
             p_F = np.clip(mu**2 - m_e**2, a_min=0., a_max=None)**0.5
 
@@ -558,7 +553,7 @@ class KaapoParameterisation(Parameterisation):
 
 
 class MCLayer(Parameterisation):
-    identifier = "MC layer"
+    IDENTIFIER = "MC layer"
 
     def __init__(self,
                  param: Parameterisation,
@@ -569,7 +564,7 @@ class MCLayer(Parameterisation):
                  **kwargs):
         super().__init__(**kwargs)
         self.param = param
-        self.identifier += f" : {self.param.identifier}"
+        self.IDENTIFIER += f" : {self.param.IDENTIFIER}"
         self.mc_weight_exponent = mc_weight_exponent
         self.fermi_mc_weight_bias = fermi_mc_weight_bias
         self.mc_weight_type = mc_weight_type
@@ -656,7 +651,7 @@ class MCLayer(Parameterisation):
                 return self._fermi_surface_mc_factor(momentum, channel)
             case _:
                 raise NotImplementedError(
-                    f"No MC weight implemented for parameterisation '{self.param.identifier}'.")
+                    f"No MC weight implemented for parameterisation '{self.param.IDENTIFIER}'.")
 
     def _layer_discrete_dims(self) -> List[int]:
         return [self.graph_properties.lmb_array.shape[0]]
