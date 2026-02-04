@@ -318,7 +318,7 @@ class SettingsParser:
         new_kwargs = self.settings['layered_integrand']
         integrand_type = new_kwargs['integrand_type']
         if integrand_type == 'gammaloop':
-            new_kwargs['gammaloop_state'] = str(self.gammaloop_state_path)
+            new_kwargs['gammaloop_state_path'] = str(self.gammaloop_state_path)
         old_kwargs = deepcopy(
             self.settings['integrand'][integrand_type])
 
