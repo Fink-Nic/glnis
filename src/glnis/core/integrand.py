@@ -339,11 +339,7 @@ class MPIntegrand(ParameterisedIntegrand):
                     print(f"Core {core} has been initialized.")
             else:
                 raise ValueError(
-                    "Unexpected initialization value in queue: {output}")
-
-        self.continuous_dim = self.integrand.continuous_dim
-        self.discrete_dims = self.integrand.discrete_dims
-        self.dtype = self.integrand.dtype
+                    f"Unexpected initialization value in queue: {output}")
 
     @staticmethod
     def _integrand_worker(queues: Sequence[mp.Queue],
