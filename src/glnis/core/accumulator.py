@@ -628,15 +628,15 @@ class FailuresMonitor(AccumulatorModule):
 
     def str_report(self) -> str:
         if self.n_points == self.n_success:
-            return f"| > {Colour.GREEN}No Failures, successfully evaluated all {
-                self.n_points}/{self.n_points} points!{Colour.END}"
+            return f"""| > {Colour.GREEN}No Failures, successfully evaluated all {
+                self.n_points}/{self.n_points} points!{Colour.END}"""
 
         n_failures = self.n_points - self.n_success
         report = [
-            f"{Colour.RED}WARNING: Failed {n_failures} points!"]
+            f"{Colour.RED}WARNING: Failed {n_failures} points!{Colour.END}"]
         n_displayed = 0
         for identifier, failures in self.failures.items():
-            n_curr_id = min(failures.shape[1], self.max_display-n_displayed)
+            n_curr_id = min(failures.shape[0], self.max_display-n_displayed)
             for idx in range(n_curr_id):
                 report.append(f"At '{identifier}': {failures[idx]}")
             n_displayed += n_curr_id

@@ -40,14 +40,14 @@ class Integrator(ABC):
 
         indices = np.zeros((n, 0), dtype=np.uint64)
         prob = np.ones((n,))
-        for i in range(len(self.discrete_dims)):
+        for i in range(self.num_discrete_dims):
             unnorm_probs = self.integrand.discrete_prior_prob_function(
                 indices[:, :i], i)
             cdf = np.cumsum(unnorm_probs, axis=1)
             norm = cdf[:, -1]
             cdf = cdf / norm[:, None]
             r = np.random.random_sample((n, 1))
-            samples = np.sum(cdf < r, axis=1).reshape(-1, 1)
+            samples = np.sum(cdf < r, axis=1, dtype=np.uint64).reshape(-1, 1)
             indices = np.hstack((indices, samples))
             prob = prob * \
                 np.take_along_axis(unnorm_probs, samples, axis=1)[:, 0] / norm
@@ -229,8 +229,6 @@ class MadnisIntegrator(Integrator):
 
         output = self.integrand.eval_integrand(
             layer_input, 'training')
-        if self.integrand.verbose:
-            print(output.str_report())
         output: TrainingData = output.modules[-1]
         weighted_func_val = output.training_result[0].flatten()
         return torch.from_numpy(weighted_func_val.astype(np.float64))
