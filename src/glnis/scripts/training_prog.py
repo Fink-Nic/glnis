@@ -48,7 +48,7 @@ def run_training_prog(settings_file: str,
         losses = []
         rsds = []
         steps_losses = []
-        steps_rsds = [0]
+        steps_rsds = []
 
         # Callback for the madnis integrator
         def callback(status) -> None:
@@ -144,7 +144,7 @@ def run_training_prog(settings_file: str,
             f.write(f"{integrator.batch_size=}\n")
             f.write(f"{n_training_steps=}\n")
             f.write(
-                f"Discrete Model: {Settings['integrator']['madnis']['discrete_model']}\n")
+                f"Discrete Model: {Settings.settings['integrator']['madnis']['discrete_model']}\n")
             f.write(
                 f"Integrated phase: {integrator.integrand.training_phase}\n")
             if gl_res is not None:

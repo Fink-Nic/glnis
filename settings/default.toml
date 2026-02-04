@@ -46,6 +46,7 @@ use_f128 = false
 n_cores = 1
 # Can be one of "real", "imag", "abs"
 training_phase = "real"
+verbose = false
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "momtrop"
