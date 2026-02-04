@@ -54,7 +54,7 @@ def run_training_prog(settings_file: str,
         def callback(status) -> None:
             step = status.step + 1
             if step % n_log == 0:
-                print(f"Step {status.step + 1}: loss={status.loss:.5f}")
+                print(f"| > Step {status.step + 1}: loss={status.loss:.5f}")
             if step % n_plot_loss == 0:
                 losses.append(status.loss)
                 steps_losses.append(step)
