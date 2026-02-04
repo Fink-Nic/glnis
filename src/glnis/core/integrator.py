@@ -155,7 +155,7 @@ class VegasIntegrator(Integrator):
         layer_input.continuous = samples[:, :self.continuous_dim]
         layer_input.discrete, disc_wgt = self._cont_to_discr(
             samples[:, self.continuous_dim:])
-        total_wgt = sampling_wgt*disc_wgt
+        total_wgt = disc_wgt  # * sampling_wgt
         layer_input.wgt *= total_wgt
         layer_input.update(self.IDENTIFIER)
 

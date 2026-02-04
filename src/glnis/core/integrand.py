@@ -136,7 +136,7 @@ class GammaLoopIntegrand(Integrand):
         discrete_dims = np.zeros(
             (len(continuous), 1), dtype=np.uint64)
         res, _ = self.gammaloop_state.batched_inspect(
-            points=continuous, momentum_space=self.momentum_space,
+            points=continuous.astype(np.float64), momentum_space=self.momentum_space,
             process_id=self.process_id,
             integrand_name=self.integrand_name,
             use_f128=self.use_f128,  discrete_dims=discrete_dims
