@@ -267,7 +267,7 @@ class SettingsParser:
         with self.settings_default_path.open("rb") as f:
             default_settings = tomllib.load(f)
         self.settings: Dict[str, Any] = overwrite_settings(
-            default_settings, settings, overwrite_exists=True)
+            default_settings, settings)
         self.gammaloop_state_path = Path(self.settings['gammaloop_state']['state_dir'],
                                          self.settings['gammaloop_state']['state_name'])
         self.settings['integrand']['gammaloop'][
