@@ -119,17 +119,17 @@ class NaiveIntegrator(Integrator):
 
     def __init__(self,
                  integrand: MPIntegrand,
-                 rng=None,):
+                 seed=None,):
         super().__init__(
             integrand=integrand,)
-        self.rng = rng
+        self.rng = np.random.default_rng(seed)
 
     def integrate(self, n_points: int) -> Accumulator:
         layer_input = self.init_layer_data(n_points)
         layer_input.continuous = np.random.random_sample(
             (n_points, self.continuous_dim))
-        discrete = np.random.random_sample(
-            (n_points, len(self.discrete_dims)))
+        discrete = self.rng.uniform(
+            size=(n_points, len(self.discrete_dims)))
         layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
         layer_input.update(self.IDENTIFIER)
 
@@ -170,6 +170,7 @@ class VegasIntegrator(Integrator):
         layer_input.continuous = x[:, :self.continuous_dim]
         layer_input.discrete, layer_input.wgt = self._cont_to_discr(
             x[:, self.continuous_dim:])
+        layer_input.update(self.IDENTIFIER)
         accumulated_result: TrainingData = self.integrand.eval_integrand(
             layer_input, 'training').modules[-1]
 
@@ -195,6 +196,7 @@ class MadnisIntegrator(Integrator):
                  callback: Callable[[object], None] | None = None,
                  ):
         super().__init__(integrand)
+
         madnis_integrand = madnis_integrator.Integrand(
             function=self._madnis_eval,
             input_dim=self.input_dim,
@@ -225,7 +227,7 @@ class MadnisIntegrator(Integrator):
                                      :self.num_discrete_dims].numpy(force=True)
         layer_input.continuous = x_all[:,
                                        self.num_discrete_dims:].numpy(force=True)
-        layer_input.update('madnis_training')
+        layer_input.update(self.IDENTIFIER)
 
         output = self.integrand.eval_integrand(
             layer_input, 'training')
@@ -239,5 +241,5 @@ class MadnisIntegrator(Integrator):
         return torch.from_numpy(numpy_output.astype(np.float64))
 
     @staticmethod
-    def _default_callback(status) -> None:
-        print(f"Step {status.step+1}: Loss={status.loss}")
+    def _default_callback(status: madnis_integrator.TrainingStatus) -> None:
+        print(f"Step {status.step+1}: Loss={status.loss} ")

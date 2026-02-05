@@ -135,6 +135,8 @@ class GammaLoopIntegrand(Integrand):
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         discrete_dims = np.zeros(
             (len(continuous), 1), dtype=np.uint64)
+        if discrete.shape[1] > 0:
+            discrete_dims = np.hstack(discrete_dims, discrete, dtype=np.uint64)
         res, _ = self.gammaloop_state.batched_inspect(
             points=continuous.astype(np.float64), momentum_space=self.momentum_space,
             process_id=self.process_id,

@@ -111,9 +111,7 @@ def overwrite_settings(orig_dict: Dict[str, Any], new_dict: Dict[str, Any],
         if isinstance(val, Dict):
             tmp = overwrite_settings(orig_dict.get(key, {}), val)
             orig_dict[key] = tmp
-        elif isinstance(val, list):
-            orig_dict[key] = (orig_dict.get(key, []) + val)
         else:
-            orig_dict[key] = new_dict[key]
+            orig_dict[key] = val
 
     return orig_dict

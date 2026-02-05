@@ -332,6 +332,7 @@ class SettingsParser:
         return overwrite_settings(old_kwargs, new_kwargs)
 
     def get_graph_properties(self) -> GraphProperties:
+        print(self.settings['graph']['graph_properties'])
         if self.settings['graph']['overwrite_graph_properties']:
             return GraphProperties(**self.settings['graph']['graph_properties'])
 
@@ -348,7 +349,7 @@ class SettingsParser:
             case [_, *_]:
                 if not len(edge_weight) == n_int_edges:
                     raise ValueError("If provided as a sequence, the number of momtrop "
-                                     + "edgeweights must match the number of propagators.")
+                                     + "edgeweights must match the number of internal edges.")
                 edge_weight = edge_weight
             case "default":
                 default_weight = (

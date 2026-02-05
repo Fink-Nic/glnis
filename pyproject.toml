@@ -16,10 +16,10 @@ authors = [
 dependencies = [
     "numpy>=2.2,<3",
     "torch>=2.8,<3",
-    "symbolica>=0.18,<0.19",
     "vegas>=6.2,<7",
     "pydot>=3.0,<4",
     "matplotlib>=3.6,<4",
+    "symbolica>=0.18",
     "madnis @ git+https://github.com/madgraph-ml/madnis.git@dev",
     "momtrop @ git+https://github.com/Fink-Nic/momtrop.git@main",
     "kaapos @ git+https://github.com/Fink-Nic/thermal_integrand_examples.git@main",

@@ -210,6 +210,7 @@ class LayerData:
         """
         self._timestamp = perf_counter()
 
+    @_timer
     def accumulate(self,
                    acc_type: Literal['default', 'training'] = 'default',
                    **kwargs) -> 'Accumulator':
@@ -222,6 +223,7 @@ class LayerData:
                 raise NotImplementedError(
                     f"Accumulator of type {acc_type} not implemented for LayerData object.")
 
+    @_timer
     def as_chunks(self, n_chunks: int) -> Iterable['LayerData']:
         if len(self._pending_data) > 0:
             self.update('as_chunks')
@@ -415,7 +417,8 @@ class IntegrationResult(AccumulatorModule):
         else:
             self.dtype = data.dtype
             self.n_points = data.n_points
-            total_wgt = (data.jac*data.wgt*data.func_val)[data.success]
+            m = data.success
+            total_wgt = data.jac[m]*data.wgt[m]*data.func_val[m]
             self.real_central_value = total_wgt.real.mean()
             self.real_error = total_wgt.real.std() / np.sqrt(self.n_points)
             self.imag_central_value = total_wgt.imag.mean()
@@ -493,8 +496,9 @@ class MaxWeight(AccumulatorModule):
             self.imag_neg_max_wgt_point = None
         else:
             self.dtype = data.dtype
-            total_wgt = (data.jac*data.wgt*data.func_val)[data.success]
-            momenta = data.momenta[data.success]
+            m = data.success
+            total_wgt = data.jac[m]*data.wgt[m]*data.func_val[m]
+            momenta = data.momenta[m]
             real_pos_idx = total_wgt.real.argmax(axis=0)
             self.real_pos_max_wgt = total_wgt.real[real_pos_idx][0]
             self.real_pos_max_wgt_point = momenta[real_pos_idx][0]
@@ -657,7 +661,7 @@ class FailuresMonitor(AccumulatorModule):
 
 
 class TrainingData(AccumulatorModule):
-    FAILUREVALUE = 1e-4
+    FAILUREVALUE = 0.
 
     def __init__(self,
                  data: LayerData,
@@ -667,6 +671,8 @@ class TrainingData(AccumulatorModule):
         self.training_phase = training_phase
         self.training_result: list[NDArray] = []
         self.has_failures = len(data.failures) > 0
+        if self.has_failures:
+            data._data[~data.success] = self.FAILUREVALUE
         int_result = data.jac*data.wgt
         match self.training_phase:
             case 'real':
@@ -678,9 +684,8 @@ class TrainingData(AccumulatorModule):
             case _:
                 raise ValueError(
                     "Training phase must be one of 'real', 'imag' or 'abs'.")
+        int_result[np.isnan(int_result)] = self.FAILUREVALUE
 
-        if self.has_failures:
-            int_result[~data.success] = self.FAILUREVALUE
         self.training_result.append(int_result)
 
     def combine_with(self: 'TrainingData', other: 'TrainingData') -> None:

@@ -1,10 +1,10 @@
 # -------------------------------------------------------------------------------------------
-# Default settings file. All parameters specified in 
-# Setting files should not include parameters that are not specified in here
+# Default settings file. 
+# Setting files should not include parameters that are not specified in here.
 # -------------------------------------------------------------------------------------------
 [overwrite]
 # Any parameter specified here will be overwritten. Example (string quotes required):
-# 'plotting_params.training_prog.n_training_steps' = 1337
+# 'scripts.training_prog.n_training_steps' = 1337
 
 [gammaloop_state]
 # Name of the gammaloop state directory. REQUIRED TO BE OVERWRITTEN
@@ -31,7 +31,7 @@ integrand_name = "default"
 # [layered_parameterisation.Y1991]
 # parameterisation_type = "spherical"
 # [layered_parameterisation.Y75]
-# parameterisation_type = "mc layer"
+# parameterisation_type = "mc_layer"
 # -------------------------------------------------------------------------------------------
 
 [layered_integrator]
@@ -90,13 +90,13 @@ use_prec = true
 
 [integrand.kaapo.symbolica_integrand_kwargs]
 force_rebuild = false
-stability_tolerance = 1e-3
+stability_tolerance = 1e-5
 stability_abs_tolerance = 1e-15
 stability_abs_threshold = 1e-12
-escalate_large_weight_multiplier = -1
-escalate_small_momentum_multiplier = 1e-2
+escalate_large_weight_multiplier = 0.9
+escalate_small_momentum_multiplier = 1e-3
 escalate_large_momentum_multiplier = 1e3
-rotation_seed = 1337
+rotation_seed = 42
 n_shots = 3
 build_eagerly = true
 sum_orientations = true
@@ -107,10 +107,10 @@ prec = 200
 stability_tolerance = 1e-3
 stability_abs_tolerance = 1e-15
 stability_abs_threshold = 1e-12
-escalate_large_weight_multiplier = -1
-escalate_small_momentum_multiplier = -1
-escalate_large_momentum_multiplier = -1
-rotation_seed = 1337
+escalate_large_weight_multiplier = -1.0
+escalate_small_momentum_multiplier = -1.0
+escalate_large_momentum_multiplier = -1.0
+rotation_seed = 42
 n_shots = 1
 sum_orientations = true
 runtime_summation = false
@@ -127,6 +127,11 @@ origins = 0.0
 mu = [3.141592653589793, 3.141592653589793, 0.0]
 a = 0.9
 b = 1.0
+
+[parameterisation.mc_layer]
+mc_weight_exponent = 1.0
+fermi_mc_weight_bias = 0.5
+mc_weight_type = "e-surface"
 
 [parameterisation.momtrop]
 # Can be one of the following:

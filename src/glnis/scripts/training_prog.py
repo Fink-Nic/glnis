@@ -10,7 +10,7 @@ from datetime import datetime
 from time import time
 
 from glnis.core.parser import SettingsParser
-from glnis.core.integrator import MadnisIntegrator, Integrator
+from glnis.core.integrator import MadnisIntegrator, Integrator, NaiveIntegrator
 from glnis.utils.helpers import error_fmter
 
 
@@ -43,6 +43,7 @@ def run_training_prog(settings_file: str,
 
         integrator: MadnisIntegrator = Integrator.from_settings_file(
             settings_file)
+        naive_integrator = NaiveIntegrator(integrator.integrand, seed=42)
 
         # Plotting setup
         losses = []
@@ -84,16 +85,11 @@ def run_training_prog(settings_file: str,
                 f"| > Gammaloop Result: {gl_int:.8g} +- {gl_err:.8g}, RSD = {gl_rsd:.3f}")
 
         time_last = time()
-        metrics = integrator.integrate(n_samples)
-        print(f"""| > Evaluating {n_samples} samples using {integrator.integrand.n_cores} cores took {
+        naive_output = naive_integrator.integrate(n_samples)
+        print(f"""| > Evaluating {n_samples} samples using Naive integrator and {naive_integrator.integrand.n_cores} cores took {
             - time_last + (time_last := time()):.2f}s""")
 
-        momtrop_int = metrics.integral
-        momtrop_err = metrics.error
-        momtrop_rsd = metrics.rel_stddev
-        print(
-            f"""| > Momtrop Result (before training) using {n_samples} samples: {
-                momtrop_int:.8g} +- {momtrop_err:.8g}, RSD = {momtrop_rsd:.3f}""")
+        print(naive_output.str_report())
 
         integrator.train(n_training_steps, callback)
 

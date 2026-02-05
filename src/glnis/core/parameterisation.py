@@ -258,7 +258,7 @@ class LayeredParameterisation:
                     p = InverseSphericalParameterisation(**kwargs)
                 case "kaapo":
                     p = KaapoParameterisation(**kwargs)
-                case "mc layer":
+                case "mc_layer":
                     if next_param is None:
                         raise ValueError(
                             "MC layer must be passed after a parameterisation.")
