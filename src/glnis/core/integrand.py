@@ -11,6 +11,12 @@ from glnis.core.parameterisation import LayeredParameterisation
 from glnis.core.accumulator import Accumulator, TrainingData, GraphProperties, LayerData
 from glnis.utils.helpers import chunks
 
+try:
+    import kaapos.samplers as ksamplers
+    import kaapos.integrands as kintegrands
+except:
+    raise ImportError("Failed to import thermal integrand module.")
+
 
 class Integrand(ABC):
     IDENTIFIER = "ABCIntegrand"
@@ -184,11 +190,6 @@ class KaapoIntegrand(Integrand):
                      runtime_summation=False,
                  ),
                  **kwargs):
-        try:
-            import kaapos.samplers as ksamplers
-            import kaapos.integrands as kintegrands
-        except:
-            raise ImportError("Failed to import thermal integrand module.")
         self.path_to_example = path_to_example
         self.params = np.array(params)
         self.params = np.array([2*math.pi, 0.0, 1.0])
