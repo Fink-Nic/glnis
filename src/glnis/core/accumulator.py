@@ -446,7 +446,8 @@ class IntegrationResult(AccumulatorModule):
                 error_fmter(self.real_central_value, self.real_error, self.precision)}")
             err_perc = abs(100. * self.real_error / self.real_central_value)
             err_col = Colour.GREEN if err_perc < 1. else Colour.RED
-            report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END})"
+            rsd = err_perc / 100. * np.sqrt(self.n_points)
+            report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END}, RSD={rsd:.3f})"
             if self.target_real is not None:
                 diff = self.real_central_value - self.target_real
                 rel_diff_perc = abs(100. * diff / self.target_real)
@@ -460,7 +461,8 @@ class IntegrationResult(AccumulatorModule):
                 error_fmter(self.imag_central_value, self.imag_error, self.precision)}")
             err_perc = abs(100. * self.imag_error / self.imag_central_value)
             err_col = Colour.GREEN if err_perc < 1. else Colour.RED
-            report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END})"
+            rsd = err_perc / 100. * np.sqrt(self.n_points)
+            report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END}, RSD={rsd:.3f})"
             if self.target_imag is not None:
                 diff = self.imag_central_value - self.target_imag
                 rel_diff_perc = abs(100. * diff / self.target_imag)
@@ -589,10 +591,10 @@ class ProcessingTimes(AccumulatorModule):
             perc_time = 100. * time / total_time
             if perc_time > 50.:
                 subroutine_times.append(
-                    f"'{identifier}': {Colour.RED}{mus_factor*time:.1f}{Colour.END} µs ({Colour.RED}{int(perc_time)}%{Colour.END})")
+                    f"{identifier}: {Colour.RED}{mus_factor*time:.1f}{Colour.END} µs ({Colour.RED}{int(perc_time)}%{Colour.END})")
             else:
                 subroutine_times.append(
-                    f"'{identifier}': {mus_factor*time:.1f} µs ({int(perc_time)}%)")
+                    f"{identifier}: {mus_factor*time:.1f} µs ({int(perc_time)}%)")
         report.append(" | ".join(subroutine_times))
 
         return "\n".join(f"| > {line}" for line in report)

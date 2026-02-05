@@ -332,7 +332,6 @@ class SettingsParser:
         return overwrite_settings(old_kwargs, new_kwargs)
 
     def get_graph_properties(self) -> GraphProperties:
-        print(self.settings['graph']['graph_properties'])
         if self.settings['graph']['overwrite_graph_properties']:
             return GraphProperties(**self.settings['graph']['graph_properties'])
 
