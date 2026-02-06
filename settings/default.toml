@@ -8,7 +8,7 @@
 
 [gammaloop_state]
 # Name of the gammaloop state directory. REQUIRED TO BE OVERWRITTEN
-state_dir = "default"
+state_dir = "/home/nfink/gammaloop/gl_states"
 # Name of the state inside state_dir.
 state_name = "default"
 # Name of the gammaloop integration state, if any
@@ -59,14 +59,16 @@ parameterisation_type = "momtrop"
 batch_size = 1024
 learning_rate = 1e-3
 discrete_model = "transformer"
+use_scheduler = true
 
 # Parameters for the transformer model
 [integrator.madnis.transformer]
-embedding_dim = 64
-feedforward_dim = 64
-heads = 4
-mlp_units = 64
-transformer_layers = 1
+embedding_dim  = 64
+feedforward_dim = 256
+heads = 8
+transformer_layers = 3
+mlp_layers = 3
+mlp_units = 256
 
 # Haven't bothered with the non-transformer model yet, will use default params set by madnis
 [integrator.madnis.made]

@@ -194,8 +194,16 @@ class MadnisIntegrator(Integrator):
                          transformer_layers=1,),
                  ),
                  callback: Callable[[object], None] | None = None,
+                 use_scheduler: bool = True,
                  ):
         super().__init__(integrand)
+        self.device = torch.device(
+            "cuda:0") if torch.cuda.is_available else torch.cpu.current_device()
+        if use_scheduler:
+            def scheduler(optimizer):
+                return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
+        else:
+            scheduler = None
 
         madnis_integrand = madnis_integrator.Integrand(
             function=self._madnis_eval,
@@ -209,9 +217,11 @@ class MadnisIntegrator(Integrator):
         self.batch_size = integrator_kwargs['batch_size']
         self.madnis = madnis_integrator.Integrator(
             madnis_integrand,
+            device=self.device,
             discrete_model=discrete_model,
             discrete_flow_kwargs=integrator_kwargs[discrete_model],
             batch_size=self.batch_size,
+            scheduler=scheduler,
         )
         self.callback = self._default_callback if callback is None else callback
 
@@ -233,12 +243,16 @@ class MadnisIntegrator(Integrator):
             layer_input, 'training')
         output: TrainingData = output.modules[-1]
         weighted_func_val = output.training_result[0].flatten()
-        return torch.from_numpy(weighted_func_val.astype(np.float64))
+        torch_output = torch.from_numpy(
+            weighted_func_val.astype(np.float64)).to(self.device)
+        return torch_output
 
     def _madnis_discrete_prior_prob_function(self, indices: Tensor, dim: int = 0) -> Tensor:
         numpy_output = self.integrand.discrete_prior_prob_function(
             indices.numpy(force=True).astype(np.uint64), dim)
-        return torch.from_numpy(numpy_output.astype(np.float64))
+        torch_output = torch.from_numpy(
+            numpy_output.astype(np.float64)).to(self.device)
+        return torch_output
 
     @staticmethod
     def _default_callback(status: madnis_integrator.TrainingStatus) -> None:
