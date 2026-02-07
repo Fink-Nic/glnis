@@ -12,13 +12,17 @@ from glnis.core.accumulator import GraphProperties
 
 
 class ModelParser:
-    def __init__(self, model_path: str | Path):
-        self.model_path = Path(model_path)
-        if not self.model_path.exists():
-            raise FileExistsError(
-                f"Model file at {self.model_path} does not exist.")
-        with self.model_path.open("r") as f:
-            self.model = json.load(f)
+    def __init__(self, model_path: str | Path, from_string=False):
+        if from_string:
+            self.model_path = "Loaded from existing model string."
+            self.model = json.loads(model_path)
+        else:
+            self.model_path = Path(model_path)
+            if not self.model_path.exists():
+                raise FileExistsError(
+                    f"Model file at {self.model_path} does not exist.")
+            with self.model_path.open("r") as f:
+                self.model = json.load(f)
 
     def get_particle_from_identifier(self, identifier_name: str, value) -> Dict:
         particle_match = None
@@ -73,9 +77,16 @@ class ModelParser:
 
 
 class DotParser:
-    def __init__(self, dot_path: str | Path, model_path: str | Path, verbose: bool = False):
-        self.graph_file = pydot.graph_from_dot_file(str(dot_path))
-        self.Model = ModelParser(model_path)
+    def __init__(self, dot_file: str | Path, model: str | Path | ModelParser,
+                 verbose: bool = False, dot_from_string: bool = False,):
+        if dot_from_string:
+            self.graph_file = pydot.graph_from_dot_data(dot_file)
+        else:
+            self.graph_file = pydot.graph_from_dot_file(str(dot_file))
+        if type(model) == ModelParser:
+            self.Model = model
+        else:
+            self.Model = ModelParser(model)
         self.verbose = verbose
 
     def get_dot_graph(self, process_id: int):
@@ -275,11 +286,12 @@ class SettingsParser:
         self.gammaloop_runcard_path = Path(self.gammaloop_state_path,
                                            self.settings['gammaloop_state']['runcard_name'])
         if self.settings['graph']['from_state']:
-            self.dot_path = Path(self.gammaloop_state_path,
-                                 "processes", "amplitudes",
-                                 self.settings['gammaloop_state']['process_name'], "default",
-                                 self.settings['gammaloop_state']['process_name']+".dot")
+            from gammaloop import GammaLoopAPI
+
+            self.gammaloop_state = GammaLoopAPI(self.gammaloop_state_path)
+            self.dot_path = "Loaded dot from state."
         else:
+            self.gammaloop_state = None
             self.dot_path = Path(self.settings['graph']['dot_path'])
         if self.settings['model']['from_state']:
             self.model_path = Path(self.gammaloop_state_path,
@@ -335,7 +347,14 @@ class SettingsParser:
         if self.settings['graph']['overwrite_graph_properties']:
             return GraphProperties(**self.settings['graph']['graph_properties'])
 
-        Dot = DotParser(self.dot_path, self.model_path, self.verbose)
+        if self.settings['graph']['from_state']:
+            model_as_str = self.gammaloop_state.get_model()
+            Model = ModelParser(model_as_str, from_string=True)
+            dot_as_str_list = self.gammaloop_state.get_dot_files()
+            Dot = DotParser(dot_as_str_list, Model,
+                            self.verbose, dot_from_string=True)
+        else:
+            Dot = DotParser(self.dot_path, self.model_path, self.verbose)
         ext_momenta, dmi = self.get_ext_momenta()
         graph_properties = Dot.get_graph_properties(
             self.settings['gammaloop_state']['process_id'], ext_momenta, dmi)

@@ -96,7 +96,11 @@ iterative_orientation_optimization = true
 compile = true
 
 [default_runtime_settings.sampling]
-type = "default"
+type = "discrete_graph_sampling"
+sample_orientations = true
 mode = "spherical"
 mapping = "linear"
 b = 1.0
+
+[default_runtime_settings.sampling.sampling_type]
+subtype = "default"

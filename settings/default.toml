@@ -60,6 +60,7 @@ batch_size = 1024
 learning_rate = 1e-3
 discrete_model = "transformer"
 use_scheduler = true
+n_train_for_scheduler = 1000
 
 # Parameters for the transformer model
 [integrator.madnis.transformer]
@@ -79,6 +80,7 @@ gammaloop_state_path = "from_state"
 process_id = 0
 integrand_name = "default"
 momentum_space = true
+sample_orientations = false
 
 [integrand.test]
 sigma = 10.0
@@ -141,6 +143,8 @@ mc_weight_type = "e-surface"
 # float: Sets all edge weights to the same value
 # list[float]: Specify a weight for each edge. Length must match the number of internal edges.
 overwrite_edge_weight = false
+# If false, the integrator will not attempt to learn the discrete inputs
+sample_discrete = true
 
 [graph]
 # If true, will attempt to get the dot graph from the gammaloop state

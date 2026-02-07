@@ -286,7 +286,9 @@ class MomtropParameterisation(Parameterisation):
     IDENTIFIER = "momtrop param"
 
     def __init__(self, overwrite_edge_weight: float | List[float] | bool = False,
+                 sample_discrete: bool = True,
                  **kwargs: Dict[str, Any]):
+        self.sample_discrete = sample_discrete
         self.graph_properties: GraphProperties = kwargs["graph_properties"]
         match overwrite_edge_weight:
             case bool():
@@ -369,6 +371,8 @@ class MomtropParameterisation(Parameterisation):
         return self.momtrop_sampler.get_dimension()
 
     def _layer_discrete_dims(self) -> List[int]:
+        if not self.sample_discrete:
+            return []
         n_edges = self.graph_properties.n_edges
         return n_edges * [n_edges]
 

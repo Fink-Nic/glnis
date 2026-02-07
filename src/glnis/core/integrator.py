@@ -195,13 +195,14 @@ class MadnisIntegrator(Integrator):
                  ),
                  callback: Callable[[object], None] | None = None,
                  use_scheduler: bool = True,
+                 n_train_for_scheduler: int = True,
                  ):
         super().__init__(integrand)
         self.device = torch.device(
             "cuda:0") if torch.cuda.is_available else torch.cpu.current_device()
         if use_scheduler:
             def scheduler(optimizer):
-                return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
+                return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_train_for_scheduler)
         else:
             scheduler = None
 

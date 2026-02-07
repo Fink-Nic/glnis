@@ -126,6 +126,7 @@ class GammaLoopIntegrand(Integrand):
                  process_id: int = 0,
                  integrand_name: str = "default",
                  momentum_space: bool = True,
+                 sample_orientations=False,
                  **kwargs):
         try:
             from gammaloop import GammaLoopAPI
@@ -136,7 +137,11 @@ class GammaLoopIntegrand(Integrand):
         self.process_id = process_id
         self.integrand_name = integrand_name
         self.momentum_space = momentum_space
-        super().__init__(**kwargs)
+        if sample_orientations:
+            discrete_dims = [len(self.gammaloop_state.get_orientations())]
+        else:
+            discrete_dims = []
+        super().__init__(discrete_dims=discrete_dims, **kwargs)
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         discrete_dims = np.zeros(
@@ -304,7 +309,7 @@ class ParameterisedIntegrand:
 
 class MPIntegrand(ParameterisedIntegrand):
     MAX_CHUNK_SIZE = 10_000
-    MIN_CHUNK_SIZE = 10
+    MIN_CHUNK_SIZE = 1
     IDENTIFIER = "multiprocessing integrand"
 
     def __init__(self,
@@ -373,7 +378,11 @@ class MPIntegrand(ParameterisedIntegrand):
                     layer_input, acc_type = args
                     layer_input: LayerData
                     layer_input.wake()
+                    # print(f"Worker received {chunk_id=}:{layer_input.jac=}")
                     res = integrand.eval_integrand(layer_input, acc_type)
+                    # if acc_type == "training":
+                    #     print(
+                    #         f"Worker puts in result {chunk_id=}:{res.modules[-1].training_result}")
                     q_out.put((chunk_id, res))
                 case 'prior':
                     indices, dim = args
@@ -397,10 +406,11 @@ class MPIntegrand(ParameterisedIntegrand):
         data_chunks = layer_input.as_chunks(n_chunks)
 
         for chunk_id, data_chunk in enumerate(data_chunks):
+            # print(f"Putting in {chunk_id=}:{data_chunk.jac=}")
             self.q_in.put(
                 (job_type, chunk_id, (data_chunk, acc_type)), block=False)
 
-        chunk_id_return_order = list(range(n_chunks))
+        chunk_id_return_order = []
         for idx in range(n_chunks):
             if self.stop_event.is_set():
                 break
@@ -409,20 +419,33 @@ class MPIntegrand(ParameterisedIntegrand):
             except:
                 self.end()
             chunk_id, acc = output
+            # if acc_type == "training":
+            #     print(
+            #         f"Received result {idx=}, {chunk_id=}: {acc.modules[-1].training_result}")
             if idx == 0:
                 accumulator: Accumulator = acc
             else:
                 accumulator.combine_with(acc)
-            chunk_id_return_order[idx] = chunk_id
+            chunk_id_return_order.append(chunk_id)
+
+        # print(f"{chunk_id_return_order=}")
 
         if self.verbose:
             print(accumulator.str_report())
 
         if acc_type == 'training':
+            result_sorted = n_chunks*[None]
             training_acc: TrainingData = accumulator.modules[-1]
-            result_sorted = [training_acc.training_result[chunk_id]
-                             for chunk_id in chunk_id_return_order]
+            presorted = training_acc.training_result
+            # print(f"{presorted=}")
+            unsorted = [tres for tres in training_acc.training_result]
+            unsorted = [unsorted[0]] + unsorted
+            # print(f"{unsorted=}")
+            for i, sorted_id in enumerate(chunk_id_return_order):
+                result_sorted[sorted_id] = training_acc.training_result[i]
+            # print(f"{result_sorted=}")
             numpy_result = np.vstack(result_sorted)
+            # print(f"{numpy_result=}")
             training_acc.training_result = [numpy_result]
 
         return accumulator
