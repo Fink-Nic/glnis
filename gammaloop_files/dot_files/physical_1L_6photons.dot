@@ -1,4 +1,4 @@
-digraph physical_1L_6photons_0 {
+digraph default {
     ext    [style=invis]
     ext -> v7:1 [particle=a, id=0];
     ext -> v8:2 [particle=a, id=1];

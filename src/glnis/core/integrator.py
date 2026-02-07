@@ -192,19 +192,25 @@ class MadnisIntegrator(Integrator):
                          heads=4,
                          mlp_units=64,
                          transformer_layers=1,),
+                     use_scheduler=True,
+                     n_train_for_scheduler=1000,
                  ),
                  callback: Callable[[object], None] | None = None,
-                 use_scheduler: bool = True,
-                 n_train_for_scheduler: int = True,
                  ):
         super().__init__(integrand)
+        import torch
+        torch.set_default_dtype(torch.float64)
+
         self.device = torch.device(
             "cuda:0") if torch.cuda.is_available else torch.cpu.current_device()
-        if use_scheduler:
+        if integrator_kwargs.pop('use_scheduler'):
+            T_max = int(integrator_kwargs.pop('n_train_for_scheduler'))
+
             def scheduler(optimizer):
-                return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=n_train_for_scheduler)
+                return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max)
         else:
             scheduler = None
+        self.batch_size = integrator_kwargs['batch_size']
 
         madnis_integrand = madnis_integrator.Integrand(
             function=self._madnis_eval,
@@ -213,16 +219,17 @@ class MadnisIntegrator(Integrator):
             discrete_dims_position="first",
             discrete_prior_prob_function=self._madnis_discrete_prior_prob_function,
         )
-        discrete_model = integrator_kwargs['discrete_model']
+        discrete_flow_kwargs = integrator_kwargs.pop(
+            integrator_kwargs['discrete_model'])
+        integrator_kwargs.pop('transformer', 0)
+        integrator_kwargs.pop('made', 0)
 
-        self.batch_size = integrator_kwargs['batch_size']
         self.madnis = madnis_integrator.Integrator(
             madnis_integrand,
             device=self.device,
-            discrete_model=discrete_model,
-            discrete_flow_kwargs=integrator_kwargs[discrete_model],
-            batch_size=self.batch_size,
+            discrete_flow_kwargs=discrete_flow_kwargs,
             scheduler=scheduler,
+            **integrator_kwargs,
         )
         self.callback = self._default_callback if callback is None else callback
 

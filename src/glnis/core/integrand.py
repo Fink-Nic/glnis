@@ -141,7 +141,8 @@ class GammaLoopIntegrand(Integrand):
             discrete_dims = [len(self.gammaloop_state.get_orientations())]
         else:
             discrete_dims = []
-        super().__init__(discrete_dims=discrete_dims, **kwargs)
+        kwargs['discrete_dims'] = discrete_dims
+        super().__init__(**kwargs)
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         discrete_dims = np.zeros(

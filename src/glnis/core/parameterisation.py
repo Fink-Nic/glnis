@@ -3,6 +3,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from typing import Dict, List, Tuple, Literal, Any
 from numpy.typing import NDArray
+from copy import deepcopy
 
 import momtrop
 from glnis.core.accumulator import GraphProperties, LayerData
@@ -237,7 +238,8 @@ class LayeredParameterisation:
                  param_settings: List[Dict[str, Any]],):
         param_layers: List[Parameterisation] = []
         num_layers = len(param_settings)
-        for i_layer, kwargs in enumerate(param_settings):
+        for i_layer, kdict in enumerate(param_settings):
+            kwargs = deepcopy(kdict)
             if not "parameterisation_type" in kwargs.keys():
                 raise KeyError(
                     "Each parameterisation layer must specify its parameterisation type.")

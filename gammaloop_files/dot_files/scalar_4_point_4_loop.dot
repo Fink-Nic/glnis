@@ -1,4 +1,4 @@
-digraph fishnet_2x2_0 {
+digraph default {
 num=1;
 overall_factor=1;
 multiplicity_factor=1;

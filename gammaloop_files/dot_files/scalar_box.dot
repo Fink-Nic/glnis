@@ -1,4 +1,4 @@
-digraph scalar_box {
+digraph default {
 num=1;
 overall_factor=1;
 ext    [style=invis]

@@ -3,7 +3,7 @@ commands = [
     "set model aEWM1=[128.93,0.]",
     "import graphs ./tests/resources/graphs/physical_1L_6photons.dot",
     "generate",
-    "save dot ./gl_states/threshhold_1L_6photons_output",
+    "save dot ./gl_states/threshold_1L_6photons_output",
     "quit"
 ]
 
@@ -73,7 +73,6 @@ max_prob_ratio = 100.0
 check_on_norm = true
 rotation_axis = []
 
-
 [[default_runtime_settings.stability.levels]]
 precision = "Double"
 required_precision_for_re = 0.00000001
@@ -99,4 +98,4 @@ compile = true
 type = "default"
 mode = "spherical"
 mapping = "linear"
-b = 1.0
+b = 10.0
