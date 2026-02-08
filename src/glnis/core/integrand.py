@@ -138,7 +138,9 @@ class GammaLoopIntegrand(Integrand):
         self.integrand_name = integrand_name
         self.momentum_space = momentum_space
         if sample_orientations:
-            discrete_dims = [len(self.gammaloop_state.get_orientations())]
+            # TODO: Implement general orientation getter. Requires getting the graph names first.
+            # [len(self.gammaloop_state.get_orientations())]
+            discrete_dims = [62]
         else:
             discrete_dims = []
         kwargs['discrete_dims'] = discrete_dims
@@ -148,7 +150,7 @@ class GammaLoopIntegrand(Integrand):
         discrete_dims = np.zeros(
             (len(continuous), 1), dtype=np.uint64)
         if discrete.shape[1] > 0:
-            discrete_dims = np.hstack(discrete_dims, discrete, dtype=np.uint64)
+            discrete_dims = np.hstack([discrete_dims, discrete])
         res, _ = self.gammaloop_state.batched_inspect(
             points=continuous.astype(np.float64), momentum_space=self.momentum_space,
             process_id=self.process_id,
@@ -198,7 +200,6 @@ class KaapoIntegrand(Integrand):
                  **kwargs):
         self.path_to_example = path_to_example
         self.params = np.array(params)
-        self.params = np.array([2*math.pi, 0.0, 1.0])
         self.symbolica_integrand_kwargs = symbolica_integrand_kwargs
         self.symbolica_integrand_prec_kwargs = symbolica_integrand_prec_kwargs
         self.use_prec = use_prec
@@ -267,7 +268,18 @@ class ParameterisedIntegrand:
 
     def eval_integrand(self, layer_input: LayerData,
                        acc_type: Literal['default', 'training'] = 'default') -> Accumulator:
+        pass_disc_to_integrand = np.zeros(
+            (layer_input.n_points, 0), dtype=np.uint64)
+        if self.condition_integrand_first:
+            n_disc_integrand = len(self.integrand.discrete_dims)
+            pass_disc_to_integrand = layer_input.discrete[:, :n_disc_integrand]
+            layer_input.discrete = layer_input.discrete[:, n_disc_integrand:]
+            layer_input.update('processing')
         parameterised = self.param.parameterise(layer_input)
+        if self.condition_integrand_first:
+            parameterised.discrete = np.hstack(
+                [parameterised.discrete, pass_disc_to_integrand])
+            parameterised.update('processing')
         integration_result = self.integrand.evaluate_batch(parameterised)
         acc_kwargs = dict(
             target_real=self.integrand.target_real,

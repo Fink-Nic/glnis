@@ -430,10 +430,10 @@ class IntegrationResult(AccumulatorModule):
                                    + other.n_points*other.real_central_value) / n_combined
         self.imag_central_value = (self.n_points*self.imag_central_value +
                                    other.n_points*other.imag_central_value) / n_combined
-        self.real_error = np.sqrt((self.n_points*self.real_error**2
-                                  + other.n_points*other.real_error**2) / n_combined)
-        self.imag_error = np.sqrt((self.n_points*self.imag_error**2
-                                  + other.n_points*other.imag_error**2) / n_combined)
+        self.real_error = np.sqrt(self.n_points**2 * self.real_error**2
+                                  + other.n_points**2 * other.real_error**2) / n_combined
+        self.imag_error = np.sqrt(self.n_points**2 * self.imag_error**2
+                                  + other.n_points**2 * other.imag_error**2) / n_combined
 
         self.n_points = n_combined
 

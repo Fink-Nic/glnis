@@ -37,7 +37,7 @@ max_prob_ratio = 100.0
 
 [default_runtime_settings.stability]
 check_on_norm = true
-rotation_axis = []
+loop_momenta_norm_escalation_factor = 1000000
 
 [[default_runtime_settings.stability.levels]]
 precision = "Double"

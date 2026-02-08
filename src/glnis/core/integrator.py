@@ -155,7 +155,8 @@ class VegasIntegrator(Integrator):
         layer_input.continuous = samples[:, :self.continuous_dim]
         layer_input.discrete, disc_wgt = self._cont_to_discr(
             samples[:, self.continuous_dim:])
-        total_wgt = disc_wgt  # * sampling_wgt
+        # Because our accumulators take the average, not the sum like vegas wants us to
+        total_wgt = disc_wgt * sampling_wgt * n_points
         layer_input.wgt *= total_wgt
         layer_input.update(self.IDENTIFIER)
 
@@ -164,7 +165,7 @@ class VegasIntegrator(Integrator):
     def train(self, nitn: int = 10, batch_size: int = 10000, ) -> vegas._vegas.RAvg:
         return self.integrator(self._vegas_wrapper, nitn=nitn, neval=batch_size)
 
-    @vegas.batchintegrand
+    @vegas.lbatchintegrand
     def _vegas_wrapper(self, x: NDArray) -> NDArray:
         layer_input = self.init_layer_data(len(x))
         layer_input.continuous = x[:, :self.continuous_dim]

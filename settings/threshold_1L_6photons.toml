@@ -9,12 +9,12 @@ process_name = "physical_1L_6photons"
 [integrator.madnis]
 batch_size = 65536
 discrete_model = "transformer"
-learning_rate = 4e-4
+learning_rate = 1e-3
 
 [integrator.madnis.transformer]
 embedding_dim = 128
 feedforward_dim = 256
-heads = 2
+heads = 8
 mlp_units = 128
 transformer_layers = 2
 

@@ -7,23 +7,25 @@ integration_state_name = "scalar_2_point_4_loop_integration"
 process_name = "scalar_2_point_4_loop"
 
 [integrator.madnis]
-batch_size = 4096
+batch_size = 16384
 discrete_model = "transformer"
+learning_rate = 4e-4
 
 [integrator.madnis.transformer]
-embedding_dim = 128
-feedforward_dim = 256
-heads = 2
-mlp_units = 128
+embedding_dim = 64
+feedforward_dim = 64
+heads = 4
+mlp_units = 64
 transformer_layers = 2
 
 [layered_integrand]
 integrand_type = "gammaloop"
 training_phase = "real"
 n_cores = 64
+use_f128 = true
 
 [scripts.training_prog]
-n_training_steps = 2000
-n_samples = 100000
+n_training_steps = 1000
+n_samples = 1000000
 n_samples_after_training = 1000000
 

@@ -326,9 +326,13 @@ class MomtropParameterisation(Parameterisation):
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray,
                             ) -> ParamOutput:
         dtype = continuous.dtype
-        samples = self.momtrop_sampler.sample_batch(
-            continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings,
-            self._get_graph_from_edges_removed(discrete))
+        if discrete.size == 0:
+            samples = self.momtrop_sampler.sample_batch(
+                continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings)
+        else:
+            samples = self.momtrop_sampler.sample_batch(
+                continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings,
+                self._get_graph_from_edges_removed(discrete))
 
         jacobians = np.array(samples.jacobians, dtype=dtype).reshape(-1, 1)
         loop_momenta = np.array(
