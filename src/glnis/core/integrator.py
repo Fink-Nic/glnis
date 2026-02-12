@@ -202,8 +202,21 @@ class MadnisIntegrator(Integrator):
         import torch
         torch.set_default_dtype(torch.float64)
 
-        self.device = torch.device(
-            "cuda:0") if torch.cuda.is_available else torch.cpu.current_device()
+
+        self.device = torch.device('cpu')  # default
+
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                major, minor = torch.cuda.get_device_capability(i)
+                if (7, 0) <= (major, minor) < (12, 0):
+                    self.device = torch.device(f'cuda:{i}')
+                    print(f"Using CUDA device {i}: {torch.cuda.get_device_name(i)} (capability {major}.{minor})")
+                    break
+            else:
+                print("CUDA devices found but none are compatible. Using CPU.")
+        else:
+            print("No CUDA device found. Using CPU.")
+
         if integrator_kwargs.pop('use_scheduler'):
             T_max = int(integrator_kwargs.pop('n_train_for_scheduler'))
 
