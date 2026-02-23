@@ -2,6 +2,7 @@
 import math
 import numpy as np
 import multiprocessing as mp
+from multiprocessing.connection import wait
 from abc import ABC, abstractmethod
 from numpy.typing import NDArray
 from typing import Dict, List, Sequence, Callable, Literal, Any
@@ -27,7 +28,8 @@ class Integrand(ABC):
                  use_f128: bool = False,
                  target_real: float | None = None,
                  target_imag: float | None = None,
-                 training_phase: Literal['real', 'imag', 'abs'] = 'real',):
+                 training_phase: Literal['real', 'imag', 'abs'] = 'real',
+                 **uncaught_kwargs):
         self.continuous_dim = continuous_dim
         self.discrete_dims = discrete_dims
         self.use_f128 = use_f128
@@ -322,7 +324,7 @@ class ParameterisedIntegrand:
 
 class MPIntegrand(ParameterisedIntegrand):
     MAX_CHUNK_SIZE = 10_000
-    MIN_CHUNK_SIZE = 1
+    MIN_CHUNK_SIZE = 10
     IDENTIFIER = "multiprocessing integrand"
 
     def __init__(self,
@@ -335,11 +337,11 @@ class MPIntegrand(ParameterisedIntegrand):
                  **kwargs):
         self.n_cores = n_cores
 
-        ctx = mp.get_context("spawn")
-        self.q_in, self.q_out, self.q_discr = [ctx.Queue() for _ in range(3)]
+        ctx = mp.get_context('spawn')
+        self.q_in = [ctx.Queue() for _ in range(self.n_cores)]
+        self.q_out = [ctx.Queue() for _ in range(self.n_cores)]
         self.stop_event = ctx.Event()
         worker_args = (
-            (self.q_in, self.q_out, self.q_discr),
             self.stop_event,
             deepcopy(graph_properties),
             deepcopy(param_kwargs),
@@ -351,15 +353,16 @@ class MPIntegrand(ParameterisedIntegrand):
                          integrand_kwargs,
                          condition_integrand_first,
                          verbose, **kwargs)
-        for _ in range(self.n_cores):
+        for w_id in range(self.n_cores):
             ctx.Process(target=self._integrand_worker,
-                        args=worker_args,
+                        args=(
+                            (self.q_in[w_id], self.q_out[w_id]), *worker_args),
                         daemon=True).start()
-        for core in range(self.n_cores):
-            output = self.q_out.get()
-            if output == "STARTED":
+        for w_id in range(self.n_cores):
+            output = self.q_out[w_id].get()
+            if output == 'STARTED':
                 if self.verbose:
-                    print(f"Core {core} has been initialized.")
+                    print(f"Core {w_id} has been initialized.")
             else:
                 raise ValueError(
                     f"Unexpected initialization value in queue: {output}")
@@ -375,12 +378,12 @@ class MPIntegrand(ParameterisedIntegrand):
                                            param_kwargs,
                                            integrand_kwargs,
                                            condition_integrand_first,)
-        q_in, q_out, q_discr = queues
-        q_out.put("STARTED")
+        q_in, q_out = queues
+        q_out.put('STARTED')
         while not stop_event.is_set():
             try:
                 data = q_in.get(timeout=0.5)
-                if data == "STOP":
+                if data == 'STOP':
                     break
             except:
                 continue
@@ -391,16 +394,12 @@ class MPIntegrand(ParameterisedIntegrand):
                     layer_input, acc_type = args
                     layer_input: LayerData
                     layer_input.wake()
-                    # print(f"Worker received {chunk_id=}:{layer_input.jac=}")
                     res = integrand.eval_integrand(layer_input, acc_type)
-                    # if acc_type == "training":
-                    #     print(
-                    #         f"Worker puts in result {chunk_id=}:{res.modules[-1].training_result}")
                     q_out.put((chunk_id, res))
                 case 'prior':
                     indices, dim = args
                     res = integrand.discrete_prior_prob_function(indices, dim)
-                    q_discr.put((chunk_id, res))
+                    q_out.put((chunk_id, res))
                 case _:
                     print("CRITICAL WARNING:")
                     print(
@@ -409,39 +408,51 @@ class MPIntegrand(ParameterisedIntegrand):
 
     def eval_integrand(self, layer_input: LayerData,
                        acc_type: Literal['default', 'training'] = 'default') -> Accumulator:
-        job_type = "eval"
-        n_cores = min(math.ceil(layer_input.n_points /
-                      self.MIN_CHUNK_SIZE), self.n_cores)
+        job_type = 'eval'
 
+        n_cores = max(min(math.floor(layer_input.n_points /
+                      self.MIN_CHUNK_SIZE), self.n_cores), 1)
         chunks_per_worker = math.ceil(
             layer_input.n_points / n_cores / self.MAX_CHUNK_SIZE)
         n_chunks = n_cores * chunks_per_worker
+        # if acc_type == 'default':
+        #     from time import perf_counter
+        #     t_start = perf_counter()
+
         data_chunks = layer_input.as_chunks(n_chunks)
 
         for chunk_id, data_chunk in enumerate(data_chunks):
-            # print(f"Putting in {chunk_id=}:{data_chunk.jac=}")
-            self.q_in.put(
+            self.q_in[chunk_id % n_cores].put(
                 (job_type, chunk_id, (data_chunk, acc_type)), block=False)
+            # if acc_type == 'default':
+            #     print(
+            #         f"Put in {chunk_id=} at {perf_counter() - t_start:.2f}s.")
 
         chunk_id_return_order = []
-        for idx in range(n_chunks):
-            if self.stop_event.is_set():
-                break
-            try:
-                output = self.q_out.get()
-            except:
-                self.end()
-            chunk_id, acc = output
-            # if acc_type == "training":
-            #     print(
-            #         f"Received result {idx=}, {chunk_id=}: {acc.modules[-1].training_result}")
-            if idx == 0:
-                accumulator: Accumulator = acc
-            else:
-                accumulator.combine_with(acc)
-            chunk_id_return_order.append(chunk_id)
+        readers = [q._reader for q in self.q_out]
 
-        # print(f"{chunk_id_return_order=}")
+        n_processed = 0
+        while n_processed < n_chunks:
+            ready = wait(readers)
+            for r in ready:
+                idx = readers.index(r)
+                if self.stop_event.is_set():
+                    break
+                try:
+                    output = self.q_out[idx].get()
+                except:
+                    self.end()
+                chunk_id, acc = output
+                # if acc_type == 'default':
+                #     print(
+                #         f"Received {chunk_id=} at {perf_counter() - t_start:.2f}s")
+
+                if n_processed == 0:
+                    accumulator: Accumulator = acc
+                else:
+                    accumulator.combine_with(acc)
+                chunk_id_return_order.append(chunk_id)
+                n_processed += 1
 
         if self.verbose:
             print(accumulator.str_report())
@@ -449,16 +460,11 @@ class MPIntegrand(ParameterisedIntegrand):
         if acc_type == 'training':
             result_sorted = n_chunks*[None]
             training_acc: TrainingData = accumulator.modules[-1]
-            presorted = training_acc.training_result
-            # print(f"{presorted=}")
             unsorted = [tres for tres in training_acc.training_result]
             unsorted = [unsorted[0]] + unsorted
-            # print(f"{unsorted=}")
             for i, sorted_id in enumerate(chunk_id_return_order):
                 result_sorted[sorted_id] = training_acc.training_result[i]
-            # print(f"{result_sorted=}")
             numpy_result = np.vstack(result_sorted)
-            # print(f"{numpy_result=}")
             training_acc.training_result = [numpy_result]
 
         return accumulator
@@ -466,8 +472,9 @@ class MPIntegrand(ParameterisedIntegrand):
     def discrete_prior_prob_function(self, indices: NDArray, dim: int = 0) -> NDArray:
         job_type = "prior"
         n_samples = len(indices)
-        n_cores = min(math.ceil(n_samples / self.MIN_CHUNK_SIZE), self.n_cores)
 
+        n_cores = max(min(math.ceil(
+            n_samples / self.MIN_CHUNK_SIZE), self.n_cores), 1)
         chunks_per_worker = math.ceil(
             n_samples / n_cores / self.MAX_CHUNK_SIZE)
         n_chunks = n_cores * chunks_per_worker
@@ -475,26 +482,32 @@ class MPIntegrand(ParameterisedIntegrand):
 
         for chunk_id, ind in enumerate(ind_chunks):
             args = (ind, dim)
-            self.q_in.put((job_type, chunk_id, args))
+            self.q_in[chunk_id % n_cores].put((job_type, chunk_id, args))
 
         result_sorted = [None]*n_chunks
-        for _ in range(n_chunks):
-            if self.stop_event.is_set():
-                break
-            data = self.q_discr.get()
-            chunk_id, res = data
-            result_sorted[chunk_id] = res
+        readers = [q._reader for q in self.q_out]
+
+        n_processed = 0
+        while n_processed < n_chunks:
+            ready = wait(readers)
+            for r in ready:
+                idx = readers.index(r)
+                if self.stop_event.is_set():
+                    break
+                data = self.q_out[idx].get()
+                chunk_id, res = data
+                result_sorted[chunk_id] = res
+                n_processed += 1
 
         return np.vstack(result_sorted)
 
     def end(self) -> None:
-        if self.stop_event.is_set():
-            return
+        if not self.stop_event.is_set():
+            self.stop_event.set()
 
-        self.stop_event.set()
         try:
-            for _ in range(self.n_cores):
-                self.q_in.put("STOP")
+            for w_id in range(self.n_cores):
+                self.q_in[w_id].put("STOP")
         except:
             print(f"Queues have already been closed")
 

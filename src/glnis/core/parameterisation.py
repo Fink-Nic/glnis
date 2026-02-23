@@ -1,7 +1,7 @@
 # type: ignore
 import numpy as np
 from abc import ABC, abstractmethod
-from typing import Dict, List, Tuple, Literal, Any
+from typing import Dict, List, Tuple, Any
 from numpy.typing import NDArray
 from copy import deepcopy
 
@@ -20,7 +20,7 @@ class Parameterisation(ABC):
                  graph_properties: GraphProperties,
                  next_param: 'Parameterisation' = None,
                  is_first_layer: bool = False,
-                 ):
+                 **uncaught_kwargs):
         self.graph_properties = graph_properties
         self.next_param = next_param
         self.is_first_layer = is_first_layer
@@ -260,6 +260,8 @@ class LayeredParameterisation:
                     p = InverseSphericalParameterisation(**kwargs)
                 case "kaapo":
                     p = KaapoParameterisation(**kwargs)
+                case "rkaapo":
+                    p = RKaapoParameterisation(**kwargs)
                 case "mc_layer":
                     if next_param is None:
                         raise ValueError(
@@ -267,7 +269,11 @@ class LayeredParameterisation:
                     kwargs.update(dict(is_first_layer=next_param.is_first_layer,
                                        next_param=next_param.next_param,
                                        param=next_param,))
-                    p = MCLayer(**kwargs)
+                    match kwargs.pop('subtype', 'ose').lower():
+                        case "ose":
+                            p = OSEMCLayer(**kwargs)
+                        case "fermi":
+                            p = FermiMCLayer(**kwargs)
                 case _:
                     raise NotImplementedError(
                         f"Parameterisation {param_type} has not been implemented.")
@@ -334,11 +340,11 @@ class MomtropParameterisation(Parameterisation):
                 continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings,
                 self._get_graph_from_edges_removed(discrete))
 
-        jacobians = np.array(samples.jacobians, dtype=dtype).reshape(-1, 1)
-        loop_momenta = np.array(
+        jac = np.array(samples.jacobians, dtype=dtype).reshape(-1, 1)
+        momentum = np.array(
             samples.loop_momenta, dtype=dtype).reshape(len(continuous), -1)
 
-        return jacobians, loop_momenta, None
+        return jac, momentum, None
 
     def _get_graph_from_edges_removed(self, edges_removed: NDArray | None = None
                                       ) -> List[List[int]]:
@@ -403,11 +409,11 @@ class SphericalParameterisation(Parameterisation):
 
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray,
                             ) -> ParamOutput:
-        loop_momenta = np.zeros_like(continuous)
+        momentum = np.zeros_like(continuous)
 
         # Constant part of the jacobian
-        jacobians = np.ones((len(continuous), 1), dtype=continuous.dtype)
-        jacobians *= (4*np.pi * self.conformal_scale**3)**self.n_loops
+        jac = np.ones((len(continuous), 1), dtype=continuous.dtype)
+        jac *= (4*np.pi * self.conformal_scale**3)**self.n_loops
 
         for i_loop in range(self.n_loops):
             # The MC layer handles momentum shifts
@@ -433,11 +439,16 @@ class SphericalParameterisation(Parameterisation):
                     [sin_az * np.cos(pol), sin_az * np.sin(pol), cos_az])
             if origin is not None:
                 ks -= origin
-            loop_momenta[:, _start: _end] = ks
+            momentum[:, _start: _end] = ks
             # Calculate the jacobian determinant
-            jacobians *= x**2 / (1 - x)**4
+            jac *= x**2 / (1 - x)**4
 
-        return jacobians, loop_momenta, None
+        # Transform the loop momenta back to the LMB of the graph
+        inv_transform = self.graph_properties.channel_inv_transforms[discrete.flatten(
+        )]
+        momentum = inv_transform @ momentum.reshape(-1, self.n_loops, 3)
+
+        return jac, momentum, None
 
 
 class InverseSphericalParameterisation(Parameterisation):
@@ -463,8 +474,8 @@ class InverseSphericalParameterisation(Parameterisation):
         xs = np.zeros_like(continuous)
 
         # Constant part of the jacobian
-        jacobians = np.ones((len(continuous), 1), dtype=continuous.dtype)
-        jacobians /= (4*np.pi * self.conformal_scale**3)**self.n_loops
+        jac = np.ones((len(continuous), 1), dtype=continuous.dtype)
+        jac /= (4*np.pi * self.conformal_scale**3)**self.n_loops
 
         for i_loop in range(self.n_loops):
             origin = self.origins[i_loop]
@@ -491,53 +502,61 @@ class InverseSphericalParameterisation(Parameterisation):
             xs[:, _start: _end] = np.hstack([x, y, z])
 
             # Calculate the jacobian determinant
-            jacobians /= x**2 / (1 - x)**4
+            jac /= x**2 / (1 - x)**4
 
-        return jacobians, xs, None
+        return jac, xs, None
 
 
 class KaapoParameterisation(Parameterisation):
     IDENTIFIER = "kaapo param"
 
     def __init__(self, mu: List[float] | float = np.pi,
-                 a: float = 0.9,
-                 b: float = 1.0, **kwargs):
-        super().__init__(**kwargs)
+                 a: float = 0.5,
+                 b: float = 1.0,
+                 vary_a: bool = False,
+                 a_min: float = 0.2,
+                 **kwargs):
         self.mu = mu
         if not type(self.mu) == list:
             self.mu: list[float] = self.graph_properties.n_edges*[self.mu]
 
         self.a = a
         self.b = b
+        self.vary_a = vary_a
+        self.a_min = a_min
+        super().__init__(**kwargs)
 
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray
                             ) -> ParamOutput:
+        if discrete.size == 0:
+            discrete = np.zeros((continuous.shape[0], 1), dtype=np.uint64)
         # For easier reading
         n_loops = self.graph_properties.n_loops
-        a = self.a
+        n_points = continuous.shape[0]
+        dtype = continuous.dtype
+        if self.vary_a:
+            a = self.a_min + (1. - self.a_min)*continuous[:, -1]
+        else:
+            a = self.a
         b = self.b
 
-        loop_momenta = np.zeros_like(continuous)
+        momentum = np.zeros((n_points, 3*n_loops), dtype=dtype)
 
         # The constant part of the jacobian
-        jacobians = np.ones((len(continuous), 1), dtype=continuous.dtype)
-        jacobians *= (4 * np.pi / a / b**a)**n_loops
+        jac = np.ones((n_points), dtype=dtype)
+        jac *= (4 * np.pi / a / b**a)**n_loops
 
         for i_loop in range(n_loops):
-            if discrete.size > 0:
-                basis_edge = self.graph_properties.lmb_array[discrete, i_loop]
-                m_e = np.array(self.graph_properties.edge_masses)[basis_edge]
-                mu = np.array(self.mu)[basis_edge]
-            else:
-                basis_edge = self.graph_properties.lmb_array[0, i_loop]
-                m_e = self.graph_properties.edge_masses[basis_edge]
-                mu = self.mu[basis_edge]
-            p_F = np.clip(mu**2 - m_e**2, a_min=0., a_max=None)**0.5
+            basis_edge = self.graph_properties.lmb_array[discrete, i_loop]
+            m_e = np.array(self.graph_properties.edge_masses)[basis_edge]
+            mu = np.array(self.mu)[basis_edge]
+            p_F = np.clip(
+                mu**2 - m_e**2, a_min=0., a_max=None)**0.5
 
             _start = self.N_SPATIAL_DIMS*i_loop
             _end = self.N_SPATIAL_DIMS*(i_loop + 1)
 
-            xs = continuous[:, _start: _end]
+            xs = continuous[:, _start:_end]
             x1, x2, x3 = np.hsplit(xs, [1, 2])
 
             cos_az = (2*x2-1)
@@ -553,115 +572,238 @@ class KaapoParameterisation(Parameterisation):
             # Standard spherical parameterisation, scaled by h_c
             k_vec = h_c * np.hstack(
                 [sin_az * np.cos(pol), sin_az * np.sin(pol), cos_az])
-            loop_momenta[:, _start: _end] = k_vec
+            momentum[:, _start: _end] = k_vec
 
-            # The non-constant part of the jacobian
-            jacobians *= h_c**2 * np.abs(peak_F)**(1 / a - 1)
-            jacobians *= (np.sign(peak_F)*np.abs(peak_F) + p_F**a + b**a)**2
+            # Calculate the jacobian
+            jac *= h_c**2 * np.abs(peak_F)**(1 - a)
+            jac *= (np.sign(peak_F)*np.abs(peak_F)**a + p_F**a + b**a)**2
 
-        return jacobians, loop_momenta, None
+        # Transform the loop momenta back to the LMB of the graph
+        inv_transform = self.graph_properties.channel_inv_transforms[discrete.flatten(
+        )]
+        momentum = inv_transform @ momentum.reshape(-1, n_loops, 3)
+
+        return jac.reshape(-1, 1), momentum.reshape(n_points, -1), None
+
+    def _layer_continuous_dim_in(self) -> int:
+        c_dim = self.N_SPATIAL_DIMS*self.graph_properties.n_loops
+        if self.vary_a:
+            c_dim += 1
+        return c_dim
 
 
-class MCLayer(Parameterisation):
+class RKaapoParameterisation(Parameterisation):
+    IDENTIFIER = "reduced kaapo param"
+
+    def __init__(self, mu: List[float] | float = np.pi,
+                 a: float = 0.5,
+                 b: float = 1.0,
+                 vary_a: bool = False,
+                 a_min: float = 0.2,
+                 **kwargs):
+        self.mu = mu
+        if not type(self.mu) == list:
+            self.mu: list[float] = self.graph_properties.n_edges*[self.mu]
+
+        self.a = a
+        self.b = b
+        self.vary_a = vary_a
+        self.a_min = a_min
+        super().__init__(**kwargs)
+
+    def _layer_parameterise(self, continuous: NDArray, discrete: NDArray
+                            ) -> ParamOutput:
+        if discrete.size == 0:
+            discrete = np.zeros((continuous.shape[0], 1), dtype=np.uint64)
+        # For easier reading
+        n_loops = self.graph_properties.n_loops
+        n_points = continuous.shape[0]
+        dtype = continuous.dtype
+        if self.vary_a:
+            a = self.a_min + (1. - self.a_min)*continuous[:, -1]
+        else:
+            a = self.a
+        b = self.b
+
+        momentum = np.zeros((n_points, 3*n_loops), dtype=dtype)
+
+        # The constant part of the jacobian
+        jac = np.ones((n_points), dtype=dtype)
+        jac *= (4 * np.pi / a / b**a)**n_loops
+
+        for i_loop in range(n_loops):
+            basis_edge = self.graph_properties.lmb_array[discrete, i_loop]
+            m_e = np.array(self.graph_properties.edge_masses)[basis_edge]
+            mu = np.array(self.mu)[basis_edge]
+            p_F = np.clip(
+                mu**2 - m_e**2, a_min=0., a_max=None)**0.5
+
+            _start = self.N_SPATIAL_DIMS*i_loop
+            _end = self.N_SPATIAL_DIMS*(i_loop + 1)
+
+            if i_loop == 0:
+                x1 = continuous[:, 0].reshape(-1, 1)
+                cos_az = np.ones(
+                    (continuous.shape[0], 1), dtype=continuous.dtype)
+                sin_az = np.zeros(
+                    (continuous.shape[0], 1), dtype=continuous.dtype)
+                pol = 0
+            elif i_loop == 1:
+                x1 = continuous[:, 1].reshape(-1, 1)
+                cos_az = (2*continuous[:, 2] - 1).reshape(-1, 1)
+                sin_az = np.sqrt(1 - cos_az**2)
+                pol = 0
+            else:
+                xs = continuous[:, _start -
+                                self.N_SPATIAL_DIMS: _end-self.N_SPATIAL_DIMS]
+                x1, x2, x3 = np.hsplit(xs, [1, 2])
+
+                cos_az = (2*x2-1)
+                sin_az = np.sqrt(1 - cos_az**2)
+                pol = 2*np.pi*x3
+
+            # Discriminator around the fermi surface and origin
+            peak_F: NDArray = b**a * x1 / (1 - x1) - p_F**a
+
+            # Radial component
+            h_c = p_F + np.sign(peak_F) * np.abs(peak_F)**(1 / a)
+
+            # Standard spherical parameterisation, scaled by h_c
+            k_vec = h_c * np.hstack(
+                [sin_az * np.cos(pol), sin_az * np.sin(pol), cos_az])
+            momentum[:, _start: _end] = k_vec
+
+            # Calculate the jacobian
+            jac *= h_c**2 * np.abs(peak_F)**(1 - a)
+            jac *= (np.sign(peak_F)*np.abs(peak_F)**a + p_F**a + b**a)**2
+
+        # Transform the loop momenta back to the LMB of the graph
+        inv_transform = self.graph_properties.channel_inv_transforms[discrete.flatten(
+        )]
+        momentum = inv_transform @ momentum.reshape(-1, n_loops, 3)
+
+        return jac.reshape(-1, 1), momentum.reshape(n_points, -1), None
+
+    def _layer_continuous_dim_in(self) -> int:
+        if self.graph_properties.n_loops == 1:
+            c_dim = 1
+        else:
+            c_dim = self.N_SPATIAL_DIMS*(self.graph_properties.n_loops - 1)
+        if self.vary_a:
+            c_dim += 1
+        return c_dim
+
+
+class MCLayer(Parameterisation, ABC):
     IDENTIFIER = "MC layer"
 
     def __init__(self,
                  param: Parameterisation,
-                 mc_weight_exponent: float = 1.,
-                 fermi_mc_weight_bias: float = 0.5,
-                 mc_weight_type: Literal["fermi-surface",
-                                         "e-surface"] = "e-surface",
                  **kwargs):
-        super().__init__(**kwargs)
         self.param = param
         self.IDENTIFIER += f" : {self.param.IDENTIFIER}"
-        self.mc_weight_exponent = mc_weight_exponent
-        self.fermi_mc_weight_bias = fermi_mc_weight_bias
-        self.mc_weight_type = mc_weight_type
+        super().__init__(**kwargs)
+
         self.lmbs = self.graph_properties.lmb_array
-        self.shifts = np.array(self.graph_properties.edge_momentum_shifts)
-        self.n_channels = self.lmbs.shape[0]
+        self.n_channels = self.graph_properties.n_channels
         self.n_loops = self.graph_properties.n_loops
-        # Calculate the inverse lmb transforms, ordered as the LMBs in graph properties
-        sig_matrices = np.array(
-            self.graph_properties.graph_signature)[self.lmbs]
-        sig_matrices.reshape(self.n_channels, self.n_loops, self.n_loops)
-        # Inverse transforms of each channel
-        self.channel_inv_sig_matrices = np.linalg.inv(sig_matrices)
+
+        self.shifts = np.array(self.graph_properties.edge_momentum_shifts)
+        self.channel_shifts = self.shifts[self.lmbs]
+        self.channel_masses = np.array(
+            self.graph_properties.edge_masses)[self.lmbs]
 
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray) -> ParamOutput:
         jac, momentum, _ = self.param._layer_parameterise(
-            continuous, discrete)
+            continuous, discrete[:, 1:])
         # Get the edge indices of the channel LMBs
-        indices = self.lmbs[discrete.flatten()]
+        edges = self.lmbs[discrete[:, 0]]
         # Perform the inverse momentum shift
-        sample_shifts = self.shifts[indices]
-        momentum -= sample_shifts.reshape(-1, 3*self.n_loops)
+        sample_shifts = self.shifts[edges].reshape(-1, 3*self.n_loops)
+        momentum -= sample_shifts
         # The MC weight factor is calculated in EMR (edge momentum representation)
-        jac *= self.mc_weight(momentum, discrete)
-        # Transform from EMR to LMB representation of the integrand
-        # Solve for the loop momenta of the integrand
-        inv_transform = self.channel_inv_sig_matrices[discrete.flatten()]
-        momentum = momentum.reshape(-1, self.n_loops, 3)
-        momentum = inv_transform@momentum
+        jac *= self._mc_weight(momentum, discrete).reshape(-1, 1)
 
-        return jac, momentum.reshape(-1, 3*self.n_loops), None
+        return jac, momentum, None
 
-    def _e_surface_mc_factor(self, momentum: NDArray, channel: NDArray) -> NDArray:
-        momentum = momentum.reshape(-1, self.n_loops, 3)
-        # Need to calculate the e-surface term for all lmbs
-        # shape: (n_channels, n_loops, 3)
-        channel_shifts = self.shifts[self.lmbs]
-        # shape: (n_channels, n_loops)
-        channel_masses = np.array(self.graph_properties.edge_masses)[self.lmbs]
-        # shape: (n_samples, n_channels, n_loops, 3) -- sum --> (n_samples, n_channels, n_loops)
-        all_edge_momentum_squared = np.sum(
-            (momentum[:, np.newaxis, ...] + channel_shifts)**2, axis=3)
-        # shape: (n_samples, n_channels, n_loops) -- prod --> (n_samples, n_channels)
-        all_e_surface_terms = np.prod(
-            all_edge_momentum_squared + channel_masses**2, axis=2)**-self.mc_weight_exponent
-        # shape: (n_samples, 1)
-        mc_weight = np.take_along_axis(
-            all_e_surface_terms, channel.reshape(-1, 1), axis=1)
-        # Normalize and return
-        return mc_weight / np.sum(all_e_surface_terms, axis=1).reshape(-1, 1)
-
-    def _fermi_surface_mc_factor(self, momentum: NDArray, channel: NDArray) -> NDArray:
-        momentum = momentum.reshape(-1, self.n_loops, 3)
-        self.param: KaapoParameterisation
-        # Need to calculate the fermi surface term for all lmbs
-        # shape: (n_channels, n_loops, 3)
-        channel_shifts = self.shifts[self.lmbs]
-        # shape: (n_channels, n_loops)
-        channel_masses = np.array(self.graph_properties.edge_masses)[self.lmbs]
-        channel_mu = np.array(self.param.mu)[self.lmbs]
-        # shape: (n_samples, n_channels, n_loops, 3) -- sum --> (n_samples, n_channels, n_loops)
-        all_edge_momentum_squared = np.sum(
-            (momentum[:, np.newaxis, ...] + channel_shifts)**2, axis=3)
-        # shape: (n_samples, n_channels, n_loops)
-        all_e_surface_terms = all_edge_momentum_squared + channel_masses**2
-        # shape: (n_samples, n_channels, n_loops) -- prod --> (n_samples, n_channels)
-        all_fermi_surface_terms = np.abs(np.prod(
-            all_e_surface_terms - channel_mu, axis=2))**(-self.fermi_mc_weight_bias*self.mc_weight_exponent)
-        # Re-assigning to save at least a smidgen of memory
-        all_e_surface_terms = np.prod(
-            all_e_surface_terms, axis=2)**(-(1.-self.fermi_mc_weight_bias)*self.mc_weight_exponent)
-        all_fermi_surface_terms *= all_e_surface_terms
-        # shape: (n_samples, 1)
-        mc_weight = np.take_along_axis(
-            all_fermi_surface_terms, channel, axis=1)
-        # Normalize and return
-        return mc_weight / np.sum(all_fermi_surface_terms, axis=1).reshape(-1, 1)
-
-    def mc_weight(self, momentum: NDArray, channel: NDArray) -> NDArray:
-        match self.mc_weight_type.lower():
-            case 'e-surface':
-                return self._e_surface_mc_factor(momentum, channel)
-            case 'fermi-surface':
-                return self._fermi_surface_mc_factor(momentum, channel)
-            case _:
-                raise NotImplementedError(
-                    f"No MC weight implemented for parameterisation '{self.param.IDENTIFIER}'.")
+    @abstractmethod
+    def _mc_weight(self, continuous: NDArray, discrete: NDArray) -> NDArray:
+        return np.ones((continuous.shape[0], 1), dtype=continuous.dtype)
 
     def _layer_discrete_dims(self) -> List[int]:
-        return [self.graph_properties.lmb_array.shape[0]]
+        return [self.graph_properties.lmb_array.shape[0]] + self.param._layer_discrete_dims()
+
+    def _layer_continuous_dim_in(self) -> int:
+        return self.param._layer_continuous_dim_in()
+
+
+class OSEMCLayer(MCLayer):
+    IDENTIFIER = "OSE MC Layer"
+
+    def __init__(self,
+                 ose_exponent: float = 2.0,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.ose_exponent = ose_exponent
+
+    def _mc_weight(self, continuous: NDArray, discrete: NDArray) -> NDArray:
+        momentum = continuous.reshape(-1, self.n_loops, 3)
+        # Need to calculate the e-surface term for all lmbs
+        # Transform to the edge momentum basis
+        # shape: (n_samples, n_channels, n_loops)
+        edge_momentum_squared = np.sum(
+            (self.graph_properties.channel_transforms @ momentum.reshape(
+                -1, 1, self.n_loops, 3) + self.channel_shifts)**2, axis=3)
+        # shape: (n_samples, n_channels, n_loops) -- prod --> (n_samples, n_channels)
+        all_e_surface_terms = np.prod(
+            edge_momentum_squared + self.channel_masses**2, axis=2)**(-self.ose_exponent/2.)
+        mc_weight = np.take_along_axis(
+            all_e_surface_terms, discrete, axis=1)
+        # Normalize and return
+        return mc_weight / np.sum(all_e_surface_terms, axis=1)
+
+
+class FermiMCLayer(MCLayer):
+    IDENTIFIER = "Fermi MC Layer"
+
+    def __init__(self,
+                 ose_exponent: float = 2.0,
+                 fermi_exponent: float = 0.5,
+                 set_bosonic_edge_to_one: bool = True,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.ose_exponent = ose_exponent
+        self.fermi_exponent = fermi_exponent
+        self.set_bosonic_edge_to_one = set_bosonic_edge_to_one
+        if hasattr(self.param, 'mu'):
+            self.channel_mu = np.array(self.param.mu)[self.lmbs]
+        else:
+            self.channel_mu = np.zeros((self.n_channels, self.n_loops))
+
+    def _mc_weight(self, continuous: NDArray, discrete: NDArray) -> NDArray:
+        momentum = continuous.reshape(-1, self.n_loops, 3)
+        self.param: KaapoParameterisation
+        # Need to calculate the fermi surface term for all lmbs
+        # Transform to the edge momentum basis
+        # shape: (n_samples, n_channels, n_loops)
+        edge_momentum_squared = np.sum(
+            (self.graph_properties.channel_transforms @ momentum.reshape(
+                -1, 1, self.n_loops, 3) + self.channel_shifts)**2, axis=3)
+        # shape: (n_samples, n_channels, n_loops) -- prod --> (n_samples, n_channels)
+        all_e_surface_terms = np.sqrt(
+            edge_momentum_squared + self.channel_masses**2)
+        # shape: (n_samples, n_channels, n_loops) -- prod --> (n_samples, n_channels)
+        all_fermi_surface_terms = all_e_surface_terms - self.channel_mu
+        if self.set_bosonic_edge_to_one:
+            bosonic_edge_mask = self.channel_mu == 0.
+            all_fermi_surface_terms[:, bosonic_edge_mask] = 1.
+        all_fermi_surface_terms = np.abs(np.prod(
+            all_fermi_surface_terms, axis=2))**(-self.fermi_exponent)
+        # Re-assigning to save at least a smidgen of memory
+        all_e_surface_terms = np.prod(
+            all_e_surface_terms, axis=2)**(-self.ose_exponent)
+        all_fermi_surface_terms *= all_e_surface_terms
+        mc_weight = np.take_along_axis(
+            all_fermi_surface_terms, discrete, axis=1)
+        # Normalize and return
+        return mc_weight / np.sum(all_fermi_surface_terms, axis=1)

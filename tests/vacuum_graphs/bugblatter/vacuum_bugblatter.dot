@@ -1,0 +1,14 @@
+digraph bugblatter_kaapo{
+    num = "1";
+    overall_factor = "1";
+    
+    D -> A [id=0, pdg=1000];
+    E -> D [id=1, pdg=1000];
+    A -> B [id=2, pdg=1000];
+    B -> E [id=3, pdg=1000];
+    C -> F [id=4, pdg=1000];
+    F -> E [id=5, pdg=1000];
+    B -> C [id=6, pdg=1000];
+    D -> F [id=7, pdg=1000];
+    C -> A [id=8, pdg=1000];
+}

@@ -162,8 +162,8 @@ class VegasIntegrator(Integrator):
 
         return self.integrand.eval_integrand(layer_input)
 
-    def train(self, nitn: int = 10, batch_size: int = 10000, ) -> vegas._vegas.RAvg:
-        return self.integrator(self._vegas_wrapper, nitn=nitn, neval=batch_size)
+    def train(self, nitn: int = 10, batch_size: int = 10000, **vegas_kwargs) -> vegas._vegas.RAvg:
+        return self.integrator(self._vegas_wrapper, nitn=nitn, neval=batch_size, **vegas_kwargs)
 
     @vegas.lbatchintegrand
     def _vegas_wrapper(self, x: NDArray) -> NDArray:

@@ -1,0 +1,14 @@
+digraph bugblatter_kaapo{
+    num = "1";
+    overall_factor = "1";
+    
+    D:0 -> A:1 [source=0, sink=1, id=0, pdg=1000, particle="scalar_0", lmb_id=0, lmb_rep="K(0,a___)"];
+    E:2 -> D:3 [source=0, sink=1, id=1, pdg=1000, particle="scalar_1", lmb_id=1, lmb_rep="K(1,a___)"];
+    A:4 -> B:5 [source=0, sink=1, id=2, particle="scalar_1", lmb_id=2, lmb_rep="K(2,a___)"];
+    B:6 -> E:7 [source=0, sink=1, id=3, pdg=1000, particle="scalar_0", lmb_id=3, lmb_rep="K(3,a___)"];
+    C:8 -> F:9 [source=0, sink=1, id=4, pdg=1000, particle="scalar_0", lmb_rep="K(0,a___)-K(3,a___)"];
+    F:10 -> E:11 [source=0, sink=1, id=5, particle="scalar_1", lmb_rep="K(1,a___)-K(3,a___)"];
+    B:12 -> C:13 [source=0, sink=1, id=6, particle="scalar_1", lmb_rep="K(2,a___)-K(3,a___)"];
+    D:14 -> F:15 [source=0, sink=1, id=7, particle="scalar_1", lmb_rep="-K(0,a___)+K(1,a___)"];
+    C:16 -> A:17 [source=0, sink=1, id=8, particle="scalar_1", lmb_rep="-K(0,a___)+K(2,a___)"];
+}

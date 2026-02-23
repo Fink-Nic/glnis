@@ -20,7 +20,7 @@ dependencies = [
     "pydot>=3.0",
     "matplotlib>=3.6",
     "symbolica>=0.18",
-    "madnis @ git+https://github.com/madgraph-ml/madnis.git@dev",
+    "madnis @ git+https://github.com/madgraph-ml/madnis.git@main",
     "momtrop @ git+https://github.com/Fink-Nic/momtrop.git@main",
     "kaapos @ git+https://github.com/Fink-Nic/thermal_integrand_examples.git@main",
 ]

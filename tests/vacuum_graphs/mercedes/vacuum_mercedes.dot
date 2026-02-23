@@ -1,0 +1,11 @@
+digraph mercedes_kaapo{
+    num = "1";
+    overall_factor = "1";
+    
+    A -> B [id=0, pdg=1000];
+    B -> C [id=1, pdg=1000];
+    C -> A [id=2, pdg=1000];
+    B -> D [id=3, pdg=1000];
+    D -> A [id=4, pdg=1000];
+    C -> D [id=5, pdg=1000];
+}

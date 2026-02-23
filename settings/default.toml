@@ -71,6 +71,17 @@ transformer_layers = 3
 mlp_layers = 3
 mlp_units = 256
 
+# Parameters for the Flow module
+[integrator.madnis.flow_kwargs]
+uniform_latent = true
+permutations = "log"
+layers = 3
+units = 32
+bins = 10
+min_bin_width = 1e-3
+min_bin_height = 1e-3
+min_bin_derivative = 1e-3
+
 # Haven't bothered with the non-transformer model yet, will use default params set by madnis
 [integrator.madnis.made]
 
@@ -129,13 +140,25 @@ origins = 0.0
 
 [parameterisation.kaapo]
 mu = [3.141592653589793, 3.141592653589793, 0.0]
-a = 0.9
+a = 0.5
 b = 1.0
+vary_a = false
+a_min = 0.2
+
+[parameterisation.rkaapo]
+mu = [3.141592653589793, 3.141592653589793, 0.0]
+a = 0.5
+b = 1.0
+vary_a = false
+a_min = 0.2
 
 [parameterisation.mc_layer]
-mc_weight_exponent = 1.0
-fermi_mc_weight_bias = 0.5
-mc_weight_type = "e-surface"
+# Choose from 'ose' and 'fermi', for euclidean-propagator-like terms and fermi surface terms, respectively
+subtype = "ose"
+ose_exponent = 2.0
+fermi_exponent = 0.5
+# Edges with zero chemical potential will have their fermi suface term set to one.
+set_bosonic_edge_to_one = true
 
 [parameterisation.momtrop]
 # Can be one of the following:

@@ -30,6 +30,13 @@ class GraphProperties:
         self.edge_ismassive: list[bool] = [
             mass > TOLERANCE for mass in self.edge_masses]
         self.lmb_array = np.array(self.lmb_array, dtype=np.uint64)
+        self.n_channels = self.lmb_array.shape[0]
+
+        # Calculate the inverse lmb transforms, ordered as the LMBs in graph properties
+        self.channel_transforms = np.array(
+            self.graph_signature)[self.lmb_array].reshape(self.n_channels, self.n_loops, self.n_loops)
+        # Inverse transforms of each channel
+        self.channel_inv_transforms = np.linalg.inv(self.channel_transforms)
 
 
 class LayerData:
@@ -57,6 +64,7 @@ class LayerData:
                  _existing_active_structure: NDArray | None = None,
                  dtype: DTypeLike | None = None,):
         self._timestamp = perf_counter()
+        self._t_init = perf_counter()
 
         self._pending_data: Dict[str, NDArray] = dict()
         self._structure = np.zeros(len(LayerData.POSITIONS), dtype=np.uint32)
@@ -235,6 +243,7 @@ class LayerData:
                 _existing_structure=self._structure,
                 _existing_active_structure=self._active_structure,
             )
+            chunk._t_init = self._t_init
             # We add the metadata to the first chunk, as this is before any MP happens
             if chunk_id == 0:
                 chunk._processing_times = self._processing_times
@@ -569,9 +578,11 @@ class ProcessingTimes(AccumulatorModule):
         if data is None:
             self.processing_times = dict()
             self.n_points = 0
+            self._t_init = perf_counter()
         else:
             self.processing_times = data.get_processing_times()
             self.n_points = data.n_points
+            self._t_init = data._t_init
 
     def combine_with(self: 'ProcessingTimes', other: 'ProcessingTimes') -> None:
         self.n_points += other.n_points
@@ -583,9 +594,10 @@ class ProcessingTimes(AccumulatorModule):
 
     def str_report(self) -> str:
         mus_factor = 1.0e6 / self.n_points
+        time_since_init = perf_counter() - self._t_init
         total_time = sum(time for time in self.processing_times.values())
         report = [
-            f"Total elapsed time: {total_time:.2f} CPU-s | {total_time*mus_factor:.1f} µs / eval. Breakdown by subroutine:"]
+            f"Total elapsed time: {time_since_init:.2f} s | {total_time:.2f} CPU-s | {total_time*mus_factor:.1f} µs / eval. Breakdown by subroutine:"]
         subroutine_times = []
         for identifier, time in self.processing_times.items():
             perc_time = 100. * time / total_time
