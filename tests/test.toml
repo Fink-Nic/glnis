@@ -1,5 +1,5 @@
 [gammaloop_state]
-state_name = "sunset_nopot_nomc"
+state_name = "test_integrand"
 
 [graph]
 from_state = false
@@ -53,70 +53,49 @@ model_path = "/home/nic/Master/tropnis/kaapo_scalars.json"
 
 [layered_integrator]
 integrator_type = "madnis"
-batch_size = 10000
+batch_size = 100000
 learning_rate = 1e-3
 use_scheduler = true
+discrete_model = "transformer"
 
 [integrator.madnis.transformer]
-embedding_dim = 128
-feedforward_dim = 128
-heads = 2
-mlp_units = 128
-transformer_layers = 2
+embedding_dim  = 64
+feedforward_dim = 256
+heads = 8
+transformer_layers = 3
+mlp_layers = 3
+mlp_units = 256
 
 [layered_parameterisation.layer_0]
-parameterisation_type = "rkaapo"
+parameterisation_type = "kaapo"
 # chem potential [3.141592653589793, 3.141592653589793, 0.0]
 # no chem potential [0.0, 0.0, 0.0]
-mu = [0.0, 0.0, 0.0]
-a = 1.0
+mu = [3.141592653589793, 3.141592653589793, 0.0]
+a = 0.5
 b = 1.0
 
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "fermi"
+ose_exponent = 2.0
+fermi_exponent = 0.5
+
 [layered_integrand]
-integrand_type = "kaapo"
-path_to_example = "/home/nfink/thermal_integrand_examples/examples/sunset"
-# chem potential [6.283185307179586, 3.141592653589793, 1.0]
-# no chem potential [6.283185307179586, 0.0, 1.0] 
-params = [6.283185307179586, 0.0, 1.0] 
-use_prec = true
+integrand_type = "test"
 use_f128 = true
 n_cores = 128
-# chem potential 0.0138889
-# no chem potential 0.0373264
-target_real = 0.0373264
-
-[integrand.kaapo.symbolica_integrand_kwargs]
-rotation_seed = 42
-stability_tolerance = 1e-5
-stability_abs_threshold = 1e-12
-stability_abs_tolerance = 1e-15
-escalate_large_weight_multiplier = 0.9
-escalate_small_momentum_multiplier = 1e-3
-escalate_large_momentum_multiplier = 1e3
-n_shots = 3
-force_rebuild = false
-sum_orientations = true
-runtime_summation = false
-
-[integrand.kaapo.symbolica_integrand_prec_kwargs]
-prec = 100
-n_shots = 1
-escalate_large_weight_multiplier = -1.0
-escalate_small_momentum_multiplier = -1.0
-escalate_large_momentum_multiplier = -1.0
-sum_orientations = true
-runtime_summation = false
+target_real = 1.0
 
 # Parameters used in the tprog subcommand
 [scripts.training_prog]
-n_training_steps = 2000
-n_samples = 100000
+n_training_steps = 1
+n_samples = 1000
 # Number of samples drawn after the training to compute the final result
-n_samples_after_training = 10000000
+n_samples_after_training = 10000
 # Training steps between callback of loss to console
 n_log = 20
 # Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
 # Will also output the result +- error and rsd to console
 n_plot_rsd = 100
 # Training steps between plotting the loss
-n_plot_loss = 10
+n_plot_loss = 2

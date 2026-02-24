@@ -28,8 +28,6 @@ def run_training_prog(settings_file: str,
         Settings = SettingsParser(settings_file)
 
         # Training parameters
-        nitn = 10  # number of vegas training iterations
-        neval = 1_000_000  # number of evals per vegas training iteration
         params = Settings.settings['scripts']['training_prog']
         n_training_steps = params['n_training_steps']
         n_log = params['n_log']
@@ -37,6 +35,9 @@ def run_training_prog(settings_file: str,
         n_plot_loss = params['n_plot_loss']
         n_samples = params['n_samples']
         n_samples_after_training = params['n_samples_after_training']
+        nitn = 10  # number of vegas training iterations
+        # number of evals per vegas training iteration
+        neval = int(n_samples_after_training / nitn)
         gammaloop_state = Settings.settings['gammaloop_state']['state_name']
         graph_properties = Settings.get_graph_properties()
         Settings.settings['integrator']['madnis']['n_train_for_scheduler'] = n_training_steps
@@ -54,6 +55,8 @@ def run_training_prog(settings_file: str,
             settings_file)
         print(f"| > MadNIS is using device: {integrator.madnis.dummy.device}")
         print(f"| > MadNIS is using scheduler: {integrator.madnis.scheduler}")
+        print(
+            f"| > Integrand discrete dims: {integrator.integrand.discrete_dims}")
 
         naive_integrator = NaiveIntegrator(
             integrator.integrand, np.random.default_rng(42))

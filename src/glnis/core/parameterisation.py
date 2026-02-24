@@ -421,6 +421,8 @@ class SphericalParameterisation(Parameterisation):
                 origin = None
             else:
                 origin = self.origins[i_loop]
+            if discrete.size == 0:
+                discrete = np.zeros((continuous.shape[0], 1), dtype=np.uint64)
             _start = self.N_SPATIAL_DIMS*i_loop
             _end = self.N_SPATIAL_DIMS*(i_loop + 1)
 
@@ -535,7 +537,7 @@ class KaapoParameterisation(Parameterisation):
         n_points = continuous.shape[0]
         dtype = continuous.dtype
         if self.vary_a:
-            a = self.a_min + (1. - self.a_min)*continuous[:, -1]
+            a = self.a_min + (1. - self.a_min)*continuous[:, -1].reshape(-1, 1)
         else:
             a = self.a
         b = self.b
@@ -543,7 +545,7 @@ class KaapoParameterisation(Parameterisation):
         momentum = np.zeros((n_points, 3*n_loops), dtype=dtype)
 
         # The constant part of the jacobian
-        jac = np.ones((n_points), dtype=dtype)
+        jac = np.ones((n_points, 1), dtype=dtype)
         jac *= (4 * np.pi / a / b**a)**n_loops
 
         for i_loop in range(n_loops):
@@ -575,15 +577,15 @@ class KaapoParameterisation(Parameterisation):
             momentum[:, _start: _end] = k_vec
 
             # Calculate the jacobian
-            jac *= h_c**2 * np.abs(peak_F)**(1 - a)
-            jac *= (np.sign(peak_F)*np.abs(peak_F)**a + p_F**a + b**a)**2
+            jac *= h_c**2 * np.abs(peak_F)**(1 / a - 1)
+            jac *= (np.sign(peak_F)*np.abs(peak_F) + p_F**a + b**a)**2
 
         # Transform the loop momenta back to the LMB of the graph
         inv_transform = self.graph_properties.channel_inv_transforms[discrete.flatten(
         )]
         momentum = inv_transform @ momentum.reshape(-1, n_loops, 3)
 
-        return jac.reshape(-1, 1), momentum.reshape(n_points, -1), None
+        return jac, momentum.reshape(n_points, -1), None
 
     def _layer_continuous_dim_in(self) -> int:
         c_dim = self.N_SPATIAL_DIMS*self.graph_properties.n_loops
@@ -620,7 +622,7 @@ class RKaapoParameterisation(Parameterisation):
         n_points = continuous.shape[0]
         dtype = continuous.dtype
         if self.vary_a:
-            a = self.a_min + (1. - self.a_min)*continuous[:, -1]
+            a = self.a_min + (1. - self.a_min)*continuous[:, -1].reshape(-1, 1)
         else:
             a = self.a
         b = self.b
@@ -628,7 +630,7 @@ class RKaapoParameterisation(Parameterisation):
         momentum = np.zeros((n_points, 3*n_loops), dtype=dtype)
 
         # The constant part of the jacobian
-        jac = np.ones((n_points), dtype=dtype)
+        jac = np.ones((n_points, 1), dtype=dtype)
         jac *= (4 * np.pi / a / b**a)**n_loops
 
         for i_loop in range(n_loops):
@@ -674,15 +676,15 @@ class RKaapoParameterisation(Parameterisation):
             momentum[:, _start: _end] = k_vec
 
             # Calculate the jacobian
-            jac *= h_c**2 * np.abs(peak_F)**(1 - a)
-            jac *= (np.sign(peak_F)*np.abs(peak_F)**a + p_F**a + b**a)**2
+            jac *= h_c**2 * np.abs(peak_F)**(1 / a - 1)
+            jac *= (np.sign(peak_F)*np.abs(peak_F) + p_F**a + b**a)**2
 
         # Transform the loop momenta back to the LMB of the graph
         inv_transform = self.graph_properties.channel_inv_transforms[discrete.flatten(
         )]
         momentum = inv_transform @ momentum.reshape(-1, n_loops, 3)
 
-        return jac.reshape(-1, 1), momentum.reshape(n_points, -1), None
+        return jac, momentum.reshape(n_points, -1), None
 
     def _layer_continuous_dim_in(self) -> int:
         if self.graph_properties.n_loops == 1:
@@ -715,9 +717,9 @@ class MCLayer(Parameterisation, ABC):
 
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray) -> ParamOutput:
         jac, momentum, _ = self.param._layer_parameterise(
-            continuous, discrete[:, 1:])
+            continuous, discrete)
         # Get the edge indices of the channel LMBs
-        edges = self.lmbs[discrete[:, 0]]
+        edges = self.lmbs[discrete]
         # Perform the inverse momentum shift
         sample_shifts = self.shifts[edges].reshape(-1, 3*self.n_loops)
         momentum -= sample_shifts
@@ -731,7 +733,7 @@ class MCLayer(Parameterisation, ABC):
         return np.ones((continuous.shape[0], 1), dtype=continuous.dtype)
 
     def _layer_discrete_dims(self) -> List[int]:
-        return [self.graph_properties.lmb_array.shape[0]] + self.param._layer_discrete_dims()
+        return [self.graph_properties.n_channels]
 
     def _layer_continuous_dim_in(self) -> int:
         return self.param._layer_continuous_dim_in()
@@ -760,7 +762,7 @@ class OSEMCLayer(MCLayer):
         mc_weight = np.take_along_axis(
             all_e_surface_terms, discrete, axis=1)
         # Normalize and return
-        return mc_weight / np.sum(all_e_surface_terms, axis=1)
+        return mc_weight / np.sum(all_e_surface_terms, axis=1).reshape(-1, 1)
 
 
 class FermiMCLayer(MCLayer):
@@ -806,4 +808,4 @@ class FermiMCLayer(MCLayer):
         mc_weight = np.take_along_axis(
             all_fermi_surface_terms, discrete, axis=1)
         # Normalize and return
-        return mc_weight / np.sum(all_fermi_surface_terms, axis=1)
+        return mc_weight / np.sum(all_fermi_surface_terms, axis=1).reshape(-1, 1)

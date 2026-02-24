@@ -1,5 +1,5 @@
 [gammaloop_state]
-state_name = "sunset_nopot_nomc"
+state_name = "sunrise_mc_softclipped"
 
 [graph]
 from_state = false
@@ -56,34 +56,43 @@ integrator_type = "madnis"
 batch_size = 10000
 learning_rate = 1e-3
 use_scheduler = true
+discrete_model = "transformer"
+loss_type = "kl_divergence_softclip"
 
 [integrator.madnis.transformer]
-embedding_dim = 128
-feedforward_dim = 128
-heads = 2
-mlp_units = 128
-transformer_layers = 2
+embedding_dim  = 64
+feedforward_dim = 256
+heads = 8
+transformer_layers = 3
+mlp_layers = 3
+mlp_units = 256
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "rkaapo"
 # chem potential [3.141592653589793, 3.141592653589793, 0.0]
 # no chem potential [0.0, 0.0, 0.0]
-mu = [0.0, 0.0, 0.0]
-a = 1.0
+mu = [3.141592653589793, 3.141592653589793, 0.0]
+a = 0.5
 b = 1.0
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "fermi"
+ose_exponent = 2.0
+fermi_exponent = 0.5
 
 [layered_integrand]
 integrand_type = "kaapo"
 path_to_example = "/home/nfink/thermal_integrand_examples/examples/sunset"
 # chem potential [6.283185307179586, 3.141592653589793, 1.0]
 # no chem potential [6.283185307179586, 0.0, 1.0] 
-params = [6.283185307179586, 0.0, 1.0] 
+params = [6.283185307179586, 3.141592653589793, 1.0]
 use_prec = true
 use_f128 = true
 n_cores = 128
 # chem potential 0.0138889
 # no chem potential 0.0373264
-target_real = 0.0373264
+target_real = 0.0138889
 
 [integrand.kaapo.symbolica_integrand_kwargs]
 rotation_seed = 42

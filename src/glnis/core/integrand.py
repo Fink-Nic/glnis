@@ -415,18 +415,12 @@ class MPIntegrand(ParameterisedIntegrand):
         chunks_per_worker = math.ceil(
             layer_input.n_points / n_cores / self.MAX_CHUNK_SIZE)
         n_chunks = n_cores * chunks_per_worker
-        # if acc_type == 'default':
-        #     from time import perf_counter
-        #     t_start = perf_counter()
 
         data_chunks = layer_input.as_chunks(n_chunks)
 
         for chunk_id, data_chunk in enumerate(data_chunks):
             self.q_in[chunk_id % n_cores].put(
                 (job_type, chunk_id, (data_chunk, acc_type)), block=False)
-            # if acc_type == 'default':
-            #     print(
-            #         f"Put in {chunk_id=} at {perf_counter() - t_start:.2f}s.")
 
         chunk_id_return_order = []
         readers = [q._reader for q in self.q_out]
@@ -443,9 +437,6 @@ class MPIntegrand(ParameterisedIntegrand):
                 except:
                     self.end()
                 chunk_id, acc = output
-                # if acc_type == 'default':
-                #     print(
-                #         f"Received {chunk_id=} at {perf_counter() - t_start:.2f}s")
 
                 if n_processed == 0:
                     accumulator: Accumulator = acc
@@ -505,10 +496,14 @@ class MPIntegrand(ParameterisedIntegrand):
         if not self.stop_event.is_set():
             self.stop_event.set()
 
-        try:
-            for w_id in range(self.n_cores):
+        print("Attempting to close queues.")
+        n_closed_queues = 0
+        for w_id in range(self.n_cores):
+            try:
                 self.q_in[w_id].put("STOP")
-        except:
-            print(f"Queues have already been closed")
+            except:
+                n_closed_queues += 1
+        if n_closed_queues > 0:
+            print(f"   {n_closed_queues} queues have already been closed.")
 
         print(f"{self.IDENTIFIER.upper()} has successfully terminated.")
