@@ -368,11 +368,35 @@ class MadnisIntegrator(Integrator):
         )
         self.callback = self._default_callback if callback is None else callback
 
-    def integrate(self, n_points: int) -> madnis_integrator.IntegrationMetrics:
+    def old_integrate(self, n_points: int) -> madnis_integrator.IntegrationMetrics:
         return self.madnis.integration_metrics(n_points)
+
+    def integrate(self, n_points: int) -> Accumulator:
+        layer_input = self.get_samples(n_points)
+
+        return self.integrand.eval_integrand(layer_input)
 
     def train(self, nitn: int = 10, batch_size: int = 10000):
         self.madnis.train(nitn, self.callback, True)
+
+    def get_samples(self, n_points: int) -> LayerData:
+        layer_input = self.init_layer_data(n_points)
+
+        with torch.no_grad():
+            x_all, prob = self.madnis.flow.sample(
+                n_points,
+                return_prob=True,
+                device=self.madnis.dummy.device,
+                dtype=self.madnis.dummy.dtype,
+            )
+        layer_input.discrete = x_all[:,
+                                     :self.num_discrete_dims].numpy(force=True)
+        layer_input.continuous = x_all[:,
+                                       self.num_discrete_dims:].numpy(force=True)
+        layer_input.wgt /= prob.numpy(force=True).reshape(-1, 1)
+        layer_input.update(self.IDENTIFIER)
+
+        return layer_input
 
     def _madnis_eval(self, x_all: Tensor) -> Tensor:
         layer_input = self.init_layer_data(x_all.shape[0])

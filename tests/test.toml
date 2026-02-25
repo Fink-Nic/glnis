@@ -83,17 +83,17 @@ fermi_exponent = 0.5
 [layered_integrand]
 integrand_type = "test"
 use_f128 = true
-n_cores = 8
+n_cores = 1
 target_real = 1.0
 
 # Parameters used in the tprog subcommand
 [scripts.training_prog]
-n_training_steps = 1
+n_training_steps = 20
 n_samples = 1000
 # Number of samples drawn after the training to compute the final result
 n_samples_after_training = 10000
 # Training steps between callback of loss to console
-n_log = 20
+n_log = 2
 # Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
 # Will also output the result +- error and rsd to console
 n_plot_rsd = 100

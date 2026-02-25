@@ -169,20 +169,33 @@ def run_training_prog(settings_file: str,
         print("| > Training MadNIS:")
         integrator.train(n_training_steps, callback)
 
-        metrics = integrator.integrate(n_samples_after_training)
-        rsd = metrics.rel_stddev
-        scaled_int = metrics.integral * norm_factor
-        scaled_err = metrics.error * norm_factor
-        print(f"""| > Trained Result after {n_training_steps} steps of {integrator.batch_size}, using {
-            n_samples_after_training} samples: \n| > {
-            scaled_int:.8e} +- {scaled_err:.8e}, RSD = {rsd:.3f}""")
+        time_last = time()
+        output = integrator.integrate(n_samples_after_training)
+        output.modules[0].real_central_value *= norm_factor
+        output.modules[0].real_error *= norm_factor
+        print(f"""| > Evaluating {n_samples_after_training} samples using {havana_integrator.integrand.n_cores} cores took {
+            - time_last + (time_last := time()):.2f}s""")
+        madnis_obs = output.get_observables()
+        madnis_int = madnis_obs['real_central_value']
+        madnis_err = madnis_obs['real_error']
+        madnis_rsd = abs(
+            madnis_err / madnis_int) * math.sqrt(output.modules[0].n_points)
+        print(output.str_report())
 
-        # Print the final snapshot
-        madnis_int = scaled_int
-        madnis_err = scaled_err
-        madnis_rsd = rsd
-        print(f"""| > Trained Result after {n_training_steps} steps of {integrator.batch_size}, using a sample size of {n_samples_after_training}: {
-            madnis_int:.8g} +- {madnis_err:.8g}, RSD = {madnis_rsd:.3f}""")
+        # metrics = integrator.integrate(n_samples_after_training)
+        # rsd = metrics.rel_stddev
+        # scaled_int = metrics.integral * norm_factor
+        # scaled_err = metrics.error * norm_factor
+        # print(f"""| > Trained Result after {n_training_steps} steps of {integrator.batch_size}, using {
+        #     n_samples_after_training} samples: \n| > {
+        #     scaled_int:.8e} +- {scaled_err:.8e}, RSD = {rsd:.3f}""")
+
+        # # Print the final snapshot
+        # madnis_int = scaled_int
+        # madnis_err = scaled_err
+        # madnis_rsd = rsd
+        # print(f"""| > Trained Result after {n_training_steps} steps of {integrator.batch_size}, using a sample size of {n_samples_after_training}: {
+        #     madnis_int:.8g} +- {madnis_err:.8g}, RSD = {madnis_rsd:.3f}""")
 
         # IMPORTANT: close the worker functions, or your script will hang
         integrator.integrand.end()
