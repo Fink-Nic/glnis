@@ -18,7 +18,7 @@ def run_training_prog(settings_file: str,
     from time import time
 
     from glnis.core.parser import SettingsParser
-    from glnis.core.integrator import MadnisIntegrator, Integrator, NaiveIntegrator, VegasIntegrator
+    from glnis.core.integrator import MadnisIntegrator, Integrator, NaiveIntegrator, VegasIntegrator, HavanaIntegrator
     from glnis.utils.helpers import error_fmter
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
@@ -30,6 +30,8 @@ def run_training_prog(settings_file: str,
         # Training parameters
         params = Settings.settings['scripts']['training_prog']
         n_training_steps = params['n_training_steps']
+        n_total_training_samples = n_training_steps * \
+            Settings.settings['integrator']['madnis']['batch_size']
         n_log = params['n_log']
         n_plot_rsd = params['n_plot_rsd']
         n_plot_loss = params['n_plot_loss']
@@ -37,7 +39,7 @@ def run_training_prog(settings_file: str,
         n_samples_after_training = params['n_samples_after_training']
         nitn = 10  # number of vegas training iterations
         # number of evals per vegas training iteration
-        neval = int(n_samples_after_training / nitn)
+        neval = int(n_total_training_samples / nitn / 2)
         gammaloop_state = Settings.settings['gammaloop_state']['state_name']
         graph_properties = Settings.get_graph_properties()
         Settings.settings['integrator']['madnis']['n_train_for_scheduler'] = n_training_steps
@@ -59,8 +61,9 @@ def run_training_prog(settings_file: str,
             f"| > Integrand discrete dims: {integrator.integrand.discrete_dims}")
 
         naive_integrator = NaiveIntegrator(
-            integrator.integrand, np.random.default_rng(42))
+            integrator.integrand, seed=42)
         vegas_integrator = VegasIntegrator(integrator.integrand)
+        havana_integrator = HavanaIntegrator(integrator.integrand, seed=42)
 
         # Plotting setup
         losses = []
@@ -146,6 +149,24 @@ def run_training_prog(settings_file: str,
             vegas_err / vegas_int) * math.sqrt(output.modules[0].n_points)
         print(output.str_report())
 
+        print("| > Training Havana:")
+        havana_training_result = havana_integrator.train(2*nitn, neval)
+        print(havana_training_result)
+
+        time_last = time()
+        output = havana_integrator.integrate(n_samples_after_training)
+        output.modules[0].real_central_value *= norm_factor
+        output.modules[0].real_error *= norm_factor
+        print(f"""| > Evaluating {n_samples_after_training} samples using {havana_integrator.integrand.n_cores} cores took {
+            - time_last + (time_last := time()):.2f}s""")
+        havana_obs = output.get_observables()
+        havana_int = havana_obs['real_central_value']
+        havana_err = havana_obs['real_error']
+        havana_rsd = abs(
+            havana_err / havana_int) * math.sqrt(output.modules[0].n_points)
+        print(output.str_report())
+
+        print("| > Training MadNIS:")
         integrator.train(n_training_steps, callback)
 
         metrics = integrator.integrate(n_samples_after_training)
@@ -157,11 +178,11 @@ def run_training_prog(settings_file: str,
             scaled_int:.8e} +- {scaled_err:.8e}, RSD = {rsd:.3f}""")
 
         # Print the final snapshot
-        trained_int = scaled_int
-        trained_err = scaled_err
-        trained_rsd = rsd
+        madnis_int = scaled_int
+        madnis_err = scaled_err
+        madnis_rsd = rsd
         print(f"""| > Trained Result after {n_training_steps} steps of {integrator.batch_size}, using a sample size of {n_samples_after_training}: {
-            trained_int:.8g} +- {trained_err:.8g}, RSD = {trained_rsd:.3f}""")
+            madnis_int:.8g} +- {madnis_err:.8g}, RSD = {madnis_rsd:.3f}""")
 
         # IMPORTANT: close the worker functions, or your script will hang
         integrator.integrand.end()
@@ -206,18 +227,24 @@ def run_training_prog(settings_file: str,
             f.write(line)
             f.write(f"Integral: {untrained_int:.8e} +- {untrained_err:.8e}\n")
             f.write(f"RSD: {untrained_rsd:.3f}\n")
-            f.write(f"Number of samples: {n_samples}\n")
+            f.write(f"Number of samples: {n_samples_after_training}\n")
             f.write(f"\n{line}")
             f.write(f"{' Vegas Results ':{'#'}^{width}}\n")
             f.write(line)
             f.write(f"Integral: {vegas_int:.8e} +- {vegas_err:.8e}\n")
             f.write(f"RSD: {vegas_rsd:.3f}\n")
-            f.write(f"Number of samples: {n_samples}\n")
+            f.write(f"Number of samples: {n_samples_after_training}\n")
+            f.write(f"\n{line}")
+            f.write(f"{' Havana Results ':{'#'}^{width}}\n")
+            f.write(line)
+            f.write(f"Integral: {havana_int:.8e} +- {havana_err:.8e}\n")
+            f.write(f"RSD: {havana_rsd:.3f}\n")
+            f.write(f"Number of samples: {n_samples_after_training}\n")
             f.write(f"\n{line}")
             f.write(f"{' MadNIS Results ':{'#'}^{width}}\n")
             f.write(line)
-            f.write(f"Integral: {trained_int:.8e} +- {trained_err:.8e}\n")
-            f.write(f"RSD: {trained_rsd:.3f}\n")
+            f.write(f"Integral: {madnis_int:.8e} +- {madnis_err:.8e}\n")
+            f.write(f"RSD: {madnis_rsd:.3f}\n")
             f.write(f"Number of samples: {n_samples_after_training}\n")
     except KeyboardInterrupt:
         print("\nCaught KeyboardInterrupt — stopping workers.")
@@ -227,4 +254,4 @@ def run_training_prog(settings_file: str,
 
 
 if __name__ == "__main__":
-    run_training_prog(sys.argv[1], comment="", no_output=False)
+    run_training_prog(sys.argv[1], comment="", no_output=sys.argv[2])

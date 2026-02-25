@@ -53,7 +53,7 @@ model_path = "/home/nic/Master/tropnis/kaapo_scalars.json"
 
 [layered_integrator]
 integrator_type = "madnis"
-batch_size = 100000
+batch_size = 1000
 learning_rate = 1e-3
 use_scheduler = true
 discrete_model = "transformer"
@@ -77,13 +77,13 @@ b = 1.0
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"
 subtype = "fermi"
-ose_exponent = 2.0
+ose_exponent = 0.5
 fermi_exponent = 0.5
 
 [layered_integrand]
 integrand_type = "test"
 use_f128 = true
-n_cores = 128
+n_cores = 8
 target_real = 1.0
 
 # Parameters used in the tprog subcommand

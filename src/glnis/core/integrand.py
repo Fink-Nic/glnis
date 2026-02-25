@@ -343,21 +343,21 @@ class MPIntegrand(ParameterisedIntegrand):
         self.stop_event = ctx.Event()
         worker_args = (
             self.stop_event,
-            deepcopy(graph_properties),
-            deepcopy(param_kwargs),
-            deepcopy(integrand_kwargs),
+            graph_properties,
+            param_kwargs,
+            integrand_kwargs,
             condition_integrand_first,
         )
-        super().__init__(graph_properties,
-                         param_kwargs,
-                         integrand_kwargs,
-                         condition_integrand_first,
-                         verbose, **kwargs)
         for w_id in range(self.n_cores):
             ctx.Process(target=self._integrand_worker,
                         args=(
                             (self.q_in[w_id], self.q_out[w_id]), *worker_args),
                         daemon=True).start()
+        super().__init__(graph_properties,
+                         param_kwargs,
+                         integrand_kwargs,
+                         condition_integrand_first,
+                         verbose, **kwargs)
         for w_id in range(self.n_cores):
             output = self.q_out[w_id].get()
             if output == 'STARTED':
@@ -416,7 +416,7 @@ class MPIntegrand(ParameterisedIntegrand):
             layer_input.n_points / n_cores / self.MAX_CHUNK_SIZE)
         n_chunks = n_cores * chunks_per_worker
 
-        data_chunks = layer_input.as_chunks(n_chunks)
+        data_chunks = layer_input.as_chunks(n_chunks, n_cores)
 
         for chunk_id, data_chunk in enumerate(data_chunks):
             self.q_in[chunk_id % n_cores].put(

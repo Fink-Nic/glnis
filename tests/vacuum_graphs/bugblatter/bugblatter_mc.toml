@@ -210,7 +210,7 @@ path_to_example = "/home/nfink/thermal_integrand_examples/examples/bugblatterPQ"
 params = [6.283185307179586, 3.141592653589793, 1.0]
 use_prec = true
 use_f128 = true
-n_cores = 128
+n_cores = 32
 # chem potential 0.0290399
 # no chem potential 0.714390
 target_real = 0.0

@@ -1,5 +1,5 @@
 [gammaloop_state]
-state_name = "mercedes_mc_softclipped"
+state_name = "bugblatter_t030"
 
 [graph]
 from_state = false
@@ -9,14 +9,20 @@ overwrite_graph_properties = true
 
 [graph.graph_properties]
 edge_src_dst_vertices = [
-    [0, 1], 
-    [1, 2], 
-    [2, 0],
-    [1, 3],
-    [3, 0],
-    [2, 3]
+    [3, 0], 
+    [4, 3], 
+    [0, 1],
+    [1, 4],
+    [2, 5],
+    [5, 4],
+    [1, 2],
+    [3, 5],
+    [2, 0]
 ]
 edge_masses = [
+    0.0,
+    0.0,
+    0.0,
     0.0,
     0.0,
     0.0,
@@ -54,36 +60,114 @@ edge_momentum_shifts = [
         0.0,
         0.0,
         0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
     ]
 ]
 graph_external_vertices = []
 graph_signature = [
-    [1, 0, 0], 
-    [0, 1, 0], 
-    [0, 0, 1],
-    [1, -1, 0],
-    [1, 0, -1],
-    [0, 1, -1]
+    [1, 0, 0, 0], 
+    [0, 1, 0, 0], 
+    [0, 0, 1, 0],
+    [0, 0, 0, 1],
+    [1, 0, 0, -1],
+    [0, 1, 0, -1],
+    [0, 0, 1, -1],
+    [-1, 1, 0, 0],
+    [-1, 0, 1, 0],
 ]
 momtrop_edge_weight = []
 lmb_array = [
-    [0, 1, 2],
-    [2, 5, 4],
-    [1, 5, 4],
-    [3, 2, 4],
-    [1, 3, 4],
-    [3, 2, 5],
-    [1, 3, 5],
-    [1, 2, 4],
-    [1, 3, 2],
-    [0, 5, 4],
-    [0, 3, 4],
-    [0, 2, 5],
-    [0, 3, 2],
-    [0, 3, 5],
-    [0, 1, 4],
-    [0, 1, 5]
+    [0, 1, 2, 3],
+    [3, 6, 7, 8],
+    [1, 6, 7, 8],
+    [3, 5, 7, 8],
+    [1, 5, 7, 8],
+    [3, 5, 6, 8],
+    [1, 5, 6, 8],
+    [3, 5, 6, 7],
+    [1, 5, 6, 7],
+    [1, 3, 7, 8],
+    [1, 3, 6, 8],
+    [1, 3, 6, 7],
+    [2, 6, 7, 8],
+    [2, 5, 7, 8],
+    [2, 5, 6, 8],
+    [2, 5, 6, 7],
+    [1, 2, 6, 8],
+    [1, 2, 5, 8],
+    [1, 2, 6, 7],
+    [1, 2, 5, 7],
+    [2, 3, 7, 8],
+    [2, 3, 5, 8],
+    [2, 3, 5, 7],
+    [1, 2, 3, 8],
+    [1, 2, 3, 7],
+    [3, 4, 7, 8],
+    [2, 3, 4, 7],
+    [1, 4, 7, 8],
+    [1, 2, 4, 7],
+    [3, 4, 5, 8],
+    [2, 3, 4, 5],
+    [1, 4, 5, 8],
+    [1, 2, 4, 5],
+    [1, 3, 4, 8],
+    [1, 2, 3, 4],
+    [2, 4, 7, 8],
+    [2, 4, 5, 8],
+    [1, 2, 4, 8],
+    [3, 4, 6, 7],
+    [1, 4, 6, 7],
+    [3, 4, 5, 6],
+    [1, 4, 5, 6],
+    [1, 3, 4, 6],
+    [2, 4, 6, 7],
+    [2, 4, 5, 6],
+    [1, 2, 4, 6],
+    [0, 6, 7, 8],
+    [0, 5, 7, 8],
+    [0, 5, 6, 8],
+    [0, 5, 6, 7],
+    [0, 1, 6, 8],
+    [0, 1, 5, 8],
+    [0, 1, 5, 6],
+    [0, 3, 7, 8],
+    [0, 3, 6, 7],
+    [0, 3, 5, 8],
+    [0, 3, 5, 6],
+    [0, 1, 3, 8],
+    [0, 1, 3, 6],
+    [0, 4, 7, 8],
+    [0, 4, 6, 7],
+    [0, 4, 5, 8],
+    [0, 4, 5, 6],
+    [0, 1, 4, 8],
+    [0, 1, 4, 6],
+    [0, 2, 6, 7],
+    [0, 2, 5, 7],
+    [0, 2, 5, 6],
+    [0, 1, 2, 6],
+    [0, 1, 2, 5],
+    [0, 2, 3, 7],
+    [0, 2, 3, 5],
+    [0, 2, 4, 7],
+    [0, 2, 4, 5],
+    [0, 1, 2, 4],
 ]
+
 [model]
 from_state = false
 model_path = "/home/nic/Master/tropnis/kaapo_scalars.json"
@@ -106,30 +190,24 @@ mlp_units = 256
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "rkaapo"
-# chem potential [3.141592653589793, 3.141592653589793, 3.141592653589793, 0.0, 0.0, 0.0]
-# no chem potential [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-mu = [3.141592653589793, 3.141592653589793, 3.141592653589793, 0.0, 0.0, 0.0]
+mu = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 a = 0.5
 b = 1.0
 
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"
 subtype = "fermi"
-ose_exponent = 2.0
+ose_exponent = 3.0
 fermi_exponent = 0.5
 
 [layered_integrand]
 integrand_type = "kaapo"
-path_to_example = "/home/nfink/thermal_integrand_examples/examples/mercedes"
-# chem potential [6.283185307179586, 3.141592653589793, 1.0]
-# no chem potential [6.283185307179586, 0.0, 1.0] 
-params = [6.283185307179586, 3.141592653589793, 1.0]
+path_to_example = "/home/nfink/thermal_integrand_examples/examples/bugblatterPQ"
+params = [0.190270777, 1.0, 33.02233483]
 use_prec = true
 use_f128 = true
-n_cores = 128
-# chem potential 0.0290399
-# no chem potential 0.714390
-target_real = 0.0290399
+n_cores = 32
+target_real = -6.88e-06
 
 [integrand.kaapo.symbolica_integrand_kwargs]
 rotation_seed = 42
@@ -145,7 +223,7 @@ sum_orientations = true
 runtime_summation = false
 
 [integrand.kaapo.symbolica_integrand_prec_kwargs]
-prec = 100
+prec = 200
 n_shots = 1
 escalate_large_weight_multiplier = -1.0
 escalate_small_momentum_multiplier = -1.0
@@ -156,13 +234,13 @@ runtime_summation = false
 # Parameters used in the tprog subcommand
 [scripts.training_prog]
 n_training_steps = 2000
-n_samples = 100000
+n_samples = 10000
 # Number of samples drawn after the training to compute the final result
-n_samples_after_training = 10000000
+n_samples_after_training = 1000000
 # Training steps between callback of loss to console
 n_log = 20
 # Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
 # Will also output the result +- error and rsd to console
 n_plot_rsd = 100
 # Training steps between plotting the loss
-n_plot_loss = 2
+n_plot_loss = 10

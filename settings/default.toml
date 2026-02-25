@@ -52,8 +52,19 @@ verbose = false
 parameterisation_type = "momtrop"
 
 [integrator.naive]
+seed = 1337
 
 [integrator.vegas]
+
+[integrator.vegas.vegas_init_kwargs]
+
+[integrator.havana]
+seed = 1337
+use_uniform = false
+max_prob_ratio = 100
+n_continuous_bins = 128
+discrete_learning_rate = 1.5
+continuous_learning_rate = 1.5
 
 [integrator.madnis]
 batch_size = 1024

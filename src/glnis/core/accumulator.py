@@ -232,7 +232,7 @@ class LayerData:
                     f"Accumulator of type {acc_type} not implemented for LayerData object.")
 
     @_timer
-    def as_chunks(self, n_chunks: int) -> Iterable['LayerData']:
+    def as_chunks(self, n_chunks: int, n_cores: int = 1) -> Iterable['LayerData']:
         if len(self._pending_data) > 0:
             self.update('as_chunks')
 
@@ -244,10 +244,12 @@ class LayerData:
                 _existing_active_structure=self._active_structure,
             )
             chunk._t_init = self._t_init
-            # We add the metadata to the first chunk, as this is before any MP happens
+            # We add the metadata to the first chunk, and duplicate the processing time n_cores times
             if chunk_id == 0:
-                chunk._processing_times = self._processing_times
                 chunk.failures = self.failures
+            if chunk_id < n_cores:
+                chunk._processing_times = self._processing_times
+                
             yield chunk
 
     @property
