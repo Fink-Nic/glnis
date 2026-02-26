@@ -1,0 +1,96 @@
+[gammaloop_state]
+state_name = "test_integrand"
+
+[graph]
+from_state = false
+momtrop_edge_weight = 0.75
+is_vacuum = true
+overwrite_graph_properties = true
+
+[graph.graph_properties]
+edge_src_dst_vertices = [
+    [0, 1], 
+    [1, 0], 
+    [1, 0]
+]
+edge_masses = [
+    0.0,
+    0.0,
+    0.0
+]
+edge_momentum_shifts = [
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ]
+]
+graph_external_vertices = []
+graph_signature = [
+    [1, 0], 
+    [0, 1], 
+    [1, -1]
+]
+momtrop_edge_weight = []
+lmb_array = [
+    [0, 1], 
+    [0, 2], 
+    [1, 2]
+]
+[model]
+from_state = false
+model_path = "/home/nic/Master/tropnis/kaapo_scalars.json"
+
+[layered_integrator]
+integrator_type = "madnis"
+batch_size = 1000
+learning_rate = 1e-3
+use_scheduler = true
+discrete_model = "transformer"
+
+[integrator.madnis.transformer]
+embedding_dim  = 64
+feedforward_dim = 256
+heads = 8
+transformer_layers = 3
+mlp_layers = 3
+mlp_units = 256
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "spherical"
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "ose"
+ose_exponent = 0.5
+fermi_exponent = 0.5
+
+[layered_integrand]
+integrand_type = "test"
+use_f128 = true
+n_cores = 1
+target_real = 1.0
+
+# Parameters used in the tprog subcommand
+[scripts.training_prog]
+n_training_steps = 5
+n_samples = 1000
+# Number of samples drawn after the training to compute the final result
+n_samples_after_training = 10000
+# Training steps between callback of loss to console
+n_log = 1
+# Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
+# Will also output the result +- error and rsd to console
+n_plot_rsd = 2
+# Training steps between plotting the loss
+n_plot_loss = 1

@@ -67,18 +67,7 @@ mlp_layers = 3
 mlp_units = 256
 
 [layered_parameterisation.layer_0]
-parameterisation_type = "kaapo"
-# chem potential [3.141592653589793, 3.141592653589793, 0.0]
-# no chem potential [0.0, 0.0, 0.0]
-mu = [3.141592653589793, 3.141592653589793, 0.0]
-a = 0.5
-b = 1.0
-
-[layered_parameterisation.layer_1]
-parameterisation_type = "mc_layer"
-subtype = "fermi"
-ose_exponent = 0.5
-fermi_exponent = 0.5
+parameterisation_type = "spherical"
 
 [layered_integrand]
 integrand_type = "test"
@@ -88,14 +77,14 @@ target_real = 1.0
 
 # Parameters used in the tprog subcommand
 [scripts.training_prog]
-n_training_steps = 20
+n_training_steps = 5
 n_samples = 1000
 # Number of samples drawn after the training to compute the final result
 n_samples_after_training = 10000
 # Training steps between callback of loss to console
-n_log = 2
+n_log = 1
 # Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
 # Will also output the result +- error and rsd to console
-n_plot_rsd = 100
+n_plot_rsd = 2
 # Training steps between plotting the loss
-n_plot_loss = 2
+n_plot_loss = 1

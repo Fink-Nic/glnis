@@ -42,7 +42,6 @@ def run_training_prog(settings_file: str,
         neval = int(n_total_training_samples / nitn / 2)
         gammaloop_state = Settings.settings['gammaloop_state']['state_name']
         graph_properties = Settings.get_graph_properties()
-        Settings.settings['integrator']['madnis']['n_train_for_scheduler'] = n_training_steps
 
         norm_factor = (2*math.pi)**-(3*graph_properties.n_loops)
 
@@ -53,17 +52,18 @@ def run_training_prog(settings_file: str,
             print(f"| > Output will be at {subfolder_path}")
 
         time_last = time()
-        integrator: MadnisIntegrator = Integrator.from_settings_file(
+        madnis_integrator: MadnisIntegrator = Integrator.from_settings_file(
             settings_file)
-        print(f"| > MadNIS is using device: {integrator.madnis.dummy.device}")
-        print(f"| > MadNIS is using scheduler: {integrator.madnis.scheduler}")
+        integrand = madnis_integrator.integrand
+        print(f"| > MadNIS is using device: {madnis_integrator.madnis.dummy.device}")
+        print(f"| > MadNIS is using scheduler: {madnis_integrator.madnis.scheduler}")
         print(
-            f"| > Integrand discrete dims: {integrator.integrand.discrete_dims}")
+            f"| > Integrand discrete dims: {integrand.discrete_dims}")
 
         naive_integrator = NaiveIntegrator(
-            integrator.integrand, seed=42)
-        vegas_integrator = VegasIntegrator(integrator.integrand)
-        havana_integrator = HavanaIntegrator(integrator.integrand, seed=42)
+            integrand, seed=42)
+        vegas_integrator = VegasIntegrator(integrand)
+        havana_integrator = HavanaIntegrator(integrand, seed=42)
 
         # Plotting setup
         losses = []
@@ -77,30 +77,33 @@ def run_training_prog(settings_file: str,
         def callback(status) -> None:
             step = status.step + 1
             if step % n_log == 0:
-                print(f"| > Step {status.step + 1}: loss={status.loss:.5f}")
+                print(f"| > Step {status.step + 1}: loss={status.loss:.5f}, lr = {status.learning_rate:.2e}")
             if step % n_plot_loss == 0:
                 losses.append(status.loss)
                 steps_losses.append(step)
             if step % n_plot_rsd == 0:
-                metrics = integrator.integrate(n_samples)
-                rsd = metrics.rel_stddev
-                scaled_int = metrics.integral * norm_factor
-                scaled_err = metrics.error * norm_factor
-                print(f"""| > Trained Result after {step} steps of {integrator.batch_size}, using {
-                    n_samples} samples: \n| > {
-                    scaled_int:.8e} +- {scaled_err:.8e}, RSD = {rsd:.3f}, lr = {status.learning_rate:.2e}""")
+                output = madnis_integrator.integrate(n_samples)
+                output.modules[0].real_central_value *= norm_factor
+                output.modules[0].real_error *= norm_factor
+                obs = output.get_observables()
+                scaled_int = obs['real_central_value']
+                scaled_err = obs['real_error']
+                rsd = abs(scaled_err / scaled_int) * math.sqrt(output.modules[0].n_points)
+                print(f"""| > Trained Result after {step} steps of {
+                    madnis_integrator.batch_size}, using {n_samples} samples: \n| > {
+                        scaled_int:.8e} +- {scaled_err:.8e}, RSD = {rsd:.3f}""")
                 means.append(scaled_int)
                 errors.append(scaled_err)
                 rsds.append(rsd)
                 steps_rsds.append(step)
 
-        integrator.callback = callback
+        madnis_integrator.callback = callback
 
         # Parse GammaLoop results
         gl_res = Settings.get_gammaloop_integration_result()
         if gl_res is not None:
             norm_factor = 1.
-            RE_OR_IM = 're' if integrator.integrand.training_phase == 'real' else 'im'
+            RE_OR_IM = 're' if madnis_integrator.integrand.training_phase == 'real' else 'im'
             gl_int = gl_res['result'][RE_OR_IM]
             gl_err = gl_res['error'][RE_OR_IM]
             gl_neval = gl_res['neval']
@@ -109,7 +112,7 @@ def run_training_prog(settings_file: str,
             print(
                 f"| > Gammaloop Result: {gl_int:.8g} +- {gl_err:.8g}, RSD = {gl_rsd:.3f}")
 
-        if not integrator.integrand.integrand.IDENTIFIER == "kaapo integrand":
+        if not madnis_integrator.integrand.integrand.IDENTIFIER == "kaapo integrand":
             norm_factor = 1.
 
         print(f"""| > Initializing the Integrand and Integrator took {
@@ -119,8 +122,9 @@ def run_training_prog(settings_file: str,
         output = naive_integrator.integrate(n_samples_after_training)
         output.modules[0].real_central_value *= norm_factor
         output.modules[0].real_error *= norm_factor
-        print(f"""| > Evaluating {n_samples_after_training} samples using {naive_integrator.integrand.n_cores} cores took {
-            - time_last + (time_last := time()):.2f}s""")
+        print(
+            f"""| > Evaluating {n_samples_after_training}  samples using {
+                naive_integrator.integrand.n_cores} cores took {-time_last + (time_last := time()): .2f} s""")
         untrained_obs = output.get_observables()
         untrained_int = untrained_obs['real_central_value']
         untrained_err = untrained_obs['real_error']
@@ -140,8 +144,9 @@ def run_training_prog(settings_file: str,
         output = vegas_integrator.integrate(n_samples_after_training)
         output.modules[0].real_central_value *= norm_factor
         output.modules[0].real_error *= norm_factor
-        print(f"""| > Evaluating {n_samples_after_training} samples using {vegas_integrator.integrand.n_cores} cores took {
-            - time_last + (time_last := time()):.2f}s""")
+        print(
+            f"""| > Evaluating {n_samples_after_training}  samples using {
+                vegas_integrator.integrand.n_cores} cores took {-time_last + (time_last := time()): .2f} s""")
         vegas_obs = output.get_observables()
         vegas_int = vegas_obs['real_central_value']
         vegas_err = vegas_obs['real_error']
@@ -157,8 +162,9 @@ def run_training_prog(settings_file: str,
         output = havana_integrator.integrate(n_samples_after_training)
         output.modules[0].real_central_value *= norm_factor
         output.modules[0].real_error *= norm_factor
-        print(f"""| > Evaluating {n_samples_after_training} samples using {havana_integrator.integrand.n_cores} cores took {
-            - time_last + (time_last := time()):.2f}s""")
+        print(
+            f"""| > Evaluating {n_samples_after_training}  samples using {
+                havana_integrator.integrand.n_cores} cores took {-time_last + (time_last := time()): .2f} s""")
         havana_obs = output.get_observables()
         havana_int = havana_obs['real_central_value']
         havana_err = havana_obs['real_error']
@@ -167,14 +173,15 @@ def run_training_prog(settings_file: str,
         print(output.str_report())
 
         print("| > Training MadNIS:")
-        integrator.train(n_training_steps, callback)
+        madnis_integrator.train(n_training_steps, callback)
 
         time_last = time()
-        output = integrator.integrate(n_samples_after_training)
+        output = madnis_integrator.integrate(n_samples_after_training)
         output.modules[0].real_central_value *= norm_factor
         output.modules[0].real_error *= norm_factor
-        print(f"""| > Evaluating {n_samples_after_training} samples using {havana_integrator.integrand.n_cores} cores took {
-            - time_last + (time_last := time()):.2f}s""")
+        print(
+            f"""| > Evaluating {n_samples_after_training}  samples using {
+                madnis_integrator.integrand.n_cores} cores took {-time_last + (time_last := time()): .2f} s""")
         madnis_obs = output.get_observables()
         madnis_int = madnis_obs['real_central_value']
         madnis_err = madnis_obs['real_error']
@@ -182,23 +189,8 @@ def run_training_prog(settings_file: str,
             madnis_err / madnis_int) * math.sqrt(output.modules[0].n_points)
         print(output.str_report())
 
-        # metrics = integrator.integrate(n_samples_after_training)
-        # rsd = metrics.rel_stddev
-        # scaled_int = metrics.integral * norm_factor
-        # scaled_err = metrics.error * norm_factor
-        # print(f"""| > Trained Result after {n_training_steps} steps of {integrator.batch_size}, using {
-        #     n_samples_after_training} samples: \n| > {
-        #     scaled_int:.8e} +- {scaled_err:.8e}, RSD = {rsd:.3f}""")
-
-        # # Print the final snapshot
-        # madnis_int = scaled_int
-        # madnis_err = scaled_err
-        # madnis_rsd = rsd
-        # print(f"""| > Trained Result after {n_training_steps} steps of {integrator.batch_size}, using a sample size of {n_samples_after_training}: {
-        #     madnis_int:.8g} +- {madnis_err:.8g}, RSD = {madnis_rsd:.3f}""")
-
         # IMPORTANT: close the worker functions, or your script will hang
-        integrator.integrand.end()
+        integrand.end()
 
         if no_output:
             quit()
@@ -229,12 +221,12 @@ def run_training_prog(settings_file: str,
             f.write(f"{' Training Parameters ':{'#'}^{width}}\n")
             f.write(line)
             f.write(f"{gammaloop_state=}\n")
-            f.write(f"{integrator.batch_size=}\n")
+            f.write(f"{madnis_integrator.batch_size=}\n")
             f.write(f"{n_training_steps=}\n")
             f.write(
                 f"Discrete Model: {Settings.settings['integrator']['madnis']['discrete_model']}\n")
             f.write(
-                f"Integrated phase: {integrator.integrand.training_phase}\n")
+                f"Integrated phase: {madnis_integrator.integrand.training_phase}\n")
             f.write(f"\n{line}")
             f.write(f"{' Untrained Results ':{'#'}^{width}}\n")
             f.write(line)
@@ -261,9 +253,9 @@ def run_training_prog(settings_file: str,
             f.write(f"Number of samples: {n_samples_after_training}\n")
     except KeyboardInterrupt:
         print("\nCaught KeyboardInterrupt — stopping workers.")
-        integrator.integrand.end()
+        integrand.end()
     finally:
-        integrator.integrand.end()
+        integrand.end()
 
 
 if __name__ == "__main__":

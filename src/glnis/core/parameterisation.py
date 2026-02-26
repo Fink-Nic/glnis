@@ -354,24 +354,30 @@ class MomtropParameterisation(Parameterisation):
         Returns:
             List of shape (n_edges,) that appends the as-yet unforced edges to edges_removed
         """
-        full_graph = np.arange(self.layer_num_discrete_dims)
+        n_edges = self.layer_num_discrete_dims
+        full_graph = np.arange(n_edges)
         if edges_removed is None:
             return [full_graph.tolist()]
 
-        full_graph = np.tile(full_graph, (len(edges_removed), 1))
+        edges_removed = edges_removed.astype(np.uint64)
+        n_points = edges_removed.shape[0]
+
         if edges_removed.shape[1] == 0:
-            return full_graph.tolist()
+            return np.tile(full_graph, (n_points, 1))
 
-        removed_mask = np.zeros(
-            (edges_removed.shape[0], self.layer_num_discrete_dims), dtype=np.bool)
-        rows = np.repeat(
-            np.arange(edges_removed.shape[0]), edges_removed.shape[1])
-        removed_mask[rows, edges_removed.flatten()] = 1
-        # Append the edges that are not in discrete, meaning where onehot is zero
-        remaining_edges = full_graph[~removed_mask].reshape(
-            len(edges_removed), -1)
+        # mask[i, j] == True ⇔ edge j is still available for sample i
+        mask = np.ones((n, n_edges), dtype=bool)
+        mask[np.arange(n_points).reshape(-1, 1), edges_removed] = False
 
-        return np.hstack([edges_removed, remaining_edges]).astype(np.uint64).tolist()
+        # shape: (n, n_edges - k)
+        remaining = np.nonzero(mask)[1].reshape(n, -1)
+
+        result = np.empty((n_points, n_edges), dtype=np.uint64)
+        k = edges_removed.shape[1]
+        result[:, :k] = edges_removed
+        result[:, k:] = remaining
+
+        return result.tolist()
 
     def _layer_prior_prob_function(self, indices: NDArray) -> NDArray:
         rust_result = self.momtrop_sampler.predict_discrete_probs(
@@ -410,9 +416,10 @@ class SphericalParameterisation(Parameterisation):
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray,
                             ) -> ParamOutput:
         momentum = np.zeros_like(continuous)
+        n_points = continuous.shape[0]
 
         # Constant part of the jacobian
-        jac = np.ones((len(continuous), 1), dtype=continuous.dtype)
+        jac = np.ones((n_points, 1), dtype=continuous.dtype)
         jac *= (4*np.pi * self.conformal_scale**3)**self.n_loops
 
         for i_loop in range(self.n_loops):
@@ -446,11 +453,10 @@ class SphericalParameterisation(Parameterisation):
             jac *= x**2 / (1 - x)**4
 
         # Transform the loop momenta back to the LMB of the graph
-        inv_transform = self.graph_properties.channel_inv_transforms[discrete.flatten(
-        )]
+        inv_transform = self.graph_properties.channel_inv_transforms[discrete.flatten()]
         momentum = inv_transform @ momentum.reshape(-1, self.n_loops, 3)
 
-        return jac, momentum, None
+        return jac, momentum.reshape(n_points, -1), None
 
 
 class InverseSphericalParameterisation(Parameterisation):

@@ -71,7 +71,10 @@ batch_size = 1024
 learning_rate = 1e-3
 discrete_model = "transformer"
 use_scheduler = true
-n_train_for_scheduler = 1000
+scheduler_type = "cosineannealing"
+loss_type = "kl_divergence_softclip"
+
+[integrator.madnis.scheduler_kwargs]
 
 # Parameters for the transformer model
 [integrator.madnis.transformer]
