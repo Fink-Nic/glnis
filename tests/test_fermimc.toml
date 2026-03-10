@@ -1,4 +1,5 @@
-run_name = "test_mc"
+[gammaloop_state]
+state_name = "test_integrand"
 
 [graph]
 from_state = false
@@ -52,7 +53,7 @@ model_path = "/home/nic/Master/tropnis/kaapo_scalars.json"
 
 [layered_integrator]
 integrator_type = "madnis"
-batch_size = 1000
+batch_size = 100000
 learning_rate = 1e-3
 use_scheduler = true
 discrete_model = "transformer"
@@ -66,25 +67,29 @@ mlp_layers = 3
 mlp_units = 256
 
 [layered_parameterisation.layer_0]
-parameterisation_type = "spherical"
+parameterisation_type = "rkaapo"
+# chem potential [3.141592653589793, 3.141592653589793, 0.0]
+# no chem potential [0.0, 0.0, 0.0]
+mu = [3.141592653589793, 3.141592653589793, 0.0]
+a = 0.5
+b = 1.0
 
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"
-subtype = "ose"
-ose_exponent = 0.5
+subtype = "fermi"
+ose_exponent = 2.0
 fermi_exponent = 0.5
 
 [layered_integrand]
 integrand_type = "test"
 use_f128 = true
-n_cores = 4
+n_cores = 1
 target_real = 1.0
 
-# Parameters used in the splcomp/tprog subcommand
-[scripts.sampler_comp]
+# Parameters used in the tprog subcommand
+[scripts.training_prog]
 n_training_steps = 5
 n_samples = 1000
-nitn = 2
 # Number of samples drawn after the training to compute the final result
 n_samples_after_training = 10000
 # Training steps between callback of loss to console

@@ -1,6 +1,6 @@
 # type: ignore
 from symbolica import E, S, Expression
-from typing import Dict, Tuple, List, Any
+from typing import Dict, Tuple, List, Any, Set
 from copy import deepcopy
 from pathlib import Path
 import momtrop
@@ -125,22 +125,37 @@ class DotParser:
 
         return ext_momenta
 
+    def get_external_signature(self, process_id: int = 0) -> List[int]:
+        graph = self.get_dot_graph(process_id)
+        edges = graph.get_edges()
+
+        ext_sigs = len(edges)*[None]
+        for edge in edges:
+            src_split = edge.get_source().split(':')
+            dst_split = edge.get_destination().split(':')
+            if edge.get('source') is None:
+                ext_sigs[int(dst_split[1])] = 1
+            elif edge.get('sink') is None:
+                ext_sigs[int(src_split[1])] = -1
+        ext_sigs = [sig for sig in ext_sigs if sig is not None]
+
+        return ext_sigs
+
     def get_graph_properties(self, process_id: int,
-                             ext_momenta: List[List[float]],
-                             dependent_momentum_index: int) -> GraphProperties:
+                             ext_momenta: List[List[float]],) -> GraphProperties:
 
         # External momenta
-        n_ext_mom = len(ext_momenta) + 1
-        ext_sigs = n_ext_mom*[0]
+        n_ext_mom = len(ext_momenta)
+        ext_sigs = self.get_external_signature(process_id)
 
         # Dot graph
         graph = self.get_dot_graph(process_id)
-        edges = graph.get_edges()
+        edges: List[pydot.Edge] = graph.get_edges()
         vertices = graph.get_nodes()
 
         VERTICES: list[pydot.Node] = []
         LMB_EDGES: list[pydot.Edge] = []
-        EXT_VERTICES: list[pydot.Node] = []
+        EXT_VERTICES: Set[pydot.Node] = set()
         INT_EDGES: list[pydot.Edge] = []
 
         # Filter out the external vertices
@@ -164,13 +179,10 @@ class DotParser:
 
             if edge.get('source') is None:
                 # Incoming external momentum
-                EXT_VERTICES.append(graph.get_node(edge.get("dst"))[0])
-                ext_sigs[int(dst_split[1])] = 1
-
+                EXT_VERTICES.add(graph.get_node(edge.get("dst"))[0])
             elif edge.get('sink') is None:
                 # Outgoing external momentum
-                EXT_VERTICES.append(graph.get_node(edge.get("src"))[0])
-                ext_sigs[int(src_split[1])] = -1
+                EXT_VERTICES.add(graph.get_node(edge.get("src"))[0])
             else:
                 INT_EDGES.append(edge)
                 particle_name = edge.get('particle')[1:-1]
@@ -180,10 +192,6 @@ class DotParser:
                 dst_vert = graph.get_node(edge.get('dst'))[0]
                 edge.set('src_id', src_vert.get('v_id'))
                 edge.set('dst_id', dst_vert.get('v_id'))
-
-        # Infer the missing external momentum
-        ext_momenta = self.infer_dependent_momentum(
-            ext_momenta, ext_sigs, dependent_momentum_index)
 
         # Symbolica setup for LMB representation parsing
         # P: External momenta
@@ -285,7 +293,8 @@ class SettingsParser:
             'gammaloop_state_path'] = str(self.gammaloop_state_path)
         self.gammaloop_runcard_path = Path(self.gammaloop_state_path,
                                            self.settings['gammaloop_state']['runcard_name'])
-        if self.settings['graph']['from_state']:
+        self._graph_from_state = self.settings['graph']['from_state']
+        if self._graph_from_state:
             from gammaloop import GammaLoopAPI
 
             self.gammaloop_state = GammaLoopAPI(self.gammaloop_state_path)
@@ -347,17 +356,31 @@ class SettingsParser:
         if self.settings['graph']['overwrite_graph_properties']:
             return GraphProperties(**self.settings['graph']['graph_properties'])
 
-        if self.settings['graph']['from_state']:
+        process_id = self.settings['gammaloop_state']['process_id']
+        lmbs = []
+        orientations = []
+        if self._graph_from_state:
+            integrand_name = self.settings['gammaloop_state']['integrand_name']
             model_as_str = self.gammaloop_state.get_model()
             Model = ModelParser(model_as_str, from_string=True)
             dot_as_str_list = self.gammaloop_state.get_dot_files()
             Dot = DotParser(dot_as_str_list, Model,
                             self.verbose, dot_from_string=True)
+            graph_name = Dot.graph_file[process_id].get_name()
+            ext_momenta = self.gammaloop_state.get_external_momenta(graph_name, process_id, integrand_name)
+            lmbs = self.gammaloop_state.get_lmbs(dot_as_str_list, "string")[process_id]
+            # Gammaloop indexes the externals aswell
+            n_externals = len(ext_momenta)
+            lmbs = [[e_id-n_externals for e_id in lmb[0]] for lmb in lmbs]
+            orientations = self.gammaloop_state.get_orientations(graph_name, process_id, integrand_name)
         else:
             Dot = DotParser(self.dot_path, self.model_path, self.verbose)
-        ext_momenta, dmi = self.get_ext_momenta()
-        graph_properties = Dot.get_graph_properties(
-            self.settings['gammaloop_state']['process_id'], ext_momenta, dmi)
+            ext_momenta = self.settings['graph']['external_momenta']
+        graph_properties = Dot.get_graph_properties(process_id, ext_momenta)
+        graph_properties.orientations = orientations
+        graph_properties.lmb_array = lmbs
+        graph_properties.__post_init__()
+
         n_int_edges = graph_properties.n_edges
 
         edge_weight = self.settings['graph']['momtrop_edge_weight']
@@ -384,20 +407,11 @@ class SettingsParser:
 
         return graph_properties
 
-    def get_ext_momenta(self) -> Tuple[List[List[float]], int]:
+    def get_ext_momenta(self, ext_signature: List[int] = []) -> List[List[float]]:
         if self.settings['graph']['is_vacuum']:
             return [], -1
-        with self.gammaloop_runcard_path.open("r") as f:
-            momenta_raw = f.read().split("momenta")[1].split("helicities")[0]
-        before, after = momenta_raw.split("\"dependent\",")
-        before = "list" + before + "]"
-        after = "list = [" + after
-        before, after = tomllib.loads(
-            before)['list'], tomllib.loads(after)['list']
-        dependent_momentum_index = len(before)
-        momenta = before + after
-
-        return momenta, dependent_momentum_index
+        runtime_settings = self.gammaloop_state.get_integrand_settings()
+        return runtime_settings.kinematics.get_external_momenta(ext_signature)
 
     @staticmethod
     def momtrop_sampler_from_graph_properties(

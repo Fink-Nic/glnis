@@ -115,3 +115,8 @@ def overwrite_settings(orig_dict: Dict[str, Any], new_dict: Dict[str, Any],
             orig_dict[key] = val
 
     return orig_dict
+
+
+def shell_print(*lines: str, prefix="| > "):
+    for line in lines:
+        print(prefix, line)

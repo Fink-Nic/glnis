@@ -259,4 +259,4 @@ def run_training_prog(settings_file: str,
 
 
 if __name__ == "__main__":
-    run_training_prog(sys.argv[1], comment="", no_output=sys.argv[2])
+    run_training_prog(sys.argv[1], comment="", no_output=int(sys.argv[2]) if len(sys.argv) > 2 else False)

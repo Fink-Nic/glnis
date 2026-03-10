@@ -140,12 +140,7 @@ class GammaLoopIntegrand(Integrand):
         self.integrand_name = integrand_name
         self.momentum_space = momentum_space
         if sample_orientations:
-            # TODO: Implement general orientation getter. Requires getting the graph names first.
-            # [len(self.gammaloop_state.get_orientations())]
-            discrete_dims = [62]
-        else:
-            discrete_dims = []
-        kwargs['discrete_dims'] = discrete_dims
+            kwargs['discrete_dims'] = [self.graph_properties.n_orientations]
         super().__init__(**kwargs)
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
@@ -172,6 +167,7 @@ class KaapoIntegrand(Integrand):
                  path_to_example: str,
                  params: List[float],
                  use_prec: bool = True,
+                 apply_pi_factor: bool = True,
                  symbolica_integrand_kwargs: Dict[str, Any] = dict(
                      force_rebuild=False,
                      stability_tolerance=1e-3,
@@ -205,6 +201,7 @@ class KaapoIntegrand(Integrand):
         self.symbolica_integrand_kwargs = symbolica_integrand_kwargs
         self.symbolica_integrand_prec_kwargs = symbolica_integrand_prec_kwargs
         self.use_prec = use_prec
+        self.apply_pi_factor = apply_pi_factor
         self.integrand_fast = kintegrands.SymbolicaIntegrand(
             path_to_example=self.path_to_example,
             params=self.params,
@@ -236,10 +233,14 @@ class KaapoIntegrand(Integrand):
 
         if not self.use_prec:
             output = self.integrand_fast.evaluate(input)
-            return np.array(output.values, dtype=self.dtype)
+        else:
+            output = self.stack.evaluate(input)
 
-        output = self.stack.evaluate(input)
-        return np.array(output.values, dtype=self.dtype)
+        output = np.array(output.values, dtype=self.dtype)
+        if self.apply_pi_factor:
+            output *= (2*np.pi)**-(3*self.integrand_fast.n_loops)
+
+        return output
 
 
 class ParameterisedIntegrand:
@@ -258,8 +259,7 @@ class ParameterisedIntegrand:
 
         self.param = LayeredParameterisation(
             self.graph_properties, self.param_kwargs)
-        self.integrand = Integrand.get_integrand_instance(
-            self.integrand_kwargs)
+        self.integrand = Integrand.get_integrand_instance(self.integrand_kwargs)
         self.dtype = self.integrand.dtype
         self.continuous_dim = self._get_continuous_dims()
         self.discrete_dims = self._get_discrete_dims()
@@ -321,6 +321,12 @@ class ParameterisedIntegrand:
     def _get_continuous_dims(self) -> int:
         return self.integrand.continuous_dim + self.param.continuous_dim
 
+    def set_attribute(self, attr_name: str, value: Any) -> None:
+        if hasattr(self.integrand, attr_name):
+            setattr(self.integrand, attr_name, value)
+        if hasattr(self.param, attr_name):
+            setattr(self.param, attr_name, value)
+
 
 class MPIntegrand(ParameterisedIntegrand):
     MAX_CHUNK_SIZE = 10_000
@@ -337,7 +343,7 @@ class MPIntegrand(ParameterisedIntegrand):
                  **kwargs):
         self.n_cores = n_cores
 
-        ctx = mp.get_context('spawn')
+        ctx = mp.get_context()
         self.q_in = [ctx.Queue() for _ in range(self.n_cores)]
         self.q_out = [ctx.Queue() for _ in range(self.n_cores)]
         self.stop_event = ctx.Event()
@@ -400,6 +406,9 @@ class MPIntegrand(ParameterisedIntegrand):
                     indices, dim = args
                     res = integrand.discrete_prior_prob_function(indices, dim)
                     q_out.put((chunk_id, res))
+                case 'set_attr':
+                    attr_name, value = args
+                    integrand.set_attribute(attr_name, value)
                 case _:
                     print("CRITICAL WARNING:")
                     print(
@@ -492,7 +501,19 @@ class MPIntegrand(ParameterisedIntegrand):
 
         return np.vstack(result_sorted)
 
+    def set_attribute(self, attr_name: str, value: Any) -> None:
+        """
+        Sets an attribute in the main process and all worker processes if it exists.
+        """
+        super().set_attribute(attr_name, value)
+        job_type = "set_attr"
+        for w_id in range(self.n_cores):
+            self.q_in[w_id].put((job_type, None, (attr_name, value)))
+
     def end(self) -> None:
+        """
+        Terminates all worker processes.
+        """
         if not self.stop_event.is_set():
             self.stop_event.set()
 

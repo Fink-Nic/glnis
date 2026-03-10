@@ -25,7 +25,7 @@ def run_state_test(settings_file: str) -> None:
             - time_last + (time_last := time()):.2f}s""")
 
         # Training parameters
-        n_training_steps = 1
+        nitn = 1
         batch_size = 100_000
 
         # Parse GammaLoop results
@@ -39,22 +39,15 @@ def run_state_test(settings_file: str) -> None:
             print(f"""| > Gammaloop Result:    {
                 gl_int:.8g} +- {gl_err:.8g}, RSD = {gl_rsd:.2f}""")
 
+        print("| > Attempting training step.")
+        integrator.train(nitn, batch_size)
+
+        print("| > Attempting integration.")
         time_last = time()
         output = integrator.integrate(batch_size)
         print(f"""| > Evaluating {batch_size} samples using {integrator.integrand.n_cores} cores took {
             - time_last + (time_last := time()):.2f}s""")
-
-        if integrator.IDENTIFIER.lower() == 'madnis sampler':
-            print(f"""| > Result (before training) using {batch_size} samples:     {
-                output.integral:.8g} +- {output.error:.8g}, RSD = {output.rel_stddev:.2f}""")
-            print("| > "+100*"=")
-            print("| > Attempting training step.")
-            integrator.train(n_training_steps)
-        else:
-            print(output.str_report())
-            print("| > "+100*"=")
-            print("| > Attempting training step.")
-            integrator.train(n_training_steps, batch_size=1_000)
+        print(output.str_report())
 
         print(f"| > Test successfully completed!")
         print(

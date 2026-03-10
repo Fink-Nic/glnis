@@ -366,11 +366,11 @@ class MomtropParameterisation(Parameterisation):
             return np.tile(full_graph, (n_points, 1))
 
         # mask[i, j] == True ⇔ edge j is still available for sample i
-        mask = np.ones((n, n_edges), dtype=bool)
+        mask = np.ones((n_points, n_edges), dtype=bool)
         mask[np.arange(n_points).reshape(-1, 1), edges_removed] = False
 
         # shape: (n, n_edges - k)
-        remaining = np.nonzero(mask)[1].reshape(n, -1)
+        remaining = np.nonzero(mask)[1].reshape(n_points, -1)
 
         result = np.empty((n_points, n_edges), dtype=np.uint64)
         k = edges_removed.shape[1]

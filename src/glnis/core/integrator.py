@@ -31,10 +31,18 @@ class Integrator(ABC):
         """Returns a LayerData object containing the samples to be fed into the integrand."""
         pass
 
-    def integrate(self, n_points: int) -> Accumulator:
-        layer_input = self.get_samples(n_points)
+    def integrate(self, n_points: int, batch_size: int = 10_000_000) -> Accumulator:
+        n_eval = min(n_points, batch_size)
+        layer_input = self.get_samples(n_eval)
+        accumulator = self.integrand.eval_integrand(layer_input)
+        while n_eval < n_points:
+            print("| > Evaluated {n_eval} / {n_points} samples using {self.IDENTIFIER}...")
+            n = min(batch_size, n_points - n_eval)
+            layer_input = self.get_samples(n)
+            accumulator.combine_with(self.integrand.eval_integrand(layer_input))
+            n_eval += n
 
-        return self.integrand.eval_integrand(layer_input)
+        return accumulator
 
     def train(self, nitn: int = 10, batch_size: int = 10000, ):
         print(f"Training not available for Integrator {self.IDENTIFIER}.")
@@ -128,9 +136,9 @@ class NaiveIntegrator(Integrator):
 
     def __init__(self,
                  integrand: MPIntegrand,
-                 seed=None,):
-        super().__init__(
-            integrand=integrand,)
+                 seed=None,
+                 **kwargs,):
+        super().__init__(integrand=integrand, **kwargs)
         self.rng = np.random.default_rng(seed)
 
     def get_samples(self, n_points: int) -> LayerData:
@@ -152,10 +160,8 @@ class VegasIntegrator(Integrator):
                  integrand: MPIntegrand,
                  vegas_init_kwargs: Dict[str, Any] = dict(),
                  **kwargs):
-        super().__init__(
-            integrand=integrand, **kwargs)
-        self.vegas = vegas.Integrator(
-            self.input_dim*[[0, 1],], **vegas_init_kwargs)
+        super().__init__(integrand=integrand, **kwargs)
+        self.vegas = vegas.Integrator(self.input_dim*[[0, 1],], **vegas_init_kwargs)
 
     def train(self, nitn: int = 10, batch_size: int = 10000, **vegas_kwargs) -> vegas._vegas.RAvg:
         return self.vegas(self._vegas_wrapper, nitn=nitn, neval=batch_size, **vegas_kwargs)
@@ -200,7 +206,7 @@ class HavanaIntegrator(Integrator):
                  n_continuous_bins: int = 128,
                  discrete_learning_rate: float = 1.5,
                  continuous_learning_rate: float = 1.5,
-                 **kwargs):
+                 **kwargs,):
         super().__init__(integrand, **kwargs)
         if self.num_discrete_dims == 0:
             self.havana = NumericalIntegrator.continuous(
@@ -238,7 +244,7 @@ class HavanaIntegrator(Integrator):
                 self.discrete_learning_rate, self.continuous_learning_rate)
 
             report.append(
-                f"It {itn:0>{n_digits}}: {avg:.6e} +- {err:.6e}, chi={chi_sq:.3f}")
+                f"It {itn+1:0>{n_digits}}: {avg:.6e} +- {err:.6e}, chi={chi_sq:.3f}")
 
         return "\n".join(f"| > {line}" for line in report)
 
@@ -262,19 +268,24 @@ class HavanaIntegrator(Integrator):
 
         layer_input.continuous = continuous
         layer_input.discrete = discrete
-        for i in range(self.num_discrete_dims):
-            discrete_wgt = np.take_along_axis(
-                self.integrand.discrete_prior_prob_function(
-                    discrete[:, :i], i),
-                discrete[:, i].reshape(-1, 1))
-            layer_input.wgt /= discrete_wgt  # * self.discrete_dims[i]
+        total_wgt = np.ones((n_points), dtype=self.integrand.dtype)
+        # for i in range(self.num_discrete_dims):
+        #     discrete_wgt = np.take_along_axis(
+        #         self.integrand.discrete_prior_prob_function(
+        #             discrete[:, :i], i),
+        #         discrete[:, [i]]).ravel()
+        #     total_wgt /= discrete_wgt * self.discrete_dims[i]
         if not training:
-            weights = np.array([s.weights for s in samples])
-            print(f"{weights.shape=}")
-            weights = weights[:, -1]
-            print(f"{weights.mean():.3e} +- {weights.std():.3e} (mean weight and stddev of current samples)")
-            print(f"{layer_input.wgt.mean():.3e} +- {layer_input.wgt.std():.3e} (mean weight and stddev of layer input)")
-            layer_input.wgt *= weights.reshape(-1, 1)
+            sample_weights = np.array([s.weights for s in samples])
+            sample_disc_weights = sample_weights[:, :-1].prod(axis=1)
+            sample_weights = sample_weights[:, -1]
+            # print(f"{sample_disc_weights.sum():.3e} (sum of discrete part of current sample weights)")
+            # print(f"{sample_disc_weights.mean():.3e} +- {sample_disc_weights.std():.3e} (mean weight and stddev of discrete part of current samples)")
+            # print(f"{sample_weights.mean():.3e} +- {sample_weights.std():.3e} (mean weight and stddev of current samples)")
+            # print(f"{total_wgt.mean():.3e} +- {total_wgt.std():.3e} (mean weight and stddev of current total weights before sample weights)")
+            total_wgt *= sample_weights  # * sample_disc_weights
+            total_wgt *= np.array(self.discrete_dims).prod()
+        layer_input.wgt = total_wgt
         layer_input.update(self.IDENTIFIER)
 
         if return_samples:
@@ -295,6 +306,7 @@ class MadnisIntegrator(Integrator):
                  scheduler_kwargs: Dict[str, Any] = dict(),
                  loss_type: Literal["variance", "variance_softclip",
                                     "kl_divergence", "kl_divergence_softclip"] = "kl_divergence",
+                 discrete_dims_position: Literal["first", "last"] = "first",
                  discrete_model: Literal["transformer",
                                          "made"] = "transformer",
                  transformer: Dict[str, Any] = dict(
@@ -314,8 +326,8 @@ class MadnisIntegrator(Integrator):
                      min_bin_height=1e-3,
                      min_bin_derivative=1e-3,),
                  callback: Callable[[object], None] | None = None,
-                 ):
-        super().__init__(integrand)
+                 **kwargs,):
+        super().__init__(integrand, **kwargs)
         import torch
         torch.set_default_dtype(torch.float64)
 
@@ -338,6 +350,7 @@ class MadnisIntegrator(Integrator):
         self.scheduler_type = scheduler_type
         self.scheduler_kwargs = scheduler_kwargs
         self.batch_size = batch_size
+        self.discrete_dims_position = discrete_dims_position
 
         match loss_type.lower():
             case "variance":
@@ -355,7 +368,7 @@ class MadnisIntegrator(Integrator):
             function=self._madnis_eval,
             input_dim=self.input_dim,
             discrete_dims=self.discrete_dims,
-            discrete_dims_position="first",
+            discrete_dims_position=self.discrete_dims_position,
             discrete_prior_prob_function=self._madnis_discrete_prior_prob_function,
         )
         discrete_flow_kwargs = transformer if discrete_model == "transformer" else made
@@ -380,37 +393,43 @@ class MadnisIntegrator(Integrator):
 
         return self.integrand.eval_integrand(layer_input)
 
-    def train(self, nitn: int = 10, batch_size: int = 10000):
+    def train(self, nitn: int = 10, _=None):
         if self.use_scheduler:
             self.madnis.scheduler = self._get_scheduler(
                 nitn, self.scheduler_type)
         self.madnis.train(nitn, self.callback, True)
 
-    def get_samples(self, n_points: int) -> LayerData:
+    def get_samples(self, n_points: int, batch_size: int = 100_000) -> LayerData:
         layer_input = self.init_layer_data(n_points)
+        # LayerData objects return a view of the fields, so we can fill them directly,
+        # but this would sidestep data validation, so we fill a copy and then assign it
+        continuous = np.empty((n_points, self.continuous_dim), dtype=self.integrand.dtype)
+        discrete = np.empty((n_points, self.num_discrete_dims), dtype=np.uint64)
+        wgt = np.empty((n_points, 1), dtype=self.integrand.dtype)
 
-        with torch.no_grad():
-            x_all, prob = self.madnis.flow.sample(
-                n_points,
-                return_prob=True,
-                device=self.madnis.dummy.device,
-                dtype=self.madnis.dummy.dtype,
-            )
-        layer_input.discrete = x_all[:,
-                                     :self.num_discrete_dims].numpy(force=True)
-        layer_input.continuous = x_all[:,
-                                       self.num_discrete_dims:].numpy(force=True)
-        layer_input.wgt /= prob.numpy(force=True).reshape(-1, 1)
+        n_eval = 0
+        while n_eval < n_points:
+            n = min(batch_size, n_points - n_eval)
+            with torch.no_grad():
+                x_all, prob = self.madnis.flow.sample(
+                    n,
+                    return_prob=True,
+                    device=self.madnis.dummy.device,
+                    dtype=self.madnis.dummy.dtype,
+                )
+            discrete[n_eval:n_eval+n, :], continuous[n_eval:n_eval+n, :] = self._madnis_output_to_disc_cont(x_all)
+            wgt[n_eval:n_eval+n, :] = 1 / prob.numpy(force=True).reshape(-1, 1)
+            n_eval += n
+        layer_input.continuous = continuous
+        layer_input.discrete = discrete
+        layer_input.wgt = wgt
         layer_input.update(self.IDENTIFIER)
 
         return layer_input
 
     def _madnis_eval(self, x_all: Tensor) -> Tensor:
         layer_input = self.init_layer_data(x_all.shape[0])
-        layer_input.discrete = x_all[:,
-                                     :self.num_discrete_dims].numpy(force=True)
-        layer_input.continuous = x_all[:,
-                                       self.num_discrete_dims:].numpy(force=True)
+        layer_input.discrete, layer_input.continuous = self._madnis_output_to_disc_cont(x_all)
         layer_input.update(self.IDENTIFIER)
 
         accumulated_result = self.integrand.eval_integrand(
@@ -427,6 +446,15 @@ class MadnisIntegrator(Integrator):
         torch_output = torch.from_numpy(
             numpy_output.astype(np.float64)).to(self.device)
         return torch_output
+
+    def _madnis_output_to_disc_cont(self, x_all: Tensor) -> Tuple[NDArray, NDArray]:
+        if self.discrete_dims_position == "first":
+            discrete = x_all[:, :self.num_discrete_dims].numpy(force=True)
+            continuous = x_all[:, self.num_discrete_dims:].numpy(force=True)
+        else:
+            discrete = x_all[:, -self.num_discrete_dims:].numpy(force=True)
+            continuous = x_all[:, :-self.num_discrete_dims].numpy(force=True)
+        return discrete, continuous
 
     def _get_scheduler(self, T_max: int, scheduler_type: str | None
                        ) -> torch.optim.lr_scheduler._LRScheduler | None:

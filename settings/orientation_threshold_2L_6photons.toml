@@ -1,0 +1,39 @@
+[graph]
+momtrop_edge_weight = 0.555555555555
+
+[gammaloop_state]
+state_name = "threshold_2L_6photons_output"
+integration_state_name = "threshold_2L_6photons_integration"
+process_name = "physical_2L_6photons"
+
+[integrator.madnis]
+batch_size = 4096
+discrete_model = "transformer"
+
+[integrator.madnis.transformer]
+embedding_dim = 64
+feedforward_dim = 128
+heads = 2
+mlp_units = 128
+transformer_layers = 2
+
+[integrator.madnis.flow_kwargs]
+uniform_latent = true
+permutations = "log"
+layers = 3
+units = 64
+bins = 30
+min_bin_width = 1e-3
+min_bin_height = 1e-3
+min_bin_derivative = 1e-3
+
+[layered_integrand]
+integrand_type = "gammaloop"
+training_phase = "real"
+n_cores = 32
+sample_orientations = true
+
+[plotting_params.training_prog]
+n_training_steps = 2000
+n_samples = 100000
+n_samples_after_training = 1000000

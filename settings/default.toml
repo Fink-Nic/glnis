@@ -2,6 +2,9 @@
 # Default settings file. 
 # Setting files should not include parameters that are not specified in here.
 # -------------------------------------------------------------------------------------------
+
+run_name = "default"
+
 [overwrite]
 # Any parameter specified here will be overwritten. Example (string quotes required):
 # 'scripts.training_prog.n_training_steps' = 1337
@@ -197,6 +200,7 @@ momtrop_edge_weight = "default"
 is_vacuum = false
 # If true, will set graph properties to [graph.graph_properties]
 overwrite_graph_properties = false
+external_momenta = []
 
 # The default is set to 1L_6photons graph kinematics
 [graph.graph_properties]

@@ -22,6 +22,7 @@ class GraphProperties:
     graph_signature: List[List[int]]
     momtrop_edge_weight: List[float] = field(default_factory=list)
     lmb_array: NDArray = field(default_factory=list)
+    orientations: List[Dict[str, int]] = field(default_factory=list)
 
     def __post_init__(self: 'GraphProperties'):
         TOLERANCE = 1E-10
@@ -31,6 +32,7 @@ class GraphProperties:
             mass > TOLERANCE for mass in self.edge_masses]
         self.lmb_array = np.array(self.lmb_array, dtype=np.uint64)
         self.n_channels = self.lmb_array.shape[0]
+        self.n_orientations = len(self.orientations)
 
         # Calculate the inverse lmb transforms, ordered as the LMBs in graph properties
         self.channel_transforms = np.array(
@@ -209,7 +211,9 @@ class LayerData:
         """
         if len(self._pending_data) > 0:
             self.update('processing_times_getter')
-        return dict(self._processing_times)
+        processing_times = dict(self._processing_times)
+        processing_times['total_time'] = sum(t for t in processing_times.values())
+        return processing_times
 
     def wake(self) -> None:
         """
@@ -249,7 +253,7 @@ class LayerData:
                 chunk.failures = self.failures
             if chunk_id < n_cores:
                 chunk._processing_times = self._processing_times
-                
+
             yield chunk
 
     @property
@@ -420,11 +424,13 @@ class IntegrationResult(AccumulatorModule):
         self.target_imag = target_imag
         self.precision = precision
         if data is None:
-            self.n_points = 0
-            self.real_central_value = np.zeros(1, dtype=self.dtype)
-            self.real_error = np.zeros(1, dtype=self.dtype)
-            self.imag_central_value = np.zeros(1, dtype=self.dtype)
-            self.imag_error = np.zeros(1, dtype=self.dtype)
+            self.n_points = self.dtype(0)
+            self.real_central_value = self.dtype(0)
+            self.real_error = self.dtype(0)
+            self.imag_central_value = self.dtype(0)
+            self.imag_error = self.dtype(0)
+            self.real_rsd = self.dtype(0)
+            self.imag_rsd = self.dtype(0)
         else:
             self.dtype = data.dtype
             self.n_points = data.n_points
@@ -432,8 +438,11 @@ class IntegrationResult(AccumulatorModule):
             total_wgt = data.jac[m]*data.wgt[m]*data.func_val[m]
             self.real_central_value = total_wgt.real.mean()
             self.real_error = total_wgt.real.std() / np.sqrt(self.n_points)
+            self.real_rsd = self._rsd(self.real_central_value, self.real_error, self.n_points)
             self.imag_central_value = total_wgt.imag.mean()
             self.imag_error = total_wgt.imag.std() / np.sqrt(self.n_points)
+            self.real_rsd = self._rsd(self.real_central_value, self.real_error, self.n_points)
+            self.imag_rsd = self._rsd(self.imag_central_value, self.imag_error, self.n_points)
 
     def combine_with(self: 'IntegrationResult', other: 'IntegrationResult') -> None:
         n_combined = self.n_points + other.n_points
@@ -447,6 +456,8 @@ class IntegrationResult(AccumulatorModule):
                                   + other.n_points**2 * other.imag_error**2) / n_combined
 
         self.n_points = n_combined
+        self.real_rsd = self._rsd(self.real_central_value, self.real_error, self.n_points)
+        self.imag_rsd = self._rsd(self.imag_central_value, self.imag_error, self.n_points)
 
     def str_report(self) -> str:
         report = [125*"="]
@@ -490,7 +501,15 @@ class IntegrationResult(AccumulatorModule):
             imag_central_value=self.imag_central_value,
             real_error=self.real_error,
             imag_error=self.imag_error,
+            real_rsd=self.real_rsd,
+            imag_rsd=self.imag_rsd,
         )
+
+    @staticmethod
+    def _rsd(mean: float, err: float, n_points: int) -> float:
+        if mean == 0:
+            return mean
+        return err / np.abs(mean) * np.sqrt(n_points)
 
 
 class MaxWeight(AccumulatorModule):
@@ -597,11 +616,13 @@ class ProcessingTimes(AccumulatorModule):
     def str_report(self) -> str:
         mus_factor = 1.0e6 / self.n_points
         time_since_init = perf_counter() - self._t_init
-        total_time = sum(time for time in self.processing_times.values())
+        total_time = self.processing_times['total_time']
         report = [
             f"Total elapsed time: {time_since_init:.2f} s | {total_time:.2f} CPU-s | {total_time*mus_factor:.1f} µs / eval. Breakdown by subroutine:"]
         subroutine_times = []
         for identifier, time in self.processing_times.items():
+            if identifier == 'total_time':
+                continue
             perc_time = 100. * time / total_time
             if perc_time > 50.:
                 subroutine_times.append(
