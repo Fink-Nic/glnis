@@ -48,7 +48,7 @@ class SamplerCompData:
             if self.n_points > 0:
                 total_time = self.processing_times.get('total_time', 0)
                 self.real_tvar = self.real_rsd**2 * total_time / self.n_points
-                self.imag_tvar = self.real_rsd**2 * total_time / self.n_points
+                self.imag_tvar = self.imag_rsd**2 * total_time / self.n_points
 
     @dataclass
     class Plottables:
@@ -352,6 +352,8 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
     axs[2, 0].set_ylabel("RTVAR")
     for i in range(2):
         axs[2, i].set_xticks(range(len(Data.observables)), list(Data.observables.keys()), rotation=45)
+        axs[1, i].set_yscale("log")
+        axs[2, i].set_yscale("log")
 
     axs[0, 0].hlines(Data.target.real_central_value, 0, len(Data.observables)-1, color='red')
     axs[0, 1].hlines(Data.target.imag_central_value, 0, len(Data.observables)-1, color='red')

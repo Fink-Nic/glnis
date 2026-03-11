@@ -135,8 +135,10 @@ class GammaLoopIntegrand(Integrand):
         except:
             raise ImportError(
                 "CRITICAL FAILURE: Failed to import gammaloop module.")
-        self.gammaloop_state = GammaLoopAPI(gammaloop_state_path)
+        self.gammaloop_state = GammaLoopAPI(gammaloop_state_path, log_level="off")
         self.process_id = process_id
+        if integrand_name == "default":
+            integrand_name = list(self.gammaloop_state.list_outputs()[process_id].keys())[0]
         self.integrand_name = integrand_name
         self.momentum_space = momentum_space
         if sample_orientations:
@@ -152,7 +154,7 @@ class GammaLoopIntegrand(Integrand):
             points=continuous.astype(np.float64), momentum_space=self.momentum_space,
             process_id=self.process_id,
             integrand_name=self.integrand_name,
-            use_f128=self.use_f128,  discrete_dims=discrete_dims
+            use_arb_prec=self.use_f128,  discrete_dims=discrete_dims
         )
         return res.reshape(-1, 1)
 
