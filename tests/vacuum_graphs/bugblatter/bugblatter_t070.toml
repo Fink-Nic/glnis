@@ -205,7 +205,7 @@ path_to_example = "/home/nfink/thermal_integrand_examples/examples/bugblatterPQ"
 params = [0.46390258023886, 1.0, 13.5441913341902]
 use_prec = true
 use_f128 = true
-n_cores = 32
+n_cores = 128
 target_real = -6.24e-06
 
 [integrand.kaapo.symbolica_integrand_kwargs]

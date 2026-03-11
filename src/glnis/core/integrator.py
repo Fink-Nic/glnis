@@ -276,7 +276,6 @@ class HavanaIntegrator(Integrator):
                     self.integrand.discrete_prior_prob_function(
                         discrete[:, :i], i),
                     discrete[:, [i]]).ravel()
-                print(f"{discrete_wgt.shape=}")
                 total_wgt /= discrete_wgt
             sample_weights = np.array([s.weights for s in samples])
             sample_weights = sample_weights[:, -1]

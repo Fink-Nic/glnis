@@ -285,9 +285,10 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
     with Path(directory, filename + "_summary.txt").open("w") as f:
         f.write(f"Comment: {comment} \n")
         f.write(line)
-        f.write(f"{' Training Parameters ':{'#'}^{width}}\n")
+        f.write(f"{' Run Parameters ':{'#'}^{width}}\n")
         f.write(line)
         f.write(f"run_name={Data.settings['run_name']}\n")
+        f.write(f"n_cores={Data.integrand_kwargs['n_cores']}\n")
         f.write(f"batch_size={Data.madnis_kwargs['batch_size']}\n")
         f.write(f"training_steps={max(Data.plottables.steps_losses)}\n")
         f.write(
