@@ -1,5 +1,4 @@
-[gammaloop_state]
-state_name = "mercedes_mc_vary_a"
+run_name = "mercedes_mc_vary_a"
 
 [graph]
 from_state = false
@@ -156,9 +155,10 @@ sum_orientations = true
 runtime_summation = false
 
 # Parameters used in the tprog subcommand
-[scripts.training_prog]
+[scripts.sampler_comp]
 n_training_steps = 2000
 n_samples = 100000
+nitn = 10
 # Number of samples drawn after the training to compute the final result
 n_samples_after_training = 10000000
 # Training steps between callback of loss to console

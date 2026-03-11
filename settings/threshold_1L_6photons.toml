@@ -1,3 +1,5 @@
+run_name = "Above threshold 1L_6photons"
+
 [graph]
 momtrop_edge_weight = 0.555555555555
 
@@ -23,7 +25,7 @@ integrand_type = "gammaloop"
 training_phase = "real"
 n_cores = 64
 
-[scripts.training_prog]
+[scripts.sampler_comp]
 n_training_steps = 1000
 n_samples = 1000000
 n_samples_after_training = 1000000

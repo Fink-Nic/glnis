@@ -1,3 +1,5 @@
+run_name = "Above threshold 1L_6photons with orientation sampling"
+
 [graph]
 momtrop_edge_weight = 0.555555555555
 
@@ -23,7 +25,7 @@ training_phase = "real"
 n_cores = 64
 sample_orientations = true
 
-[plotting_params.training_prog]
+[scripts.sampler_comp]
 n_training_steps = 2000
 n_samples = 100000
 n_samples_after_training = 1000000

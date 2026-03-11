@@ -1,5 +1,4 @@
-[gammaloop_state]
-state_name = "bugblatter_mc"
+run_name = "bugblatter_mc"
 
 [graph]
 from_state = false
@@ -238,9 +237,10 @@ sum_orientations = true
 runtime_summation = false
 
 # Parameters used in the tprog subcommand
-[scripts.training_prog]
+[scripts.sampler_comp]
 n_training_steps = 2000
 n_samples = 10000
+nitn = 10
 # Number of samples drawn after the training to compute the final result
 n_samples_after_training = 1000000
 # Training steps between callback of loss to console

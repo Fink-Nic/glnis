@@ -1,3 +1,5 @@
+run_name = "scalar_2_point_4_loop"
+
 [graph]
 momtrop_edge_weight = 0.7777777777777
 
@@ -24,7 +26,7 @@ training_phase = "real"
 n_cores = 64
 use_f128 = true
 
-[scripts.training_prog]
+[scripts.sampler_comp]
 n_training_steps = 1000
 n_samples = 1000000
 n_samples_after_training = 1000000

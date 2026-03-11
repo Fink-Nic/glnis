@@ -275,15 +275,16 @@ from_state = true
 model_path = "default"
 
 # Parameters used in the tprog subcommand
-[scripts.training_prog]
+[scripts.sampler_comp]
 n_training_steps = 1000
-n_samples = 40000
+n_samples = 10000
+nitn = 10
 # Number of samples drawn after the training to compute the final result
-n_samples_after_training = 100000
+n_samples_after_training = 1000000
 # Training steps between callback of loss to console
 n_log = 20
 # Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
 # Will also output the result +- error and rsd to console
-n_plot_rsd = 50
+n_plot_rsd = 100
 # Training steps between plotting the loss
-n_plot_loss = 2
+n_plot_loss = 10

@@ -1,5 +1,4 @@
-[gammaloop_state]
-state_name = "test_integrand"
+run_name = "test_nomc"
 
 [graph]
 from_state = false
@@ -76,9 +75,10 @@ n_cores = 1
 target_real = 1.0
 
 # Parameters used in the tprog subcommand
-[scripts.training_prog]
+[scripts.sampler_comp]
 n_training_steps = 5
 n_samples = 1000
+nitn = 2
 # Number of samples drawn after the training to compute the final result
 n_samples_after_training = 10000
 # Training steps between callback of loss to console
