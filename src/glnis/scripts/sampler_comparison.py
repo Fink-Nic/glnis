@@ -54,8 +54,9 @@ class SamplerCompData:
     class Plottables:
         losses: List[float] = field(default_factory=list)
         rsds: List[float] = field(default_factory=list)
+        tvars: List[float] = field(default_factory=list)
         steps_losses: List[int] = field(default_factory=list)
-        steps_rsds: List[int] = field(default_factory=list)
+        steps_snapshot: List[int] = field(default_factory=list)
         means: List[float] = field(default_factory=list)
         errors: List[float] = field(default_factory=list)
 
@@ -132,6 +133,7 @@ def run_sampler_comp(
                 res = obs[f"{phase}_central_value"]
                 err = obs[f"{phase}_error"]
                 rsd = obs[f"{phase}_rsd"]
+                tvar = rsd**2 * obs["processing_times"]["total_time"] / obs["n_points"]
                 shell_print(
                     f"""Trained Result after {step} steps of {
                         madnis_integrator.batch_size}, using {n_samples} samples:""",
@@ -140,7 +142,8 @@ def run_sampler_comp(
                 Data.plottables.means.append(res)
                 Data.plottables.errors.append(err)
                 Data.plottables.rsds.append(rsd)
-                Data.plottables.steps_rsds.append(step)
+                Data.plottables.tvars.append(tvar)
+                Data.plottables.steps_snapshot.append(step)
 
         time_last = time()
         integrators: dict[str, Integrator] = dict()
@@ -300,30 +303,34 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
             f.write(f"\n    IM : {Data.target.imag_central_value:.8e}")
             if Data.target.imag_error:
                 f.write(f" +- {Data.target.imag_error:.8e}, RSD = {Data.target.imag_rsd:.3f}")
-        
+
         for identifier, obs in Data.observables.items():
             f.write(f"\n\n{line}")
             f.write(f"{f' {identifier} Results ':{'#'}^{width}}\n")
             if obs.real_error:
                 f.write(
-                    f"    RE : {obs.real_central_value:.8e} +- {obs.real_error:.8e}\n")
-                f.write(f"       RSD = {obs.real_rsd:.3f}\n")
+                    f"    RE : {obs.real_central_value:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}\n")
             if obs.imag_error:
                 f.write(
-                    f"    IM : {obs.imag_central_value:.8e} +- {obs.imag_error:.8e}\n")
-                f.write(f"       RSD = {obs.imag_rsd:.3f}\n")
+                    f"    IM : {obs.imag_central_value:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
+            f.write(f"Relative Time-Variance: RE = {obs.real_tvar:.3e}, IM = {obs.imag_tvar:.3e}\n")
+            f.write(f"CPU-microsecond per sample: {obs.processing_times['total_time'] / obs.n_points * 1e6:.3e}\n")
             f.write(f"Number of samples: {obs.n_points}")
+
     # Plotting setup
     losses, steps_losses = np.array(Data.plottables.losses), np.array(Data.plottables.steps_losses)
-    rsds, steps_rsds = np.array(Data.plottables.rsds), np.array(Data.plottables.steps_rsds)
+    rsds, steps_snapshot = np.array(Data.plottables.rsds), np.array(Data.plottables.steps_snapshot)
+    tvars = np.array(Data.plottables.tvars)
 
-    fig, axs = plt.subplots(2, 1, sharex=True, layout="constrained")
+    fig, axs = plt.subplots(3, 1, sharex=True, layout="constrained")
     axs: list[plt.Axes]
-    axs[0].plot(steps_losses, losses)
+    axs[0].plot(steps_losses, losses, color="black")
     axs[0].set_ylabel("loss")
-    axs[1].scatter(steps_rsds, rsds)
+    axs[1].scatter(steps_snapshot, rsds, color="black")
     axs[1].set_ylabel("RSD")
-    axs[1].set_xlabel("Training steps")
+    axs[2].scatter(steps_snapshot, tvars, color="black")
+    axs[2].set_ylabel("RTVAR")
+    axs[2].set_xlabel("Training steps")
     fig.suptitle(f"MadNIS training progression for {Data.settings['run_name']}")
     plt.savefig(
         Path(directory, filename + "_training_prog.png"), dpi=300, bbox_inches="tight"
@@ -341,7 +348,7 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
     # Row labels
     axs[0, 0].set_ylabel("I(f)")
     axs[1, 0].set_ylabel("RSD")
-    axs[2, 0].set_ylabel("TRVAR")
+    axs[2, 0].set_ylabel("RTVAR")
     for i in range(2):
         axs[2, i].set_xticks(range(len(Data.observables)), list(Data.observables.keys()), rotation=45)
 
