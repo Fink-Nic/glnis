@@ -4,8 +4,9 @@ run_name = "gg_hhh_1L"
 momtrop_edge_weight = 0.555555555555
 
 [gammaloop_state]
-state_name = "/home/nfink/gammaloop/GL_OUTPUT/gg_hhh/1L/state"
-integration_state_name = "/home/nfink/gammaloop/GL_OUTPUT/gg_hhh/1L/integration_workspace"
+state_dir = "/home/nfink/gammaloop"
+state_name = "GL_OUTPUT/gg_hhh/1L/state"
+integration_state_name = "gg_hhh/1L/integration_workspace"
 
 [integrator.madnis]
 batch_size = 2000
@@ -18,10 +19,19 @@ heads = 2
 mlp_units = 128
 transformer_layers = 2
 
+[layered_parameterisation.layer_0]
+parameterisation_type = "spherical"
+conformal_scale = 1.0
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "ose"
+ose_exponent = 2.0
+
 [layered_integrand]
 integrand_type = "gammaloop"
 training_phase = "real"
-n_cores = 64
+n_cores = 32
 
 [scripts.sampler_comp]
 n_training_steps = 500

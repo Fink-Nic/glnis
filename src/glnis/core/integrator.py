@@ -269,14 +269,21 @@ class HavanaIntegrator(Integrator):
         layer_input.continuous = continuous
         layer_input.discrete = discrete
         total_wgt = np.ones((n_points), dtype=self.integrand.dtype)
-
-        if not training:
-            for i in range(self.num_discrete_dims):
+        for i in range(self.num_discrete_dims):
+            try:
                 discrete_wgt = np.take_along_axis(
                     self.integrand.discrete_prior_prob_function(
                         discrete[:, :i], i),
                     discrete[:, [i]]).ravel()
                 total_wgt /= discrete_wgt
+            except Exception as e:
+                print(f"Error computing discrete weight for dimension {i}: {e}")
+                print(f"Discrete samples for this dimension: {discrete[:, i]}")
+                raise e
+
+        if training:
+            total_wgt /= np.array(self.discrete_dims).prod()
+        else:
             sample_weights = np.array([s.weights for s in samples])
             sample_weights = sample_weights[:, -1]
             # sample_disc_weights = sample_weights[:, :-1].prod(axis=1)
@@ -285,6 +292,7 @@ class HavanaIntegrator(Integrator):
             # print(f"{sample_weights.mean():.3e} +- {sample_weights.std():.3e} (mean weight and stddev of current samples)")
             # print(f"{total_wgt.mean():.3e} +- {total_wgt.std():.3e} (mean weight and stddev of current total weights before sample weights)")
             total_wgt *= sample_weights  # * sample_disc_weights
+
         layer_input.wgt = total_wgt
         layer_input.update(self.IDENTIFIER)
 

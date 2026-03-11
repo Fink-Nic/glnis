@@ -453,8 +453,12 @@ class SphericalParameterisation(Parameterisation):
             jac *= x**2 / (1 - x)**4
 
         # Transform the loop momenta back to the LMB of the graph
-        inv_transform = self.graph_properties.channel_inv_transforms[discrete.flatten()]
-        momentum = inv_transform @ momentum.reshape(-1, self.n_loops, 3)
+        edges = self.graph_properties.lmb_array[discrete]
+        shifts = np.array(self.graph_properties.edge_momentum_shifts)
+        sample_shifts = shifts[edges].reshape(-1, 3*self.graph_properties.n_loops)
+        momentum -= sample_shifts
+        inv_transform = self.graph_properties.channel_inv_transforms[discrete.ravel()]
+        momentum = inv_transform @ momentum.reshape(-1, self.graph_properties.n_loops, 3)
 
         return jac, momentum.reshape(n_points, -1), None
 
@@ -587,8 +591,11 @@ class KaapoParameterisation(Parameterisation):
             jac *= (np.sign(peak_F)*np.abs(peak_F) + p_F**a + b**a)**2
 
         # Transform the loop momenta back to the LMB of the graph
-        inv_transform = self.graph_properties.channel_inv_transforms[discrete.flatten(
-        )]
+        edges = self.graph_properties.lmb_array[discrete]
+        shifts = np.array(self.graph_properties.edge_momentum_shifts)
+        sample_shifts = shifts[edges].reshape(-1, 3*self.graph_properties.n_loops)
+        momentum -= sample_shifts
+        inv_transform = self.graph_properties.channel_inv_transforms[discrete.ravel()]
         momentum = inv_transform @ momentum.reshape(-1, n_loops, 3)
 
         return jac, momentum.reshape(n_points, -1), None
@@ -609,6 +616,7 @@ class RKaapoParameterisation(Parameterisation):
                  vary_a: bool = False,
                  a_min: float = 0.2,
                  **kwargs):
+        super().__init__(**kwargs)
         self.mu = mu
         if not type(self.mu) == list:
             self.mu: list[float] = self.graph_properties.n_edges*[self.mu]
@@ -617,7 +625,6 @@ class RKaapoParameterisation(Parameterisation):
         self.b = b
         self.vary_a = vary_a
         self.a_min = a_min
-        super().__init__(**kwargs)
 
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray
                             ) -> ParamOutput:
@@ -686,8 +693,11 @@ class RKaapoParameterisation(Parameterisation):
             jac *= (np.sign(peak_F)*np.abs(peak_F) + p_F**a + b**a)**2
 
         # Transform the loop momenta back to the LMB of the graph
-        inv_transform = self.graph_properties.channel_inv_transforms[discrete.flatten(
-        )]
+        edges = self.graph_properties.lmb_array[discrete]
+        shifts = np.array(self.graph_properties.edge_momentum_shifts)
+        sample_shifts = shifts[edges].reshape(-1, 3*self.graph_properties.n_loops)
+        momentum -= sample_shifts
+        inv_transform = self.graph_properties.channel_inv_transforms[discrete.ravel()]
         momentum = inv_transform @ momentum.reshape(-1, n_loops, 3)
 
         return jac, momentum.reshape(n_points, -1), None
@@ -724,8 +734,6 @@ class MCLayer(Parameterisation, ABC):
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray) -> ParamOutput:
         jac, momentum, _ = self.param._layer_parameterise(
             continuous, discrete)
-        # Get the edge indices of the channel LMBs
-        edges = self.lmbs[discrete]
         # Perform the inverse momentum shift
         sample_shifts = self.shifts[edges].reshape(-1, 3*self.n_loops)
         momentum -= sample_shifts

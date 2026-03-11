@@ -109,6 +109,7 @@ process_id = 0
 integrand_name = "default"
 momentum_space = true
 sample_orientations = false
+use_arb_prec = false
 
 [integrand.test]
 sigma = 10.0

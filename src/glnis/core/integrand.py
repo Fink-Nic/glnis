@@ -128,7 +128,8 @@ class GammaLoopIntegrand(Integrand):
                  process_id: int = 0,
                  integrand_name: str = "default",
                  momentum_space: bool = True,
-                 sample_orientations=False,
+                 sample_orientations: bool = False,
+                 use_arb_prec: bool = False,
                  **kwargs):
         try:
             from gammaloop import GammaLoopAPI
@@ -143,6 +144,7 @@ class GammaLoopIntegrand(Integrand):
         self.momentum_space = momentum_space
         if sample_orientations:
             kwargs['discrete_dims'] = [self.graph_properties.n_orientations]
+        self.use_arb_prec = use_arb_prec
         super().__init__(**kwargs)
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
@@ -154,7 +156,7 @@ class GammaLoopIntegrand(Integrand):
             points=continuous.astype(np.float64), momentum_space=self.momentum_space,
             process_id=self.process_id,
             integrand_name=self.integrand_name,
-            use_arb_prec=self.use_f128,  discrete_dims=discrete_dims
+            use_arb_prec=self.use_arb_prec,  discrete_dims=discrete_dims
         )
         return res.reshape(-1, 1)
 

@@ -271,7 +271,7 @@ class SettingsParser:
         here = Path(__file__).resolve()
         PROJECT_ROOT = here.parents[3]
         if not self.settings_path.is_absolute():
-            settings_file = PROJECT_ROOT.joinpath(settings_file)
+            self.settings_path = PROJECT_ROOT.joinpath(settings_file)
         if not self.settings_path.exists():
             raise FileExistsError(
                 f"""Settings file at {settings_file} does not exist.
@@ -361,6 +361,8 @@ class SettingsParser:
         orientations = []
         if self._graph_from_state:
             integrand_name = self.settings['gammaloop_state']['integrand_name']
+            if integrand_name == "default":
+                integrand_name = list(self.gammaloop_state.list_outputs()[process_id].keys())[0]
             model_as_str = self.gammaloop_state.get_model()
             Model = ModelParser(model_as_str, from_string=True)
             dot_as_str_list = self.gammaloop_state.get_dot_files()
