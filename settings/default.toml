@@ -21,7 +21,7 @@ model_name = "model.json"
 # Name of the runcard file inside the state_name folder
 runcard_name = "run.toml"
 # Name of the integration results file inside the integration_state_name folder
-integration_result_file = "integration_results.txt"
+integration_result_file = "result.txt"
 process_id = 0
 integrand_name = "default"
 

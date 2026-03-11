@@ -332,6 +332,8 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
     axs[2].scatter(steps_snapshot, tvars, color="black")
     axs[2].set_ylabel("RTVAR")
     axs[2].set_xlabel("Training steps")
+    for ax in axs:
+        ax.set_yscale("log")
     fig.suptitle(f"MadNIS training progression for {Data.settings['run_name']}")
     plt.savefig(
         Path(directory, filename + "_training_prog.png"), dpi=300, bbox_inches="tight"
@@ -358,14 +360,16 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
     axs[0, 0].hlines(Data.target.real_central_value, 0, len(Data.observables)-1, color='red')
     axs[0, 1].hlines(Data.target.imag_central_value, 0, len(Data.observables)-1, color='red')
     for i, obs in enumerate(Data.observables.values()):
-        axs[0, 0].errorbar(i, obs.real_central_value, yerr=obs.real_error,
-                           marker='o', markersize=5, capsize=5, color='black')
-        axs[1, 0].scatter(i, obs.real_rsd, color='black')
-        axs[2, 0].scatter(i, obs.real_tvar, color='black')
-        axs[0, 1].errorbar(i, obs.imag_central_value, yerr=obs.imag_error,
-                           marker='o', markersize=5, capsize=5, color='black')
-        axs[1, 1].scatter(i, obs.imag_rsd, color='black')
-        axs[2, 1].scatter(i, obs.imag_tvar, color='black')
+        if obs.real_error > 0:
+            axs[0, 0].errorbar(i, obs.real_central_value, yerr=obs.real_error,
+                               marker='o', markersize=5, capsize=5, color='black')
+            axs[1, 0].scatter(i, obs.real_rsd, color='black')
+            axs[2, 0].scatter(i, obs.real_tvar, color='black')
+        if obs.imag_error > 0:
+            axs[0, 1].errorbar(i, obs.imag_central_value, yerr=obs.imag_error,
+                               marker='o', markersize=5, capsize=5, color='black')
+            axs[1, 1].scatter(i, obs.imag_rsd, color='black')
+            axs[2, 1].scatter(i, obs.imag_tvar, color='black')
     fig.suptitle(f"Integration results for {Data.settings['run_name']}")
     fig.savefig(
         Path(directory, filename + "_integration_result.png"), dpi=300, bbox_inches="tight"

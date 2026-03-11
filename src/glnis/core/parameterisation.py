@@ -528,15 +528,15 @@ class KaapoParameterisation(Parameterisation):
                  vary_a: bool = False,
                  a_min: float = 0.2,
                  **kwargs):
-        self.mu = mu
-        if not type(self.mu) == list:
-            self.mu: list[float] = self.graph_properties.n_edges*[self.mu]
-
         self.a = a
         self.b = b
         self.vary_a = vary_a
         self.a_min = a_min
+
         super().__init__(**kwargs)
+        self.mu = mu
+        if not type(self.mu) == list:
+            self.mu: list[float] = self.graph_properties.n_edges*[self.mu]
 
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray
                             ) -> ParamOutput:
@@ -616,15 +616,15 @@ class RKaapoParameterisation(Parameterisation):
                  vary_a: bool = False,
                  a_min: float = 0.2,
                  **kwargs):
-        super().__init__(**kwargs)
-        self.mu = mu
-        if not type(self.mu) == list:
-            self.mu: list[float] = self.graph_properties.n_edges*[self.mu]
-
         self.a = a
         self.b = b
         self.vary_a = vary_a
         self.a_min = a_min
+
+        super().__init__(**kwargs)
+        self.mu = mu
+        if not type(self.mu) == list:
+            self.mu: list[float] = self.graph_properties.n_edges*[self.mu]
 
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray
                             ) -> ParamOutput:
@@ -734,10 +734,6 @@ class MCLayer(Parameterisation, ABC):
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray) -> ParamOutput:
         jac, momentum, _ = self.param._layer_parameterise(
             continuous, discrete)
-        # Perform the inverse momentum shift
-        sample_shifts = self.shifts[edges].reshape(-1, 3*self.n_loops)
-        momentum -= sample_shifts
-        # The MC weight factor is calculated in EMR (edge momentum representation)
         jac *= self._mc_weight(momentum, discrete).reshape(-1, 1)
 
         return jac, momentum, None
