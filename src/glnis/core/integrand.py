@@ -135,7 +135,7 @@ class GammaLoopIntegrand(Integrand):
         except:
             raise ImportError(
                 "CRITICAL FAILURE: Failed to import gammaloop module.")
-        self.gammaloop_state = GammaLoopAPI(gammaloop_state_path, log_level="off")
+        self.gammaloop_state = GammaLoopAPI(gammaloop_state_path)
         self.process_id = process_id
         if integrand_name == "default":
             integrand_name = list(self.gammaloop_state.list_outputs()[process_id].keys())[0]
