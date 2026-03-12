@@ -266,7 +266,7 @@ class ParameterisedIntegrand:
 
         self.param = LayeredParameterisation(
             self.graph_properties, self.param_kwargs)
-        self.integrand = Integrand.get_integrand_instance(self.integrand_kwargs)
+        self.integrand = Integrand.get_integrand_instance(graph_properties, self.integrand_kwargs)
         self.dtype = self.integrand.dtype
         self.continuous_dim = self._get_continuous_dims()
         self.discrete_dims = self._get_discrete_dims()

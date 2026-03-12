@@ -94,3 +94,8 @@ n_log = 1
 n_plot_rsd = 2
 # Training steps between plotting the loss
 n_plot_loss = 1
+
+[scripts.slice_plots]
+n_training_steps = 10
+n_samples_1d = 1000
+n_samples_2d = 100

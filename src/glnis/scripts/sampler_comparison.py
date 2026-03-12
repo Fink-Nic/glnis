@@ -76,6 +76,10 @@ def run_sampler_comp(
     subfolder: str = "sampler_comp",
 ) -> None:
 
+    if only_plot or Path(file).suffix == ".pkl":
+        plot_sampler_comp(file, comment)
+        quit()
+
     import math
     import os
     import signal
@@ -92,10 +96,6 @@ def run_sampler_comp(
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
-        if only_plot or Path(file).suffix == ".pkl":
-            plot_sampler_comp(file, comment)
-            quit()
-
         shell_print(f"Working on settings {file}")
         Settings = SettingsParser(file)
 
@@ -246,7 +246,8 @@ def run_sampler_comp(
         if no_output:
             quit()
 
-        filename = Data.settings['run_name'] + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
+        run_name = Data.settings['run_name'].replace(' ', '_')
+        filename = run_name + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
         file = Path(directory, filename)
         with file.open("wb") as f:
             pickle.dump(Data, f)
