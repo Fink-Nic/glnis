@@ -208,6 +208,7 @@ class DotParser:
         edge_momentum_shifts = []
         edge_src_dst_vertices = []
         edge_masses = []
+        edge_external_sigs = []
 
         for edge in INT_EDGES:
             # Generate the momtrop edge
@@ -225,18 +226,19 @@ class DotParser:
                        for lmb_id in range(n_loops)]
             graph_signature.append(lmb_sig)
 
-            momentum_shift_sig = [float(e.coefficient(P(ext_id)).to_sympy())
-                                  for ext_id in range(n_ext_mom)]
+            edge_external_sig = [float(e.coefficient(P(ext_id)).to_sympy())
+                                 for ext_id in range(n_ext_mom)]
             momentum_shift = [0. for _ in range(3)]
-            for coeff, ext_mom in zip(momentum_shift_sig, ext_momenta):
+            for coeff, ext_mom in zip(edge_external_sig, ext_momenta):
                 for i in range(3):
                     momentum_shift[i] += coeff*ext_mom[i+1]
 
             if self.verbose:
-                print(f"{momentum_shift_sig=}")
+                print(f"{edge_external_sig=}")
                 print(f"{momentum_shift=}")
 
             edge_momentum_shifts.append(momentum_shift)
+            edge_external_sigs.append(edge_external_sig)
 
         if self.verbose:
             print("-------------- PARSED MOMTROP SAMPLER ---------------")
@@ -245,6 +247,7 @@ class DotParser:
             print(f"{graph_signature=}")
             print(f"{graph_externals=}")
             print(f"{edge_momentum_shifts=}")
+            print(f"{edge_external_sigs=}")
             print(f"------------------ INTERNAL EDGES ------------------")
             for edge in INT_EDGES:
                 print(edge.to_string())
@@ -261,6 +264,8 @@ class DotParser:
             edge_momentum_shifts=edge_momentum_shifts,
             graph_external_vertices=graph_externals,
             graph_signature=graph_signature,
+            edge_external_sigs=edge_external_sigs,
+            external_momenta=ext_momenta,
         )
 
 

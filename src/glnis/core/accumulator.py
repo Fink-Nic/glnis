@@ -23,6 +23,8 @@ class GraphProperties:
     momtrop_edge_weight: List[float] = field(default_factory=list)
     lmb_array: NDArray = field(default_factory=list)
     orientations: List[Dict[str, int]] = field(default_factory=list)
+    edge_external_sigs: List[List[float]] = field(default_factory=list)
+    external_momenta: List[List[float]] = field(default_factory=list)
 
     def __post_init__(self: 'GraphProperties'):
         TOLERANCE = 1E-10
