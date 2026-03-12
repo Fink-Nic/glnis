@@ -6,7 +6,6 @@ momtrop_edge_weight = 0.555555555555
 [gammaloop_state]
 state_name = "qqx_aaa_pentabox_output"
 integration_state_name = "qqx_aaa_pentabox_integration"
-process_name = "physical_1L_6photons"
 
 [integrator.madnis]
 batch_size = 10000

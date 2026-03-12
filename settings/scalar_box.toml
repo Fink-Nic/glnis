@@ -3,7 +3,6 @@ run_name = "scalar_box"
 [gammaloop_state]
 state_name = "scalar_box_output"
 integration_state_name = "scalar_box_integration"
-process_name = "scalar_box"
 
 [layered_integrator]
 integrator_type = "madnis"

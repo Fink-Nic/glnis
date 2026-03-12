@@ -23,6 +23,7 @@ class Integrand(ABC):
     IDENTIFIER = "ABCIntegrand"
 
     def __init__(self,
+                 graph_properties: GraphProperties,
                  continuous_dim: int = 0,
                  discrete_dims: List[int] = [],
                  use_f128: bool = False,
@@ -30,6 +31,7 @@ class Integrand(ABC):
                  target_imag: float | None = None,
                  training_phase: Literal['real', 'imag', 'abs'] = 'real',
                  **uncaught_kwargs):
+        self.graph_properties = graph_properties
         self.continuous_dim = continuous_dim
         self.discrete_dims = discrete_dims
         self.use_f128 = use_f128
@@ -71,8 +73,9 @@ class Integrand(ABC):
         return self.evaluate_batch(layer_input)
 
     @staticmethod
-    def get_integrand_instance(integrand_kwargs: Dict[str, Any]) -> 'Integrand':
+    def get_integrand_instance(graph_properties: GraphProperties, integrand_kwargs: Dict[str, Any]) -> 'Integrand':
         integrand_kwargs = deepcopy(integrand_kwargs)
+        integrand_kwargs.update(dict(graph_properties=graph_properties))
         integrand_type = integrand_kwargs.pop('integrand_type')
         match integrand_type:
             case 'test':
@@ -136,6 +139,7 @@ class GammaLoopIntegrand(Integrand):
         except:
             raise ImportError(
                 "CRITICAL FAILURE: Failed to import gammaloop module.")
+        super().__init__(**kwargs)
         self.gammaloop_state = GammaLoopAPI(gammaloop_state_path)
         self.process_id = process_id
         if integrand_name == "default":
@@ -143,9 +147,8 @@ class GammaLoopIntegrand(Integrand):
         self.integrand_name = integrand_name
         self.momentum_space = momentum_space
         if sample_orientations:
-            kwargs['discrete_dims'] = [self.graph_properties.n_orientations]
+            self.discrete_dims = [self.graph_properties.n_orientations]
         self.use_arb_prec = use_arb_prec
-        super().__init__(**kwargs)
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         discrete_dims = np.zeros(

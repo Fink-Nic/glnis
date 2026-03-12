@@ -6,7 +6,6 @@ momtrop_edge_weight = 0.83333333333
 [gammaloop_state]
 state_name = "scalar_3_point_1_loop_output"
 integration_state_name = "scalar_3_point_1_loop_integration"
-process_name = "scalar_3_point_1_loop"
 
 [integrator.madnis]
 batch_size = 2048
