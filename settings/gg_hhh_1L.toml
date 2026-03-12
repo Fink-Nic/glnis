@@ -21,7 +21,7 @@ transformer_layers = 2
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "spherical"
-conformal_scale = 1.0
+conformal_scale = 1000.0
 
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"
@@ -30,8 +30,8 @@ ose_exponent = 1.0
 
 [layered_integrand]
 integrand_type = "gammaloop"
-training_phase = "real"
-n_cores = 128
+training_phase = "imag"
+n_cores = 64
 
 [scripts.sampler_comp]
 n_training_steps = 500

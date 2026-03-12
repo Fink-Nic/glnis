@@ -6,11 +6,13 @@ from datetime import datetime
 from pathlib import Path
 
 from glnis.utils.helpers import shell_print, Colour
+from glnis.core.accumulator import GraphProperties
 
 
 class SamplerCompData:
     def __init__(self,
                  integrator_identifiers: List[str],
+                 graph_properties: GraphProperties,
                  settings: Dict[str, Any] = dict(),
                  madnis_kwargs: Dict[str, Any] = dict(),
                  integrand_kwargs: Dict[str, Any] = dict(),
@@ -18,6 +20,7 @@ class SamplerCompData:
         self.observables: Dict[str, SamplerCompData.Observables] = dict()
         for name in integrator_identifiers:
             self.observables[name] = self.Observables()
+        self.graph_properties = graph_properties
         self.settings: Dict[str, Any] = settings
         self.madnis_kwargs: Dict[str, Any] = madnis_kwargs
         self.integrand_kwargs: Dict[str, Any] = integrand_kwargs
@@ -173,6 +176,7 @@ def run_sampler_comp(
 
         # Will hold integration results to write to text file and plot
         Data = SamplerCompData(integrator_identifiers=list(integrators.keys()),
+                               graph_properties=integrand.graph_properties,
                                settings=Settings.settings,
                                madnis_kwargs=madnis_kwargs,
                                integrand_kwargs=integrand_kwargs,
@@ -281,6 +285,8 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
     line = width * sep + "\n"
     directory = file.parent
     filename = file.stem
+
+    print(Data.graph_properties)
 
     with Path(directory, filename + "_summary.txt").open("w") as f:
         f.write(f"Comment: {comment} \n")
