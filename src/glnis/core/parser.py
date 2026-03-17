@@ -7,7 +7,7 @@ import momtrop
 import pydot
 import json
 import tomllib
-from glnis.utils.helpers import overwrite_settings
+from glnis.utils.helpers import overwrite_settings, verify_path
 from glnis.core.accumulator import GraphProperties
 
 
@@ -17,10 +17,7 @@ class ModelParser:
             self.model_path = "Loaded from existing model string."
             self.model = json.loads(model_path)
         else:
-            self.model_path = Path(model_path)
-            if not self.model_path.exists():
-                raise FileExistsError(
-                    f"Model file at {self.model_path} does not exist.")
+            self.model_path = verify_path(model_path, suffix=".json")
             with self.model_path.open("r") as f:
                 self.model = json.load(f)
 
@@ -82,6 +79,7 @@ class DotParser:
         if dot_from_string:
             self.graph_file = pydot.graph_from_dot_data(dot_file)
         else:
+            dot_file = verify_path(dot_file, suffix=".dot")
             self.graph_file = pydot.graph_from_dot_file(str(dot_file))
         if type(model) == ModelParser:
             self.Model = model
@@ -146,7 +144,6 @@ class DotParser:
 
         # External momenta
         n_ext_mom = len(ext_momenta)
-        ext_sigs = self.get_external_signature(process_id)
 
         # Dot graph
         graph = self.get_dot_graph(process_id)
@@ -274,30 +271,27 @@ class SettingsParser:
                  verbose: bool = False,):
         self.settings_path = Path(settings_file)
         here = Path(__file__).resolve()
-        PROJECT_ROOT = here.parents[3]
-        if not self.settings_path.is_absolute():
-            self.settings_path = PROJECT_ROOT.joinpath(settings_file)
-        if not self.settings_path.exists():
-            raise FileExistsError(
-                f"""Settings file at {settings_file} does not exist.
-                The path to the settings file must be specified either relative 
-                to the glnis directory or be given as an absolute path."""
-            )
         self.verbose = verbose
-        self.settings_default_path = PROJECT_ROOT.joinpath(
-            Path("settings", "default.toml"))
+        settings_default_path = verify_path("settings/default.toml")
+        self.settings_path = verify_path(self.settings_path, suffix=".toml")
         with self.settings_path.open("rb") as f:
             settings = tomllib.load(f)
-        with self.settings_default_path.open("rb") as f:
+        with settings_default_path.open("rb") as f:
             default_settings = tomllib.load(f)
+
+        for template in settings.get("templates", []):
+            template = verify_path(template, suffix=".toml")
+            with template.open("rb") as f:
+                template = tomllib.load(f)
+            default_settings = overwrite_settings(
+                default_settings, template)
         self.settings: Dict[str, Any] = overwrite_settings(
             default_settings, settings, always_overwrite=['layered_parameterisation'])
+
         self.gammaloop_state_path = Path(self.settings['gammaloop_state']['state_dir'],
                                          self.settings['gammaloop_state']['state_name'])
         self.settings['integrand']['gammaloop'][
             'gammaloop_state_path'] = str(self.gammaloop_state_path)
-        self.gammaloop_runcard_path = Path(self.gammaloop_state_path,
-                                           self.settings['gammaloop_state']['runcard_name'])
         self._graph_from_state = self.settings['graph']['from_state']
         if self._graph_from_state:
             from gammaloop import GammaLoopAPI
@@ -342,11 +336,8 @@ class SettingsParser:
 
     def get_integrand_kwargs(self) -> Dict[str, Any]:
         new_kwargs = self.settings['layered_integrand']
-        integrand_type = new_kwargs['integrand_type']
-        if integrand_type == 'gammaloop':
-            new_kwargs['gammaloop_state_path'] = str(self.gammaloop_state_path)
         old_kwargs = deepcopy(
-            self.settings['integrand'][integrand_type])
+            self.settings['integrand'][new_kwargs['integrand_type']])
 
         return overwrite_settings(old_kwargs, new_kwargs)
 
@@ -413,12 +404,6 @@ class SettingsParser:
         graph_properties.momtrop_edge_weight = edge_weight
 
         return graph_properties
-
-    def get_ext_momenta(self, ext_signature: List[int] = []) -> List[List[float]]:
-        if self.settings['graph']['is_vacuum']:
-            return [], -1
-        runtime_settings = self.gammaloop_state.get_integrand_settings()
-        return runtime_settings.kinematics.get_external_momenta(ext_signature)
 
     @staticmethod
     def momtrop_sampler_from_graph_properties(

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, fields
 from datetime import datetime
 from pathlib import Path
 
-from glnis.utils.helpers import shell_print, Colour
+from glnis.utils.helpers import shell_print, verify_path
 from glnis.core.accumulator import GraphProperties
 
 
@@ -27,6 +27,9 @@ class SamplerCompData:
         self.param_kwargs: Dict[str, Any] = param_kwargs
         self.plottables: SamplerCompData.Plottables = self.Plottables()
         self.target: SamplerCompData.Observables = self.Observables()
+        self.integrator_states: Dict[str, Any] = dict()
+        for name in integrator_identifiers:
+            self.integrator_states[name] = None
 
     @dataclass
     class Observables:
@@ -73,6 +76,7 @@ def run_sampler_comp(
     no_output: bool = False,
     no_plot: bool = False,
     only_plot: bool = False,
+    export_states: bool = True,
     subfolder: str = "sampler_comp",
 ) -> None:
 
@@ -84,6 +88,7 @@ def run_sampler_comp(
     import os
     import signal
     from time import time
+    from torch import save
 
     from glnis.core.integrator import (
         Integrator,
@@ -130,7 +135,7 @@ def run_sampler_comp(
                 Data.plottables.losses.append(status.loss)
                 Data.plottables.steps_losses.append(step)
             if step % n_plot_rsd == 0:
-                output = madnis_integrator.integrate(n_samples)
+                output = madnis_integrator.integrate(n_samples, progress_report=False)
                 obs = output.get_observables()
                 phase = integrand.training_phase.lower()
                 res = obs[f"{phase}_central_value"]
@@ -232,13 +237,14 @@ def run_sampler_comp(
         shell_print(f"Training MadNIS took {-time_last + (time_last := time()): .2f}s")
 
         for identifier, integrator in integrators.items():
+            if export_states:
+                Data.integrator_states[identifier] = integrator.export_state()
             shell_print(f"Integrating using {identifier}:")
             acc = integrator.integrate(n_samples_after_training)
             obs = acc.get_observables()
             for f in fields(Data.observables[identifier]):
                 setattr(Data.observables[identifier], f.name, obs.get(f.name, 0))
             Data.observables[identifier].calc_tvar()
-            print(acc.str_report())
 
         # IMPORTANT: close the worker functions, or your script will hang
         integrand.end()
@@ -250,7 +256,7 @@ def run_sampler_comp(
         filename = run_name + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
         file = Path(directory, filename)
         with file.open("wb") as f:
-            pickle.dump(Data, f)
+            save(Data, f)
 
         if no_plot:
             quit()
@@ -268,16 +274,11 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
     import matplotlib.pyplot as plt
     import numpy as np
     from numpy.typing import NDArray
+    from torch import load
 
-    file: Path = Path(file)
-    if not file.is_absolute():
-        PROJECT_ROOT = Path(__file__).parents[3]
-        file = Path(PROJECT_ROOT, file)
-    if not file.exists():
-        raise FileNotFoundError(
-            f"Unable to find pickled object at '{file}'. Path must be either absolute, or relative to the glnis root folder.")
+    file: Path = verify_path(file, suffix=".pkl")
     with file.open('rb') as f:
-        Data: SamplerCompData = pickle.load(f)
+        Data: SamplerCompData = load(f, weights_only=False)
 
     shell_print(f"Plotting data from '{file}'")
 

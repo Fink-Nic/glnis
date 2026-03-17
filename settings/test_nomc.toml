@@ -76,15 +76,19 @@ target_real = 1.0
 
 # Parameters used in the tprog subcommand
 [scripts.sampler_comp]
-n_training_steps = 5
+n_training_steps = 50
 n_samples = 1000
-nitn = 2
+nitn = 5
 # Number of samples drawn after the training to compute the final result
 n_samples_after_training = 10000
 # Training steps between callback of loss to console
 n_log = 1
 # Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
 # Will also output the result +- error and rsd to console
-n_plot_rsd = 2
+n_plot_rsd = 5
 # Training steps between plotting the loss
 n_plot_loss = 1
+
+[scripts.slice_plots]
+n_samples_1d = 1000
+n_samples_2d = 100

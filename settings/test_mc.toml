@@ -1,0 +1,11 @@
+run_name = "test_mc"
+templates = ["settings/test_nomc"]
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "spherical"
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "ose"
+ose_exponent = 0.5
+fermi_exponent = 0.5

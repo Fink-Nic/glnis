@@ -6,25 +6,35 @@ momtrop_edge_weight = 0.555555555555
 [gammaloop_state]
 state_name = "threshold_1L_6photons_output"
 integration_state_name = "threshold_1L_6photons_integration"
+integration_result_file = "integration_results.txt"
 
 [integrator.madnis]
-batch_size = 65536
+batch_size = 2000
 discrete_model = "transformer"
-learning_rate = 1e-3
 
 [integrator.madnis.transformer]
 embedding_dim = 128
 feedforward_dim = 256
-heads = 8
+heads = 2
 mlp_units = 128
 transformer_layers = 2
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "spherical"
+conformal_scale = 1000.0
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "ose"
+ose_exponent = 1.0
 
 [layered_integrand]
 integrand_type = "gammaloop"
 training_phase = "real"
 n_cores = 64
+sample_orientations = false
 
 [scripts.sampler_comp]
 n_training_steps = 1000
-n_samples = 1000000
+n_samples = 100000
 n_samples_after_training = 1000000

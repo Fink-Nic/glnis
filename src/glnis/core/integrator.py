@@ -2,6 +2,7 @@
 import vegas
 import numpy as np
 import torch
+from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple, Any, List, Callable, Literal
 from numpy.typing import NDArray
@@ -12,6 +13,7 @@ import madnis.integrator as madnis_integrator
 from glnis.core.accumulator import Accumulator, TrainingData, GraphProperties, LayerData
 from glnis.core.integrand import MPIntegrand
 from glnis.core.parser import SettingsParser
+from glnis.utils.helpers import shell_print
 
 
 class Integrator(ABC):
@@ -31,16 +33,42 @@ class Integrator(ABC):
         """Returns a LayerData object containing the samples to be fed into the integrand."""
         pass
 
-    def integrate(self, n_points: int, batch_size: int = 10_000_000) -> Accumulator:
-        n_eval = min(n_points, batch_size)
-        layer_input = self.get_samples(n_eval)
-        accumulator = self.integrand.eval_integrand(layer_input)
-        while n_eval < n_points:
-            print("| > Evaluated {n_eval} / {n_points} samples using {self.IDENTIFIER}...")
-            n = min(batch_size, n_points - n_eval)
+    @abstractmethod
+    def export_state(self) -> Any:
+        """Exports the state of the integrator, e.g. for checkpointing or analysis."""
+        pass
+
+    @abstractmethod
+    def import_state(self, state: Any):
+        """
+        Imports the state of the integrator from a previous export.
+        Upon importing, the integrand must be set up to match the imported state.
+        """
+        pass
+
+    def integrate(self,
+                  n_samples: int,
+                  n_start: int = 1_000_000,
+                  n_increase: int = 0,
+                  max_batch: int = 10_000_000,
+                  progress_report: bool = True) -> Accumulator:
+        n_eval = 0
+        n_curr_iter = n_start
+        accumulator = None
+        while n_eval < n_samples:
+            n = min(max_batch, n_samples - n_eval, n_curr_iter)
             layer_input = self.get_samples(n)
-            accumulator.combine_with(self.integrand.eval_integrand(layer_input))
+            if accumulator is None:
+                accumulator = self.integrand.eval_integrand(layer_input)
+            else:
+                accumulator.combine_with(self.integrand.eval_integrand(layer_input))
             n_eval += n
+            if progress_report:
+                shell_print(f"Evaluated {n_eval} / {n_samples} samples using {self.IDENTIFIER}...")
+                print(accumulator.str_report())
+            n_curr_iter += n_increase
+
+        shell_print(f"Finished evaluating {n_eval} samples using {self.IDENTIFIER}.")
 
         return accumulator
 
@@ -139,18 +167,26 @@ class NaiveIntegrator(Integrator):
                  seed=None,
                  **kwargs,):
         super().__init__(integrand=integrand, **kwargs)
-        self.rng = np.random.default_rng(seed)
+        self.seed = seed
+        self.rng = np.random.default_rng(self.seed)
 
     def get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)
-        layer_input.continuous = np.random.random_sample(
-            (n_points, self.continuous_dim))
+        layer_input.continuous = self.rng.uniform(
+            size=(n_points, self.continuous_dim))
         discrete = self.rng.uniform(
             size=(n_points, len(self.discrete_dims)))
         layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
         layer_input.update(self.IDENTIFIER)
 
         return layer_input
+
+    def export_state(self) -> Any:
+        return self.seed
+
+    def import_state(self, state: Any):
+        self.seed = state
+        self.rng = np.random.default_rng(self.seed)
 
 
 class VegasIntegrator(Integrator):
@@ -177,8 +213,7 @@ class VegasIntegrator(Integrator):
         layer_input.continuous = samples[:, :self.continuous_dim]
         layer_input.discrete, disc_wgt = self._cont_to_discr(
             samples[:, self.continuous_dim:])
-        total_wgt = disc_wgt * sampling_wgt * n_points
-        layer_input.wgt *= total_wgt
+        layer_input.wgt *= disc_wgt * sampling_wgt * n_points
         layer_input.update(self.IDENTIFIER)
 
         return layer_input
@@ -194,6 +229,15 @@ class VegasIntegrator(Integrator):
             layer_input, 'training').modules[-1]
 
         return accumulated_result.training_result[0]
+
+    def export_state(self) -> Any:
+        return self.vegas.map.extract_grid()
+
+    def import_state(self, state: Any):
+        state_map = vegas.AdaptiveMap(state)
+        if state_map.dim != self.input_dim:
+            raise ValueError("Imported Vegas state does not match input dimension of integrand.")
+        self.vegas.map = state_map
 
 
 class HavanaIntegrator(Integrator):
@@ -301,6 +345,12 @@ class HavanaIntegrator(Integrator):
 
         return layer_input
 
+    def export_state(self) -> Any:
+        return self.havana.export_grid(export_samples=False)
+
+    def import_state(self, state: Any):
+        self.havana.import_grid(state)
+
 
 class MadnisIntegrator(Integrator):
     IDENTIFIER = 'madnis sampler'
@@ -392,14 +442,6 @@ class MadnisIntegrator(Integrator):
             flow_kwargs=flow_kwargs,
         )
         self.callback = self._default_callback if callback is None else callback
-
-    def old_integrate(self, n_points: int) -> madnis_integrator.IntegrationMetrics:
-        return self.madnis.integration_metrics(n_points)
-
-    def integrate(self, n_points: int) -> Accumulator:
-        layer_input = self.get_samples(n_points)
-
-        return self.integrand.eval_integrand(layer_input)
 
     def train(self, nitn: int = 10, _=None):
         if self.use_scheduler:
@@ -561,3 +603,42 @@ class MadnisIntegrator(Integrator):
         log_f = torch.log(clipped_weight * q_sample +
                           madnis_integrator.losses.dtype_epsilon(f_true))
         return torch.mean(clipped_weight * (log_f - log_q))
+
+    def export_state(self) -> Any:
+        flow_state = self.madnis.flow.state_dict()
+        cwnet_state = self.madnis.cwnet.state_dict() if self.madnis.cwnet is not None else None
+        optimizer_state = self.madnis.optimizer.state_dict() if self.madnis.optimizer is not None else None
+        scheduler_state = self.madnis.scheduler.state_dict() if self.madnis.scheduler is not None else None
+        return self.MadnisState(
+            flow_state=flow_state,
+            cwnet_state=cwnet_state,
+            optimizer_state=optimizer_state,
+            scheduler_state=scheduler_state,
+        )
+
+    def import_state(self, state: Any):
+        if not isinstance(state, self.MadnisState):
+            raise ValueError("Invalid state type for MadnisIntegrator.")
+        self.madnis.flow.load_state_dict(state.flow_state)
+        if state.cwnet_state is not None:
+            if self.madnis.cwnet is None:
+                print("WARNING: Cannot load CWNet state: Madnis integrator was not initialized with a CWNet.")
+            else:
+                self.madnis.cwnet.load_state_dict(state.cwnet_state)
+        if state.optimizer_state is not None:
+            if self.madnis.optimizer is None:
+                print("WARNING: Cannot load optimizer state: Madnis integrator was not initialized with an optimizer.")
+            else:
+                self.madnis.optimizer.load_state_dict(state.optimizer_state)
+        if state.scheduler_state is not None:
+            if self.madnis.scheduler is None:
+                print("WARNING: Cannot load scheduler state: Madnis integrator was not initialized with a scheduler.")
+            else:
+                self.madnis.scheduler.load_state_dict(state.scheduler_state)
+
+    @dataclass
+    class MadnisState:
+        flow_state: Dict[str, Any]
+        cwnet_state: Dict[str, Any] | None
+        optimizer_state: Dict[str, Any] | None
+        scheduler_state: Dict[str, Any] | None

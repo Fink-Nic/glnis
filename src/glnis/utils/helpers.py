@@ -2,6 +2,7 @@
 import math
 from enum import StrEnum
 from typing import Dict, Sequence, List, Any, Iterable
+from pathlib import Path
 
 
 class Colour(StrEnum):
@@ -120,3 +121,28 @@ def overwrite_settings(orig_dict: Dict[str, Any], new_dict: Dict[str, Any],
 def shell_print(*lines: str, prefix="| > "):
     for line in lines:
         print(prefix, line)
+
+
+def verify_path(path: str, suffix: str = None, _levels_to_root: int = 3) -> Path:
+    """
+    Verify that the path is valid and exists. If the path is relative, it will be converted to an 
+    absolute path based on the current working directory and the levels_to_root.
+
+    Args:
+        path (str): The path to verify.
+        suffix (str): The suffix to force onto the file, if it doesn't already have it.
+        _levels_to_root (int): The number of levels to go up from the directory of the helpers file to reach the root of the project. 
+        Default is 3. 
+    Returns:
+        Path: The verified and converted path.
+    """
+    path: Path = Path(path)
+    if not path.suffix and suffix is not None:
+        path = path.with_suffix(suffix)
+    if not path.is_absolute():
+        PROJECT_ROOT = Path(__file__).parents[_levels_to_root]
+        path = Path(PROJECT_ROOT, path)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"File at '{path}' does not exist. Path must be either absolute, or relative to the glnis root folder.")
+    return path
