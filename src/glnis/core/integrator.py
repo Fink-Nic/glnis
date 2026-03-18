@@ -2,6 +2,7 @@
 import vegas
 import numpy as np
 import torch
+from copy import deepcopy
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple, Any, List, Callable, Literal
@@ -21,12 +22,15 @@ class Integrator(ABC):
 
     def __init__(self,
                  integrand: MPIntegrand,
+                 seed: int | None = 1337,
                  **uncaught_kwargs):
         self.integrand = integrand
         self.continuous_dim = integrand.continuous_dim
         self.discrete_dims = integrand.discrete_dims
         self.num_discrete_dims = len(integrand.discrete_dims)
         self.input_dim = self.continuous_dim + self.num_discrete_dims
+        self.dtype = integrand.dtype
+        self.seed = seed
 
     @abstractmethod
     def get_samples(self, n_points: int) -> LayerData:
@@ -104,7 +108,7 @@ class Integrator(ABC):
             n_mom=3*self.integrand.graph_properties.n_loops,
             n_cont=self.continuous_dim,
             n_disc=self.num_discrete_dims,
-            dtype=self.integrand.dtype,
+            dtype=self.dtype,
         )
 
     @staticmethod
@@ -164,16 +168,13 @@ class NaiveIntegrator(Integrator):
 
     def __init__(self,
                  integrand: MPIntegrand,
-                 seed=None,
                  **kwargs,):
         super().__init__(integrand=integrand, **kwargs)
-        self.seed = seed
         self.rng = np.random.default_rng(self.seed)
 
     def get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)
-        layer_input.continuous = self.rng.uniform(
-            size=(n_points, self.continuous_dim))
+        layer_input.continuous = self.rng.random((n_points, self.continuous_dim))
         discrete = self.rng.uniform(
             size=(n_points, len(self.discrete_dims)))
         layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
@@ -181,12 +182,17 @@ class NaiveIntegrator(Integrator):
 
         return layer_input
 
-    def export_state(self) -> Any:
-        return self.seed
+    def export_state(self) -> 'NaiveIntegrator.NaiveState':
+        return NaiveIntegrator.NaiveState(rng=deepcopy(self.rng))
 
-    def import_state(self, state: Any):
-        self.seed = state
-        self.rng = np.random.default_rng(self.seed)
+    def import_state(self, state: 'NaiveIntegrator.NaiveState'):
+        if not isinstance(state, NaiveIntegrator.NaiveState):
+            raise ValueError("State for NaiveIntegrator must be of type NaiveState.")
+        self.rng = np.random.default_rng(deepcopy(state.rng))
+
+    @dataclass
+    class NaiveState:
+        rng: np.random._generator.Generator
 
 
 class VegasIntegrator(Integrator):
@@ -197,7 +203,10 @@ class VegasIntegrator(Integrator):
                  vegas_init_kwargs: Dict[str, Any] = dict(),
                  **kwargs):
         super().__init__(integrand=integrand, **kwargs)
-        self.vegas = vegas.Integrator(self.input_dim*[[0, 1],], **vegas_init_kwargs)
+        self.rng = np.random.default_rng(self.seed)
+        self.vegas_init_kwargs = vegas_init_kwargs
+        self.vegas = vegas.Integrator(self.input_dim*[[0, 1],], **self.vegas_init_kwargs)
+        self.vegas.ran_array_generator = self.rng.random
 
     def train(self, nitn: int = 10, batch_size: int = 10000, **vegas_kwargs) -> vegas._vegas.RAvg:
         return self.vegas(self._vegas_wrapper, nitn=nitn, neval=batch_size, **vegas_kwargs)
@@ -230,14 +239,23 @@ class VegasIntegrator(Integrator):
 
         return accumulated_result.training_result[0]
 
-    def export_state(self) -> Any:
-        return self.vegas.map.extract_grid()
+    def export_state(self) -> 'VegasIntegrator.VegasState':
+        return VegasIntegrator.VegasState(integrator=deepcopy(self.vegas),
+                                          rng=deepcopy(self.rng))
 
-    def import_state(self, state: Any):
-        state_map = vegas.AdaptiveMap(state)
-        if state_map.dim != self.input_dim:
+    def import_state(self, state: 'VegasIntegrator.VegasState'):
+        if not isinstance(state, VegasIntegrator.VegasState):
+            raise ValueError("State for VegasIntegrator must be of type VegasState.")
+        self.rng = deepcopy(state.rng)
+        self.vegas = state.integrator
+        if self.vegas.map.dim != self.input_dim:
             raise ValueError("Imported Vegas state does not match input dimension of integrand.")
-        self.vegas.map = state_map
+        self.vegas.ran_array_generator = self.rng.random
+
+    @dataclass
+    class VegasState:
+        integrator: vegas.Integrator
+        rng: np.random._generator.Generator
 
 
 class HavanaIntegrator(Integrator):
@@ -245,6 +263,7 @@ class HavanaIntegrator(Integrator):
 
     def __init__(self, integrand: MPIntegrand,
                  seed: int = 1337,
+                 stream_id: int = 0,
                  use_uniform: bool = False,
                  max_prob_ratio: float = 100,
                  n_continuous_bins: int = 128,
@@ -268,7 +287,8 @@ class HavanaIntegrator(Integrator):
                     self.continuous_dim, n_continuous_bins)
             )
 
-        self.rng = RandomNumberGenerator(seed, 0)
+        self.stream_id = stream_id
+        self.rng = RandomNumberGenerator(seed, stream_id)
         self.discrete_learning_rate = discrete_learning_rate
         self.continuous_learning_rate = continuous_learning_rate
 
@@ -345,11 +365,26 @@ class HavanaIntegrator(Integrator):
 
         return layer_input
 
-    def export_state(self) -> Any:
-        return self.havana.export_grid(export_samples=False)
+    def export_state(self) -> 'HavanaIntegrator.HavanaState':
+        return HavanaIntegrator.HavanaState(grid=deepcopy(self.havana.export_grid()),
+                                            seed=self.seed,
+                                            stream_id=self.stream_id,
+                                            # rng=deepcopy(self.rng),
+                                            )
 
-    def import_state(self, state: Any):
-        self.havana.import_grid(state)
+    def import_state(self, state: 'HavanaIntegrator.HavanaState'):
+        if not isinstance(state, HavanaIntegrator.HavanaState):
+            raise ValueError("State for HavanaIntegrator must be of type HavanaState.")
+        self.havana.import_grid(state.grid)
+        self.rng = RandomNumberGenerator(self.seed, self.stream_id)
+        # self.rng = state.rng
+
+    @dataclass
+    class HavanaState:
+        grid: bytes
+        seed: int
+        stream_id: int
+        # rng: RandomNumberGenerator
 
 
 class MadnisIntegrator(Integrator):
@@ -388,6 +423,7 @@ class MadnisIntegrator(Integrator):
         super().__init__(integrand, **kwargs)
         import torch
         torch.set_default_dtype(torch.float64)
+        torch.manual_seed(self.seed)
 
         self.device = torch.device('cpu')  # default
 
@@ -604,21 +640,23 @@ class MadnisIntegrator(Integrator):
                           madnis_integrator.losses.dtype_epsilon(f_true))
         return torch.mean(clipped_weight * (log_f - log_q))
 
-    def export_state(self) -> Any:
+    def export_state(self) -> 'MadnisIntegrator.MadnisState':
         flow_state = self.madnis.flow.state_dict()
         cwnet_state = self.madnis.cwnet.state_dict() if self.madnis.cwnet is not None else None
         optimizer_state = self.madnis.optimizer.state_dict() if self.madnis.optimizer is not None else None
         scheduler_state = self.madnis.scheduler.state_dict() if self.madnis.scheduler is not None else None
-        return self.MadnisState(
+        return MadnisIntegrator.MadnisState(
+            rng_state=torch.get_rng_state(),
             flow_state=flow_state,
             cwnet_state=cwnet_state,
             optimizer_state=optimizer_state,
             scheduler_state=scheduler_state,
         )
 
-    def import_state(self, state: Any):
-        if not isinstance(state, self.MadnisState):
+    def import_state(self, state: 'MadnisIntegrator.MadnisState'):
+        if not isinstance(state, MadnisIntegrator.MadnisState):
             raise ValueError("Invalid state type for MadnisIntegrator.")
+        torch.set_rng_state(state.rng_state)
         self.madnis.flow.load_state_dict(state.flow_state)
         if state.cwnet_state is not None:
             if self.madnis.cwnet is None:
@@ -631,13 +669,12 @@ class MadnisIntegrator(Integrator):
             else:
                 self.madnis.optimizer.load_state_dict(state.optimizer_state)
         if state.scheduler_state is not None:
-            if self.madnis.scheduler is None:
-                print("WARNING: Cannot load scheduler state: Madnis integrator was not initialized with a scheduler.")
-            else:
-                self.madnis.scheduler.load_state_dict(state.scheduler_state)
+            self.madnis.scheduler = self._get_scheduler(T_max=1, scheduler_type=self.scheduler_type)
+            self.madnis.scheduler.load_state_dict(state.scheduler_state)
 
     @dataclass
     class MadnisState:
+        rng_state: Tensor
         flow_state: Dict[str, Any]
         cwnet_state: Dict[str, Any] | None
         optimizer_state: Dict[str, Any] | None

@@ -37,7 +37,7 @@ class SlicePlotData:
 
 def run_slice_plots(
     settings_file: str,
-    state_file: str,
+    state_file: str = "",
     comment: str = "",
     no_output: bool = False,
     no_plot: bool = False,
@@ -46,7 +46,7 @@ def run_slice_plots(
 ) -> None:
 
     if only_plot or Path(settings_file).suffix == ".pkl":
-        plot_slices(file, comment)
+        plot_slices(settings_file, comment)
         quit()
 
     import os
@@ -66,10 +66,11 @@ def run_slice_plots(
         shell_print(f"Working on settings {settings_file}")
         Settings = SettingsParser(settings_file)
 
-        # Training parameters
-        params: Dict[str, Any] = Settings.settings["scripts"]["slice_plots"]
+        # Slice parameters
+        scripts: Dict[str, Any] = Settings.settings.get("scripts", dict())
+        params: Dict[str, Any] = scripts.get("slice_plots", dict())
         n_samples_1d = params.get("n_samples_1d", 1000)
-        n_samples_2d = params.get("n_samples_2d", 1000)
+        n_samples_2d = params.get("n_samples_2d", 100)
         n_slices_1d = params.get("n_slices_1d", 2)
         slice_dims_2d = params.get("slice_dims_2d", [[0, 1]])
         seed = params.get("seed", 42)
@@ -228,7 +229,7 @@ def plot_slices(file: str, comment: str = "") -> None:
         axs[1].set_yscale("log")
         axs[2].set_yticks([-1, 0, 1])
         axs[2].set_yticklabels([r'$\neq$', '0', '='])
-        fig.suptitle(f"1D Slices {Data.settings['run_name']}")
+        fig.suptitle(f"1D Slices #{i} for {Data.settings['run_name']}")
         plt.savefig(
             Path(directory, filename + f"_slice1d_{i}.png"), dpi=300, bbox_inches="tight"
         )
@@ -270,7 +271,7 @@ def plot_slices(file: str, comment: str = "") -> None:
         ax4: plt.Axes
         im4 = ax4.imshow(data_discrete, cmap=discrete_cmap, norm=discrete_norm,
                          origin='lower', extent=[0, 1, 0, 1])
-        # ax4.set_title("Sign match")
+        ax4.set_title("Sign match")
 
         # Add Colorbars
         fraction = 0.046  # Default fraction for colorbar size
@@ -283,9 +284,10 @@ def plot_slices(file: str, comment: str = "") -> None:
 
         # Dedicated colorbar for the discrete plot
         cbar_disc = fig.colorbar(im4, ax=ax4, fraction=fraction, pad=padding)
-        cbar_disc.set_label('Sign')
+        # cbar_disc.set_label('Sign')
         cbar_disc.set_ticks([-1, 0, 1])
         cbar_disc.set_ticklabels([r'$\neq$', '0', '='])
+        fig.suptitle(f"2D Slices #{i} for {Data.settings['run_name']}")
 
         plt.savefig(
             Path(directory, filename + f"_slice2d_{i}.png"), dpi=300, bbox_inches="tight"

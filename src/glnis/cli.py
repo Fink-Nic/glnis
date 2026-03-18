@@ -47,7 +47,7 @@ def main() -> None:
     slice_plots = subparsers.add_parser("splots")
     slice_plots.add_argument('--settings', '-s', type=str,
                              help="The settings .toml file.")
-    slice_plots.add_argument('--state', '-t', type=str,
+    slice_plots.add_argument('--state', '-t', type=str, default="no_state_file",
                              help="The file containing the madnis state data.")
     slice_plots.add_argument('--comment', '-c', type=str, default='No comment.',
                              help="Add a comment to the output summary file.")

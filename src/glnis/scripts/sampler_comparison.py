@@ -105,7 +105,8 @@ def run_sampler_comp(
         Settings = SettingsParser(file)
 
         # Training parameters
-        params = Settings.settings["scripts"]["sampler_comp"]
+        scripts: Dict[str, Any] = Settings.settings.get("scripts", dict())
+        params: Dict[str, Any] = scripts.get("sampler_comp", dict())
         n_training_steps = params.get("n_training_steps", 1000)
         n_log = params.get("n_log", 10)
         n_plot_rsd = params.get("n_plot_rsd", 100)
@@ -287,8 +288,6 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
     line = width * sep + "\n"
     directory = file.parent
     filename = file.stem
-
-    print(Data.graph_properties)
 
     with Path(directory, filename + "_summary.txt").open("w") as f:
         f.write(f"Comment: {comment} \n")
