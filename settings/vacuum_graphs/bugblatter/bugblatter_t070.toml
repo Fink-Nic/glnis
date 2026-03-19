@@ -13,15 +13,4 @@ real_error = 0.0000000179007098142485
 params = [0.46390258023886, 1.0, 13.5441913341902]
 
 [scripts.training_prog]
-n_training_steps = 2000
-n_samples = 1000
-nitn = 10
-# Number of samples drawn after the training to compute the final result
 n_samples_after_training = 290000000
-# Training steps between callback of loss to console
-n_log = 20
-# Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
-# Will also output the statistics to console
-n_plot_rsd = 100
-# Training steps between plotting the loss
-n_plot_loss = 10

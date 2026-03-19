@@ -772,6 +772,26 @@ class OSEMCLayer(MCLayer):
         # shape: (n_samples, n_channels, n_loops)
         backward = self.graph_properties.channel_inv_transforms[0]
         transforms = backward @ self.graph_properties.channel_transforms
+        if self.n_channels > 10:
+            mc_weight = np.prod(  # Multiply for each loop
+                np.sum(  # Dot product
+                    (transforms[discrete.ravel()] @ momentum.reshape(-1, self.n_loops, 3)
+                     + self.channel_shifts[discrete.ravel()])**2, axis=2
+                ) + self.channel_masses[discrete.ravel()]**2, axis=1
+            )**(-self.ose_exponent/2.)
+            norm_factor = np.zeros_like(mc_weight)
+            for ch in range(self.n_channels):
+                transform = transforms[ch]
+                shift = self.channel_shifts[ch]
+                mass = self.channel_masses[ch]
+                norm_factor += np.prod(  # Multiply for each loop
+                    np.sum(  # Dot product
+                        (transform @ momentum.reshape(-1, self.n_loops, 3) + shift)**2, axis=2
+                    ) + mass**2, axis=1
+                )**(-self.ose_exponent/2.)
+
+            return mc_weight / norm_factor
+
         edge_momentum_squared = np.sum(
             (transforms @ momentum.reshape(
                 -1, 1, self.n_loops, 3) + self.channel_shifts)**2, axis=3)
@@ -779,9 +799,9 @@ class OSEMCLayer(MCLayer):
         all_e_surface_terms = np.prod(
             edge_momentum_squared + self.channel_masses**2, axis=2)**(-self.ose_exponent/2.)
         mc_weight = np.take_along_axis(
-            all_e_surface_terms, discrete, axis=1)
+            all_e_surface_terms, discrete, axis=1).ravel()
         # Normalize and return
-        return mc_weight / np.sum(all_e_surface_terms, axis=1).reshape(-1, 1)
+        return mc_weight / np.sum(all_e_surface_terms, axis=1)
 
 
 class FermiMCLayer(MCLayer):
@@ -809,6 +829,35 @@ class FermiMCLayer(MCLayer):
         # shape: (n_samples, n_channels, n_loops)
         backward = self.graph_properties.channel_inv_transforms[0]
         transforms = backward @ self.graph_properties.channel_transforms
+        if self.n_channels > 10:
+            e_surface_terms = np.sqrt(np.sum(
+                (transforms[discrete.ravel()] @ momentum.reshape(-1, self.n_loops, 3)
+                 + self.channel_shifts[discrete.ravel()])**2, axis=2) + self.channel_masses[discrete.ravel()]**2)
+            fermi_weights = np.abs(e_surface_terms - self.channel_mu[discrete.ravel()])
+            if self.set_bosonic_edge_to_one:
+                bosonic_edge_mask = self.channel_mu[discrete.ravel()] == 0.
+                fermi_weights[bosonic_edge_mask] = 1.
+            mc_weight = np.prod(e_surface_terms, axis=1)**(-self.ose_exponent)
+            mc_weight *= np.prod(fermi_weights, axis=1)**(-self.fermi_exponent)
+
+            norm_factor = np.zeros_like(mc_weight)
+            for ch in range(self.n_channels):
+                transform = transforms[ch]
+                shift = self.channel_shifts[ch]
+                mass = self.channel_masses[ch]
+                mu = self.channel_mu[ch]
+                e_surface_terms = np.sqrt(np.sum(
+                    (transform @ momentum.reshape(-1, self.n_loops, 3) + shift)**2, axis=2) + mass**2)
+                fermi_surface_terms = np.abs(e_surface_terms - mu)
+                if self.set_bosonic_edge_to_one:
+                    bosonic_edge_mask = mu == 0.
+                    fermi_surface_terms[:, bosonic_edge_mask] = 1.
+                weight = np.prod(e_surface_terms, axis=1)**(-self.ose_exponent)
+                weight *= np.prod(fermi_surface_terms, axis=1)**(-self.fermi_exponent)
+                norm_factor += weight
+
+            return mc_weight / norm_factor
+
         edge_momentum_squared = np.sum(
             (transforms @ momentum.reshape(
                 -1, 1, self.n_loops, 3) + self.channel_shifts)**2, axis=3)
@@ -821,12 +870,12 @@ class FermiMCLayer(MCLayer):
             bosonic_edge_mask = self.channel_mu == 0.
             all_fermi_surface_terms[:, bosonic_edge_mask] = 1.
         all_fermi_surface_terms = np.abs(np.prod(
-            all_fermi_surface_terms, axis=2))**(-self.fermi_exponent/2.)
+            all_fermi_surface_terms, axis=2))**(-self.fermi_exponent)
         # Re-assigning to save at least a smidgen of memory
         all_e_surface_terms = np.prod(
-            all_e_surface_terms, axis=2)**(-self.ose_exponent/2.)
+            all_e_surface_terms, axis=2)**(-self.ose_exponent)
         all_fermi_surface_terms *= all_e_surface_terms
         mc_weight = np.take_along_axis(
-            all_fermi_surface_terms, discrete, axis=1)
+            all_fermi_surface_terms, discrete, axis=1).ravel()
         # Normalize and return
-        return mc_weight / np.sum(all_fermi_surface_terms, axis=1).reshape(-1, 1)
+        return mc_weight / np.sum(all_fermi_surface_terms, axis=1)
