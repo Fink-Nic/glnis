@@ -19,7 +19,9 @@ class SlicePlotData:
                  integrand_kwargs: Dict[str, Any] = dict(),
                  param_kwargs: Dict[str, Any] = dict(),
                  slices1d=[],
-                 slices2d=[],) -> None:
+                 slices2d=[],
+                 EPS: float = 1e-6
+                 ) -> None:
         self.graph_properties = graph_properties
         self.settings: Dict[str, Any] = settings
         self.madnis_kwargs: Dict[str, Any] = madnis_kwargs
@@ -73,6 +75,7 @@ def run_slice_plots(
         n_samples_2d = params.get("n_samples_2d", 100)
         n_slices_1d = params.get("n_slices_1d", 2)
         slice_dims_2d = params.get("slice_dims_2d", [[0, 1]])
+        EPS = params.get("EPS", 1e-6)
         seed = params.get("seed", 42)
 
         state_file: Path = verify_path(state_file)
@@ -109,11 +112,11 @@ def run_slice_plots(
                              settings=Settings.settings,
                              madnis_kwargs=madnis_kwargs,
                              integrand_kwargs=integrand_kwargs,
-                             param_kwargs=param_kwargs,)
+                             param_kwargs=param_kwargs,
+                             EPS=EPS,)
 
         madnis: MadNIS = madnis_integrator.madnis
         rng = np.random.default_rng(seed)
-        EPS = 1e-6
         for _ in range(n_slices_1d):
             # Sample a random discrete point
             if integrand.discrete_dims:
@@ -210,7 +213,7 @@ def plot_slices(file: str, comment: str = "") -> None:
 
     directory = file.parent
     filename = file.stem
-    EPS = 1e-6
+    EPS = Data.EPS
 
     for i, slice in enumerate(Data.slices1d):
         slice: SlicePlotData.Slice
