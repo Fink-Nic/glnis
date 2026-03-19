@@ -6,6 +6,7 @@ def main() -> None:
     from glnis.scripts.training_prog import run_training_prog
     from glnis.scripts.sampler_comparison import run_sampler_comp
     from glnis.scripts.slice_plots import run_slice_plots
+    from glnis.scripts.multiprocessing_efficiency import run_multiprocessing_efficiency
 
     parser = argparse.ArgumentParser(prog="glnis")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -58,6 +59,20 @@ def main() -> None:
     slice_plots.add_argument('--no_plot', action='store_true', default=False,
                              help="Enable this flag to not output the plot file.")
 
+    mp_efficiency = subparsers.add_parser("mpe")
+    mp_efficiency.add_argument('--settings', '-s', type=str,
+                               help="The settings .toml file.")
+    mp_efficiency.add_argument('--state', '-t', type=str, default="no_state_file",
+                               help="The file containing the madnis state data.")
+    mp_efficiency.add_argument('--comment', '-c', type=str, default='No comment.',
+                               help="Add a comment to the output summary file.")
+    mp_efficiency.add_argument('--no_output', action='store_true', default=False,
+                               help="Enable this flag to not output plot/summary file.")
+    mp_efficiency.add_argument('--no_plot', action='store_true', default=False,
+                               help="Enable this flag to not output the plot file.")
+    mp_efficiency.add_argument('--only_plot', action='store_true', default=False,
+                               help="Enable this flag to only output the plot/summary file from a previous run.")
+
     args = parser.parse_args()
 
     match args.command:
@@ -85,5 +100,12 @@ def main() -> None:
                             no_output=args.no_output,
                             only_plot=args.only_plot,
                             no_plot=args.no_plot,)
+        case "mpe":
+            run_multiprocessing_efficiency(settings_file=args.settings,
+                                           state_file=args.state,
+                                           comment=args.comment,
+                                           no_output=args.no_output,
+                                           only_plot=args.only_plot,
+                                           no_plot=args.no_plot,)
         case _:
             raise ValueError(f"Unknown command {args.command}")

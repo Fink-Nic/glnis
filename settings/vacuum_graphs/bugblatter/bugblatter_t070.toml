@@ -12,9 +12,6 @@ real_error = 0.0000000179007098142485
 [layered_integrand]
 params = [0.46390258023886, 1.0, 13.5441913341902]
 
-[scripts.slice_plots]
-slice_dims_2d = [[4, 5]]
-
 [scripts.training_prog]
 n_training_steps = 2000
 n_samples = 1000

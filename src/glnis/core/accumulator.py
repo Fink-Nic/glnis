@@ -70,9 +70,9 @@ class Observables:
             if self.imag_central_value:
                 self.imag_rsd = self._rsd(self.imag_central_value, self.imag_error, self.n_points)
             if self.abs_real_central_value:
-                self.abs_real_rsd = self._rsd(self.abs_real_central_value, self.abs_real_error, self.n_points)
+                self.abs_real_rsd = self._rsd(self.abs_real_central_value, self.real_error, self.n_points)
             if self.abs_imag_central_value:
-                self.abs_imag_rsd = self._rsd(self.abs_imag_central_value, self.abs_imag_error, self.n_points)
+                self.abs_imag_rsd = self._rsd(self.abs_imag_central_value, self.imag_error, self.n_points)
 
         self.real_tvar = self.real_rsd**2 * time_per_sample
         self.imag_tvar = self.imag_rsd**2 * time_per_sample
@@ -564,6 +564,16 @@ class IntegrationStatistics(AccumulatorModule):
 
                 report.append(
                     f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
+                rsd = self.target.real_rsd
+                tvar = self.target.real_tvar
+                atvar = self.target.abs_real_tvar
+                report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END})"
+                if rsd > 0:
+                    report[-1] += f", RSD={rsd:.3f}"
+                if tvar > 0:
+                    report[-1] += f", TVAR={tvar:.3e}"
+                if atvar > 0:
+                    report[-1] += f", ATVAR={atvar:.3e}"
                 diff_col = Colour.GREEN if rel_diff_perc < 1. else Colour.RED
                 report[-1] += f" ({diff_col}{rel_diff_perc:.3f}%{Colour.END})"
 
@@ -592,6 +602,16 @@ class IntegrationStatistics(AccumulatorModule):
 
                 report.append(
                     f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
+                rsd = self.target.imag_rsd
+                tvar = self.target.imag_tvar
+                atvar = self.target.abs_imag_tvar
+                report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END})"
+                if rsd > 0:
+                    report[-1] += f", RSD={rsd:.3f}"
+                if tvar > 0:
+                    report[-1] += f", TVAR={tvar:.3e}"
+                if atvar > 0:
+                    report[-1] += f", ATVAR={atvar:.3e}"
                 diff_col = Colour.GREEN if rel_diff_perc < 1. else Colour.RED
                 report[-1] += f" ({diff_col}{rel_diff_perc:.3f}%{Colour.END})"
 
