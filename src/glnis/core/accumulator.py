@@ -564,18 +564,17 @@ class IntegrationStatistics(AccumulatorModule):
 
                 report.append(
                     f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
+                diff_col = Colour.GREEN if rel_diff_perc < 1. else Colour.RED
+                report[-1] += f" ({diff_col}{rel_diff_perc:.3f}%{Colour.END})"
                 rsd = self.target.real_rsd
                 tvar = self.target.real_tvar
                 atvar = self.target.abs_real_tvar
-                report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END})"
                 if rsd > 0:
                     report[-1] += f", RSD={rsd:.3f}"
                 if tvar > 0:
                     report[-1] += f", TVAR={tvar:.3e}"
                 if atvar > 0:
                     report[-1] += f", ATVAR={atvar:.3e}"
-                diff_col = Colour.GREEN if rel_diff_perc < 1. else Colour.RED
-                report[-1] += f" ({diff_col}{rel_diff_perc:.3f}%{Colour.END})"
 
         if not self.result.imag_error <= 0:
             report.append(f"    {Colour.DARKCYAN}IM{Colour.END} : {
@@ -602,18 +601,17 @@ class IntegrationStatistics(AccumulatorModule):
 
                 report.append(
                     f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
+                diff_col = Colour.GREEN if rel_diff_perc < 1. else Colour.RED
+                report[-1] += f" ({diff_col}{rel_diff_perc:.3f}%{Colour.END})"
                 rsd = self.target.imag_rsd
                 tvar = self.target.imag_tvar
                 atvar = self.target.abs_imag_tvar
-                report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END})"
                 if rsd > 0:
                     report[-1] += f", RSD={rsd:.3f}"
                 if tvar > 0:
                     report[-1] += f", TVAR={tvar:.3e}"
                 if atvar > 0:
                     report[-1] += f", ATVAR={atvar:.3e}"
-                diff_col = Colour.GREEN if rel_diff_perc < 1. else Colour.RED
-                report[-1] += f" ({diff_col}{rel_diff_perc:.3f}%{Colour.END})"
 
         return "\n".join(line for line in report)
 

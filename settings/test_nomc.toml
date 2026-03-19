@@ -103,4 +103,5 @@ n_samples_2d = 100
 
 [scripts.multiprocessing_efficiency]
 n_cores = [1, 2, 3]
-n_samples = [100, 1000, 10000]
+n_samples = [100, 1000, 10000, 100000]
+max_samples_per_core = 50000

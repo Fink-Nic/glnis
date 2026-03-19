@@ -181,6 +181,54 @@ def plot_multiprocessing_efficiency(file: str, comment: str = "") -> None:
     ax.set_xlabel("Number of Samples")
     ax.set_ylabel(r"$t_{eval}$ [CPU-µs]")
     ax.legend(title=r"$n_{cores}$", loc="upper right")
+    ax.set_title("Total time")
     fig.savefig(
-        Path(directory, filename + ".png"), dpi=300, bbox_inches="tight"
+        Path(directory, filename + "_total.png"), dpi=300, bbox_inches="tight"
     )
+    plt.close(fig)
+
+    processing_times = Data.data[0].times
+    sampler_key = [k for k in processing_times.keys() if "sampler" in k]
+    sampler_key = None if len(sampler_key) == 0 else sampler_key[0]
+    param_key = [k for k in processing_times.keys() if "param" in k]
+    param_key = None if len(param_key) == 0 else param_key[0]
+    integrand_key = [k for k in processing_times.keys() if "integrand" in k]
+    integrand_key = None if len(integrand_key) == 0 else integrand_key[0]
+
+    names = ["sampler", "param", "integrand"]
+    keys = [sampler_key, param_key, integrand_key]
+
+    for name, key in zip(names, keys):
+        if key is None:
+            continue
+        fig, ax = plt.subplots(layout="constrained")
+        ax.set_xticks(range(len(Data.n_samples)), Data.n_samples, rotation=45)
+
+        added_labels = []
+        for d in Data.data:
+            mus_factor = 1.0e6 / d.n_samples
+            cidx = Data.n_cores.index(d.n_cores)
+            sidx = Data.n_samples.index(d.n_samples)
+            offset = 2 * (cidx - (len(Data.n_cores) - 1) / 2) * width
+            loc = sidx + offset
+            lbl = f"{d.n_cores}"
+            if lbl in added_labels:
+                ax.bar(loc, mus_factor * d.times[key], width=width, color=cols[cidx])
+            else:
+                added_labels.append(lbl)
+                ax.bar(loc, mus_factor * d.times[key], width=width, color=cols[cidx], label=lbl)
+
+        ax.set_xlabel("Number of Samples")
+        ax.set_ylabel(r"$t_{eval}$ [CPU-µs]")
+        ax.legend(title=r"$n_{cores}$", loc="upper right")
+        match name:
+            case "sampler":
+                ax.set_title(f"Sampler time")
+            case "param":
+                ax.set_title(f"Parameterisation time")
+            case "integrand":
+                ax.set_title(f"Integrand time")
+        fig.savefig(
+            Path(directory, filename + f"_{name}.png"), dpi=300, bbox_inches="tight"
+        )
+        plt.close(fig)

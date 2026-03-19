@@ -334,7 +334,7 @@ class ParameterisedIntegrand:
 
 
 class MPIntegrand(ParameterisedIntegrand):
-    MAX_CHUNK_SIZE = 10_000
+    MAX_CHUNK_SIZE = 100_000
     MIN_CHUNK_SIZE = 10
     IDENTIFIER = "multiprocessing integrand"
 
