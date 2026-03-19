@@ -1,4 +1,9 @@
-run_name = "mercedes_mc"
+run_name = "mercedes"
+
+[integration_target]
+# chem potential 0.0290399
+# no chem potential 0.714390
+real_central_value = 0.0290399
 
 [graph]
 from_state = false
@@ -113,8 +118,8 @@ b = 1.0
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"
 subtype = "fermi"
-ose_exponent = 2.0
-fermi_exponent = 0.5
+ose_exponent = 4.0
+fermi_exponent = 1.0
 
 [layered_integrand]
 integrand_type = "kaapo"
@@ -123,7 +128,6 @@ path_to_example = "/home/nfink/thermal_integrand_examples/examples/mercedes"
 # no chem potential [6.283185307179586, 0.0, 1.0] 
 params = [6.283185307179586, 3.141592653589793, 1.0]
 use_prec = true
-use_f128 = true
 n_cores = 128
 # chem potential 0.0290399
 # no chem potential 0.714390

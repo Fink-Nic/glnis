@@ -1,5 +1,10 @@
 run_name = "sunrise_mc"
 
+[integration_target]
+# chem potential 0.0138889
+# no chem potential 0.0373264
+real_central_value = 0.0138889
+
 [graph]
 from_state = false
 momtrop_edge_weight = 0.75
@@ -76,8 +81,8 @@ b = 1.0
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"
 subtype = "fermi"
-ose_exponent = 2.0
-fermi_exponent = 0.5
+ose_exponent = 4.0
+fermi_exponent = 1.0
 
 [layered_integrand]
 integrand_type = "kaapo"
@@ -88,9 +93,6 @@ params = [6.283185307179586, 3.141592653589793, 1.0]
 use_prec = true
 use_f128 = true
 n_cores = 128
-# chem potential 0.0138889
-# no chem potential 0.0373264
-target_real = 0.0138889
 
 [integrand.kaapo.symbolica_integrand_kwargs]
 rotation_seed = 42

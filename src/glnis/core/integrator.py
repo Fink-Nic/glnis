@@ -11,7 +11,9 @@ from torch.types import Tensor
 from symbolica import NumericalIntegrator, Sample, RandomNumberGenerator
 
 import madnis.integrator as madnis_integrator
-from glnis.core.accumulator import Accumulator, TrainingData, GraphProperties, LayerData
+from glnis.core.accumulator import (
+    DefaultAccumulator, TrainingAccumulator, GraphProperties, LayerData
+)
 from glnis.core.integrand import MPIntegrand
 from glnis.core.parser import SettingsParser
 from glnis.utils.helpers import shell_print
@@ -55,7 +57,7 @@ class Integrator(ABC):
                   n_start: int = 1_000_000,
                   n_increase: int = 0,
                   max_batch: int = 10_000_000,
-                  progress_report: bool = True) -> Accumulator:
+                  progress_report: bool = True) -> DefaultAccumulator:
         n_eval = 0
         n_curr_iter = n_start
         accumulator = None
@@ -69,10 +71,8 @@ class Integrator(ABC):
             n_eval += n
             if progress_report:
                 shell_print(f"Evaluated {n_eval} / {n_samples} samples using {self.IDENTIFIER}...")
-                print(accumulator.str_report())
+                shell_print(accumulator.str_report())
             n_curr_iter += n_increase
-
-        shell_print(f"Finished evaluating {n_eval} samples using {self.IDENTIFIER}.")
 
         return accumulator
 
@@ -149,11 +149,6 @@ class Integrator(ABC):
         parameterisation_kwargs = Parser.get_parameterisation_kwargs()
         integrand_kwargs = Parser.get_integrand_kwargs()
         integrator_kwargs = Parser.get_integrator_kwargs()
-
-        gl_result = Parser.get_gammaloop_integration_result()
-        if gl_result is not None:
-            integrand_kwargs['target_real'] = gl_result['result']['re']
-            integrand_kwargs['target_imag'] = gl_result['result']['im']
 
         return Integrator.from_dicts(
             graph_properties=graph_properties,
@@ -234,10 +229,10 @@ class VegasIntegrator(Integrator):
         layer_input.discrete, layer_input.wgt = self._cont_to_discr(
             x[:, self.continuous_dim:])
         layer_input.update(self.IDENTIFIER)
-        accumulated_result: TrainingData = self.integrand.eval_integrand(
-            layer_input, 'training').modules[-1]
+        accumulated_result: TrainingAccumulator = self.integrand.eval_integrand(
+            layer_input, 'training')
 
-        return accumulated_result.training_result[0]
+        return accumulated_result.training_data.training_result[0]
 
     def export_state(self) -> 'VegasIntegrator.VegasState':
         return VegasIntegrator.VegasState(integrator=deepcopy(self.vegas),
@@ -262,7 +257,6 @@ class HavanaIntegrator(Integrator):
     IDENTIFIER = "havana sampler"
 
     def __init__(self, integrand: MPIntegrand,
-                 seed: int = 1337,
                  stream_id: int = 0,
                  use_uniform: bool = False,
                  max_prob_ratio: float = 100,
@@ -288,7 +282,7 @@ class HavanaIntegrator(Integrator):
             )
 
         self.stream_id = stream_id
-        self.rng = RandomNumberGenerator(seed, stream_id)
+        self.rng = RandomNumberGenerator(self.seed, self.stream_id)
         self.discrete_learning_rate = discrete_learning_rate
         self.continuous_learning_rate = continuous_learning_rate
 
@@ -298,10 +292,9 @@ class HavanaIntegrator(Integrator):
         n_digits = len(str(nitn))
         for itn in range(nitn):
             samples, layer_input = self.get_samples(batch_size, True, True)
-            accumulated_result = self.integrand.eval_integrand(
+            acc: TrainingAccumulator = self.integrand.eval_integrand(
                 layer_input, 'training')
-            accumulated_result: TrainingData = accumulated_result.modules[-1]
-            weighted_func_val = accumulated_result.training_result[0]
+            weighted_func_val = acc.training_data.training_result[0]
             self.havana.add_training_samples(
                 samples, weighted_func_val.ravel().tolist())
             avg, err, chi_sq = self.havana.update(
@@ -375,7 +368,9 @@ class HavanaIntegrator(Integrator):
     def import_state(self, state: 'HavanaIntegrator.HavanaState'):
         if not isinstance(state, HavanaIntegrator.HavanaState):
             raise ValueError("State for HavanaIntegrator must be of type HavanaState.")
-        self.havana.import_grid(state.grid)
+        self.havana.merge(NumericalIntegrator.import_grid(state.grid))
+        self.seed = state.seed
+        self.stream_id = state.stream_id
         self.rng = RandomNumberGenerator(self.seed, self.stream_id)
         # self.rng = state.rng
 
@@ -518,10 +513,9 @@ class MadnisIntegrator(Integrator):
         layer_input.discrete, layer_input.continuous = self._madnis_output_to_disc_cont(x_all)
         layer_input.update(self.IDENTIFIER)
 
-        accumulated_result = self.integrand.eval_integrand(
+        accumulated_result: TrainingAccumulator = self.integrand.eval_integrand(
             layer_input, 'training')
-        accumulated_result: TrainingData = accumulated_result.modules[-1]
-        weighted_func_val = accumulated_result.training_result[0].flatten()
+        weighted_func_val = accumulated_result.training_data.training_result[0].flatten()
         torch_output = torch.from_numpy(
             weighted_func_val.astype(np.float64)).to(self.device)
         return torch_output

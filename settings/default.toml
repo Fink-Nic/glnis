@@ -2,6 +2,16 @@
 # Default settings file. 
 # Setting files should not include parameters that are not specified in here.
 # -------------------------------------------------------------------------------------------
+# The type of integrator/integrand/parameterisation is specified under [layered_X.X_type]
+# Parameters specified under [layered_X] take precedence over those in [X.X_type]
+# For parameterisations, they are provided in reverse order as [layered_parameterisation.Y], 
+# where the name of Y does not matter (just don't use duplicates). This means that in order
+# to set up a multichanneling layer, which e.g. calls spherical parameterisation, one can do:
+# [layered_parameterisation.Y1991]
+# parameterisation_type = "spherical"
+# [layered_parameterisation.Y75]
+# parameterisation_type = "mc_layer"
+# -------------------------------------------------------------------------------------------
 
 run_name = "default"
 
@@ -25,20 +35,21 @@ integration_result_file = "result.txt"
 process_id = 0
 integrand_name = "default"
 
-# -------------------------------------------------------------------------------------------
-# The type of integrator/integrand/parameterisation is specified under [layered_X.X_type]
-# Parameters specified under [layered_X] take precedence over those in [X.X_type]
-# For parameterisations, they are provided in reverse order as [layered_parameterisation.Y], 
-# where the name of Y does not matter (just don't use duplicates). This means that in order
-# to set up a multichanneling layer, which e.g. calls spherical parameterisation, one can do:
-# [layered_parameterisation.Y1991]
-# parameterisation_type = "spherical"
-# [layered_parameterisation.Y75]
-# parameterisation_type = "mc_layer"
-# -------------------------------------------------------------------------------------------
+[integration_target]
+n_points = 0
+real_central_value = 0
+real_error = 0
+imag_central_value = 0
+imag_error = 0
+abs_real_central_value = 0
+abs_real_error = 0
+abs_imag_central_value = 0
+abs_imag_error = 0
+total_time = 0
 
 [layered_integrator]
 integrator_type = "madnis"
+seed = 1337
 
 [layered_integrand]
 integrand_type = "gammaloop"
@@ -55,14 +66,12 @@ verbose = false
 parameterisation_type = "momtrop"
 
 [integrator.naive]
-seed = 1337
 
 [integrator.vegas]
 
 [integrator.vegas.vegas_init_kwargs]
 
 [integrator.havana]
-seed = 1337
 use_uniform = false
 max_prob_ratio = 100
 n_continuous_bins = 128
@@ -173,8 +182,8 @@ a_min = 0.2
 [parameterisation.mc_layer]
 # Choose from 'ose' and 'fermi', for euclidean-propagator-like terms and fermi surface terms, respectively
 subtype = "ose"
-ose_exponent = 2.0
-fermi_exponent = 0.5
+ose_exponent = 1.0
+fermi_exponent = 1.0
 # Edges with zero chemical potential will have their fermi suface term set to one.
 set_bosonic_edge_to_one = true
 

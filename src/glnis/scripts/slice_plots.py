@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from glnis.utils.helpers import shell_print, verify_path
-from glnis.core.accumulator import GraphProperties
+from glnis.core.accumulator import GraphProperties, TrainingAccumulator
 from glnis.scripts.sampler_comparison import SamplerCompData
 
 
@@ -134,8 +134,8 @@ def run_slice_plots(
             layer_input = madnis_integrator.init_layer_data(n_samples_1d)
             layer_input.continuous = continuous
             layer_input.discrete = discrete
-            acc = integrand.eval_integrand(layer_input, "training")
-            func_val = acc.modules[-1].training_result[0].ravel()
+            acc: TrainingAccumulator = integrand.eval_integrand(layer_input, "training")
+            func_val = acc.training_data.training_result[0].ravel()
             # Molest MadNIS to get the probabilities for the slice
             x_all = torch.from_numpy(np.hstack([discrete, continuous])).to(madnis_integrator.device)
             prob = madnis.flow.prob(x_all).numpy(force=True).ravel()
@@ -159,8 +159,8 @@ def run_slice_plots(
             layer_input = madnis_integrator.init_layer_data(n_samples_2d**2)
             layer_input.continuous = continuous
             layer_input.discrete = discrete
-            acc = integrand.eval_integrand(layer_input, "training")
-            func_val = acc.modules[-1].training_result[0].reshape(n_samples_2d, n_samples_2d)
+            acc: TrainingAccumulator = integrand.eval_integrand(layer_input, "training")
+            func_val = acc.training_data.training_result[0].reshape(n_samples_2d, n_samples_2d)
             # Molest MadNIS to get the probabilities for the slice
             x_all = torch.from_numpy(np.hstack([discrete, continuous])).to(madnis_integrator.device)
             prob = madnis.flow.prob(x_all).numpy(force=True).reshape(n_samples_2d, n_samples_2d)
@@ -265,7 +265,7 @@ def plot_slices(file: str, comment: str = "") -> None:
 
         # Define Normalization for the 4th (Discrete: -1, 0, 1)
         # Boundaries are set at the midpoints to center the colors
-        discrete_cmap = colors.ListedColormap(['#e74c3c', '#ecf0f1', '#2ecc71'])  # Red, Grey, Green
+        discrete_cmap = colors.ListedColormap(['#e74c3c', '#ecf0f1', '#2ecc71'])  # Red, Grey, Green, italian
         bounds = [-1.5, -0.5, 0.5, 1.5]
         discrete_norm = colors.BoundaryNorm(bounds, discrete_cmap.N)
         ax4: plt.Axes
@@ -276,8 +276,8 @@ def plot_slices(file: str, comment: str = "") -> None:
         # Add Colorbars
         fraction = 0.046  # Default fraction for colorbar size
         padding = 0.04  # Default padding between plot and colorbar
-        # Shared colorbar for the first two, anchor it to the first plot, in order to place it between them
-        cbar_f_p = fig.colorbar(imgs[0], ax=ax1, fraction=fraction, pad=padding)
+        # Shared colorbar for the first two, will be placed to the right of ax2
+        cbar_f_p = fig.colorbar(imgs[0], ax=[ax1, ax2], fraction=fraction, pad=padding)
 
         # Dedicated colorbar for the ratio
         cbar_ratio = fig.colorbar(imratio, ax=ax3, fraction=fraction, pad=padding)

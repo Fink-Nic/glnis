@@ -1,66 +1,43 @@
 # type: ignore
-import pickle
 from typing import Dict, List, Any
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from madnis.integrator import TrainingStatus
 
 from glnis.utils.helpers import shell_print, verify_path
-from glnis.core.accumulator import GraphProperties
+from glnis.core.accumulator import GraphProperties, Observables
 
 
 class SamplerCompData:
     def __init__(self,
                  integrator_identifiers: List[str],
                  graph_properties: GraphProperties,
+                 target: Observables,
                  settings: Dict[str, Any] = dict(),
                  madnis_kwargs: Dict[str, Any] = dict(),
                  integrand_kwargs: Dict[str, Any] = dict(),
                  param_kwargs: Dict[str, Any] = dict(),) -> None:
-        self.observables: Dict[str, SamplerCompData.Observables] = dict()
+        self.observables: Dict[str, Observables] = dict()
         for name in integrator_identifiers:
-            self.observables[name] = self.Observables()
+            self.observables[name] = Observables()
         self.graph_properties = graph_properties
+        self.target = target
         self.settings: Dict[str, Any] = settings
         self.madnis_kwargs: Dict[str, Any] = madnis_kwargs
         self.integrand_kwargs: Dict[str, Any] = integrand_kwargs
         self.param_kwargs: Dict[str, Any] = param_kwargs
         self.plottables: SamplerCompData.Plottables = self.Plottables()
-        self.target: SamplerCompData.Observables = self.Observables()
         self.integrator_states: Dict[str, Any] = dict()
         for name in integrator_identifiers:
             self.integrator_states[name] = None
-
-    @dataclass
-    class Observables:
-        real_central_value: float = 0
-        imag_central_value: float = 0
-        real_error: float = 0
-        imag_error: float = 0
-        real_rsd: float = 0
-        imag_rsd: float = 0
-        n_points: int = 0
-        real_tvar: float = 0
-        imag_tvar: float = 0
-        processing_times: Dict[str, float] = field(default_factory=dict)
-
-        def calc_rsds(self) -> None:
-            if not self.real_central_value == 0:
-                self.real_rsd = abs(self.real_error / self.real_central_value * self.n_points**0.5)
-            if not self.imag_central_value == 0:
-                self.imag_rsd = abs(self.imag_error / self.imag_central_value * self.n_points**0.5)
-
-        def calc_tvar(self) -> None:
-            if self.n_points > 0:
-                total_time = self.processing_times.get('total_time', 0)
-                self.real_tvar = self.real_rsd**2 * total_time / self.n_points
-                self.imag_tvar = self.imag_rsd**2 * total_time / self.n_points
 
     @dataclass
     class Plottables:
         losses: List[float] = field(default_factory=list)
         rsds: List[float] = field(default_factory=list)
         tvars: List[float] = field(default_factory=list)
+        abs_tvars: List[float] = field(default_factory=list)
         steps_losses: List[int] = field(default_factory=list)
         steps_snapshot: List[int] = field(default_factory=list)
         means: List[float] = field(default_factory=list)
@@ -77,7 +54,7 @@ def run_sampler_comp(
     no_plot: bool = False,
     only_plot: bool = False,
     export_states: bool = True,
-    subfolder: str = "sampler_comp",
+    subroutine: str = "sampler_comp",
 ) -> None:
 
     if only_plot or Path(file).suffix == ".pkl":
@@ -106,7 +83,7 @@ def run_sampler_comp(
 
         # Training parameters
         scripts: Dict[str, Any] = Settings.settings.get("scripts", dict())
-        params: Dict[str, Any] = scripts.get("sampler_comp", dict())
+        params: Dict[str, Any] = scripts.get(subroutine, dict())
         n_training_steps = params.get("n_training_steps", 1000)
         n_log = params.get("n_log", 10)
         n_plot_rsd = params.get("n_plot_rsd", 100)
@@ -119,14 +96,14 @@ def run_sampler_comp(
         if not no_output:
             PROJECT_ROOT = Path(__file__).parents[3]
             OUTPUT_DIR = "outputs"
-            directory = Path(PROJECT_ROOT, OUTPUT_DIR, Settings.settings['run_name'].replace(" ", "_"), subfolder)
+            directory = Path(PROJECT_ROOT, OUTPUT_DIR, Settings.settings['run_name'].replace(" ", "_"), subroutine)
             if not os.path.exists(str(directory)):
                 os.makedirs(str(directory))
                 shell_print(f"Created output folder at {directory}")
             shell_print(f"Output will be at {directory}")
 
         # Callback for the madnis integrator
-        def callback(status) -> None:
+        def callback(status: TrainingStatus) -> None:
             step = status.step + 1
             if step % n_log == 0:
                 shell_print(
@@ -136,23 +113,17 @@ def run_sampler_comp(
                 Data.plottables.losses.append(status.loss)
                 Data.plottables.steps_losses.append(step)
             if step % n_plot_rsd == 0:
-                output = madnis_integrator.integrate(n_samples, progress_report=False)
-                obs = output.get_observables()
+                acc = madnis_integrator.integrate(n_samples, progress_report=False)
+                obs = acc.get_observables()
                 phase = integrand.training_phase.lower()
-                res = obs[f"{phase}_central_value"]
-                err = obs[f"{phase}_error"]
-                rsd = obs[f"{phase}_rsd"]
-                tvar = rsd**2 * obs["processing_times"]["total_time"] / obs["n_points"]
-                shell_print(
-                    f"""Trained Result after {step} steps of {
-                        madnis_integrator.batch_size}, using {n_samples} samples:""",
-                    f"    {res:.8e} +- {err:.8e}, RSD = {rsd:.3f}"
-                )
-                Data.plottables.means.append(res)
-                Data.plottables.errors.append(err)
-                Data.plottables.rsds.append(rsd)
-                Data.plottables.tvars.append(tvar)
+                Data.plottables.means.append(obs[f"{phase}_central_value"])
+                Data.plottables.errors.append(obs[f"{phase}_error"])
+                Data.plottables.rsds.append(obs[f"{phase}_rsd"])
+                Data.plottables.tvars.append(obs[f"{phase}_tvar"])
+                Data.plottables.abs_tvars.append(obs[f"abs_{phase}_tvar"])
                 Data.plottables.steps_snapshot.append(step)
+                shell_print(f"Trained Result after {step} steps of {madnis_integrator.batch_size}:")
+                shell_print(acc.statistics.str_report())
 
         time_last = time()
         integrators: dict[str, Integrator] = dict()
@@ -183,6 +154,7 @@ def run_sampler_comp(
         # Will hold integration results to write to text file and plot
         Data = SamplerCompData(integrator_identifiers=list(integrators.keys()),
                                graph_properties=integrand.graph_properties,
+                               target=integrand.target,
                                settings=Settings.settings,
                                madnis_kwargs=madnis_kwargs,
                                integrand_kwargs=integrand_kwargs,
@@ -195,30 +167,6 @@ def run_sampler_comp(
         shell_print(f"MadNIS is using device: {madnis_integrator.madnis.dummy.device}")
         shell_print(f"MadNIS is using scheduler: {madnis_integrator.madnis.scheduler}")
         shell_print(f"Integrand discrete dims: {integrand.discrete_dims}")
-
-        # Parse GammaLoop results
-        gl_res = Settings.get_gammaloop_integration_result()
-        if gl_res is None:
-            Data.target.real_central_value = integrand.target_real
-            Data.target.imag_central_value = integrand.target_imag
-        else:
-            RE_OR_IM = (
-                "re" if madnis_integrator.integrand.training_phase == 'real' else 'im'
-            )
-            gl_int = gl_res['result'][RE_OR_IM]
-            gl_err = gl_res['error'][RE_OR_IM]
-            gl_neval = gl_res['neval']
-            gl_rsd = abs(gl_err / gl_int) * math.sqrt(gl_neval)
-            Data.target.real_central_value = gl_res['result']['re']
-            Data.target.real_error = gl_res['error']['re']
-            Data.target.imag_central_value = gl_res['result']['im']
-            Data.target.imag_error = gl_res['error']['im']
-            Data.target.n_points = gl_neval
-            Data.target.calc_rsds()
-
-            shell_print(
-                f"Gammaloop Result: {gl_int:.8g} +- {gl_err:.8g}, RSD = {gl_rsd:.3f}"
-            )
 
         # Training all the integrators
         if not no_vegas:
@@ -242,10 +190,7 @@ def run_sampler_comp(
                 Data.integrator_states[identifier] = integrator.export_state()
             shell_print(f"Integrating using {identifier}:")
             acc = integrator.integrate(n_samples_after_training)
-            obs = acc.get_observables()
-            for f in fields(Data.observables[identifier]):
-                setattr(Data.observables[identifier], f.name, obs.get(f.name, 0))
-            Data.observables[identifier].calc_tvar()
+            Data.observables[identifier] = acc.statistics.result
 
         # IMPORTANT: close the worker functions, or your script will hang
         integrand.end()
@@ -322,62 +267,69 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
                 f.write(
                     f"    IM : {obs.imag_central_value:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
             f.write(f"Relative Time-Variance: RE = {obs.real_tvar:.3e}, IM = {obs.imag_tvar:.3e}\n")
-            f.write(f"CPU-microsecond per sample: {obs.processing_times['total_time'] / obs.n_points * 1e6:.3e}\n")
+
+            f.write(f"CPU-microsecond per sample: {obs.total_time / obs.n_points * 1e6:.3e}\n")
             f.write(f"Number of samples: {obs.n_points}")
 
     # Plotting setup
     losses, steps_losses = np.array(Data.plottables.losses), np.array(Data.plottables.steps_losses)
     rsds, steps_snapshot = np.array(Data.plottables.rsds), np.array(Data.plottables.steps_snapshot)
-    tvars = np.array(Data.plottables.tvars)
+    tvars, atvars = np.array(Data.plottables.tvars), np.array(Data.plottables.abs_tvars)
 
-    fig, axs = plt.subplots(3, 1, sharex=True, layout="constrained")
-    axs: list[plt.Axes]
-    axs[0].plot(steps_losses, losses, color="black")
-    axs[0].set_ylabel("loss")
-    axs[1].scatter(steps_snapshot, rsds, color="black")
-    axs[1].set_ylabel("RSD")
-    axs[2].scatter(steps_snapshot, tvars, color="black")
-    axs[2].set_ylabel("RTVAR")
-    axs[2].set_xlabel("Training steps")
-    for ax in axs:
-        ax.set_yscale("log")
-    fig.suptitle(f"MadNIS training progression for {Data.settings['run_name']}")
-    plt.savefig(
-        Path(directory, filename + "_training_prog.png"), dpi=300, bbox_inches="tight"
-    )
+    if len(steps_losses) and len(steps_snapshot):
+        fig, axs = plt.subplots(4, 1, sharex=True, layout="constrained",
+                                height_ratios=(3, 1, 1, 1), figsize=(10, 8))
+        axs: list[plt.Axes]
+        axs[0].plot(steps_losses, losses, color="black")
+        axs[0].set_ylabel("loss")
+        axs[1].scatter(steps_snapshot, rsds, color="black")
+        axs[1].set_ylabel("RSD")
+        axs[2].scatter(steps_snapshot, tvars, color="black")
+        axs[2].set_ylabel("TVAR")
+        axs[3].scatter(steps_snapshot, atvars, color="black")
+        axs[3].set_ylabel("ATVAR")
+        axs[3].set_xlabel("Training steps")
+        for ax in axs:
+            ax.set_yscale("log")
+        fig.suptitle(f"MadNIS training progression for {Data.settings['run_name']}")
+        plt.savefig(
+            Path(directory, filename + "_training_prog.png"), dpi=300, bbox_inches="tight"
+        )
 
-    if len(Data.observables) < 2:
-        quit()
+    if len(Data.observables) > 1:
+        fig, axs = plt.subplots(4, 2, sharex=True, layout="constrained",
+                                height_ratios=(3, 1, 1, 1), figsize=(10, 8))
+        axs: NDArray[plt.Axes]
+        # Column labels
+        axs[0, 0].set_title("RE")
+        axs[0, 1].set_title("IM")
+        # Row labels
+        axs[0, 0].set_ylabel("I(f)")
+        axs[1, 0].set_ylabel("RSD")
+        axs[2, 0].set_ylabel("TVAR")
+        axs[3, 0].set_ylabel("ATVAR")
+        for i in range(2):
+            axs[3, i].set_xticks(range(len(Data.observables)), list(Data.observables.keys()), rotation=45)
+            axs[1, i].set_yscale("log")
+            axs[2, i].set_yscale("log")
+            axs[3, i].set_yscale("log")
 
-    fig, axs = plt.subplots(3, 2, sharex=True, layout="constrained",
-                            height_ratios=(2, 1, 1), figsize=(10, 8))
-    axs: NDArray[plt.Axes]
-    # Column labels
-    axs[0, 0].set_title("RE")
-    axs[0, 1].set_title("IM")
-    # Row labels
-    axs[0, 0].set_ylabel("I(f)")
-    axs[1, 0].set_ylabel("RSD")
-    axs[2, 0].set_ylabel("RTVAR")
-    for i in range(2):
-        axs[2, i].set_xticks(range(len(Data.observables)), list(Data.observables.keys()), rotation=45)
-        axs[1, i].set_yscale("log")
-        axs[2, i].set_yscale("log")
-
-    axs[0, 0].hlines(Data.target.real_central_value, 0, len(Data.observables)-1, color='red')
-    axs[0, 1].hlines(Data.target.imag_central_value, 0, len(Data.observables)-1, color='red')
-    for i, obs in enumerate(Data.observables.values()):
-        if obs.real_error > 0:
-            axs[0, 0].errorbar(i, obs.real_central_value, yerr=obs.real_error,
-                               marker='o', markersize=5, capsize=5, color='black')
-            axs[1, 0].scatter(i, obs.real_rsd, color='black')
-            axs[2, 0].scatter(i, obs.real_tvar, color='black')
-        if obs.imag_error > 0:
-            axs[0, 1].errorbar(i, obs.imag_central_value, yerr=obs.imag_error,
-                               marker='o', markersize=5, capsize=5, color='black')
-            axs[1, 1].scatter(i, obs.imag_rsd, color='black')
-            axs[2, 1].scatter(i, obs.imag_tvar, color='black')
-    fig.suptitle(f"Integration results for {Data.settings['run_name']}")
-    fig.savefig(
-        Path(directory, filename + "_integration_result.png"), dpi=300, bbox_inches="tight"
-    )
+        axs[0, 0].hlines(Data.target.real_central_value, 0, len(Data.observables)-1, color='red')
+        axs[0, 1].hlines(Data.target.imag_central_value, 0, len(Data.observables)-1, color='red')
+        for i, obs in enumerate(Data.observables.values()):
+            if obs.real_error > 0:
+                axs[0, 0].errorbar(i, obs.real_central_value, yerr=obs.real_error,
+                                   marker='o', markersize=5, capsize=5, color='black')
+                axs[1, 0].scatter(i, obs.real_rsd, color='black')
+                axs[2, 0].scatter(i, obs.real_tvar, color='black')
+                axs[3, 0].scatter(i, obs.abs_real_tvar, color='black')
+            if obs.imag_error > 0:
+                axs[0, 1].errorbar(i, obs.imag_central_value, yerr=obs.imag_error,
+                                   marker='o', markersize=5, capsize=5, color='black')
+                axs[1, 1].scatter(i, obs.imag_rsd, color='black')
+                axs[2, 1].scatter(i, obs.imag_tvar, color='black')
+                axs[3, 1].scatter(i, obs.abs_imag_tvar, color='black')
+        fig.suptitle(f"Integration results for {Data.settings['run_name']}")
+        fig.savefig(
+            Path(directory, filename + "_integration_result.png"), dpi=300, bbox_inches="tight"
+        )

@@ -43,6 +43,83 @@ class GraphProperties:
         self.channel_inv_transforms = np.linalg.inv(self.channel_transforms)
 
 
+@dataclass
+class Observables:
+    n_points: int = 0
+    real_central_value: float = 0
+    real_error: float = 0
+    imag_central_value: float = 0
+    imag_error: float = 0
+    abs_real_central_value: float = 0
+    abs_real_error: float = 0
+    abs_imag_central_value: float = 0
+    abs_imag_error: float = 0
+    total_time: float = 0
+
+    def __post_init__(self: 'Observables'):
+        """Calculates derived observables such as RSD and time per sample."""
+        time_per_sample = 0
+        self.real_rsd = 0
+        self.imag_rsd = 0
+        self.abs_real_rsd = 0
+        self.abs_imag_rsd = 0
+        if self.n_points > 0:
+            time_per_sample = self.total_time / self.n_points
+            if self.real_central_value:
+                self.real_rsd = self._rsd(self.real_central_value, self.real_error, self.n_points)
+            if self.imag_central_value:
+                self.imag_rsd = self._rsd(self.imag_central_value, self.imag_error, self.n_points)
+            if self.abs_real_central_value:
+                self.abs_real_rsd = self._rsd(self.abs_real_central_value, self.abs_real_error, self.n_points)
+            if self.abs_imag_central_value:
+                self.abs_imag_rsd = self._rsd(self.abs_imag_central_value, self.abs_imag_error, self.n_points)
+
+        self.real_tvar = self.real_rsd**2 * time_per_sample
+        self.imag_tvar = self.imag_rsd**2 * time_per_sample
+        self.abs_real_tvar = self.abs_real_rsd**2 * time_per_sample
+        self.abs_imag_tvar = self.abs_imag_rsd**2 * time_per_sample
+
+    def combine_with(self: 'Observables', other: 'Observables') -> None:
+        def cc(s_c: float, o_c: float) -> float:
+            return self._combine_central_value(self.n_points, other.n_points, s_c, o_c)
+
+        def ce(s_e: float, o_e: float) -> float:
+            return self._combine_error(self.n_points, other.n_points, s_e, o_e)
+
+        self.real_central_value = cc(self.real_central_value, other.real_central_value)
+        self.imag_central_value = cc(self.imag_central_value, other.imag_central_value)
+        self.abs_real_central_value = cc(self.abs_real_central_value, other.abs_real_central_value)
+        self.abs_imag_central_value = cc(self.abs_imag_central_value, other.abs_imag_central_value)
+        self.real_error = ce(self.real_error, other.real_error)
+        self.imag_error = ce(self.imag_error, other.imag_error)
+        self.abs_real_error = ce(self.abs_real_error, other.abs_real_error)
+        self.abs_imag_error = ce(self.abs_imag_error, other.abs_imag_error)
+
+        self.n_points += other.n_points
+        self.__post_init__()  # Recalculate derived observables
+
+    def str_report(self: 'Observables') -> str:
+        return f"Real: {
+            self.real_central_value: .5f}  ± {
+            self.real_error: .5f}, Imag: {
+            self.imag_central_value: .5f}  ± {
+            self.imag_error: .5f} "
+
+    @staticmethod
+    def _rsd(mean: float, err: float, n_points: int) -> float:
+        if mean == 0:
+            return 0
+        return err / np.abs(mean) * np.sqrt(n_points)
+
+    @staticmethod
+    def _combine_central_value(s_n: float, o_n: float, s_c: float, o_c: float) -> float:
+        return (s_n * s_c + o_n * o_c) / (s_n + o_n)
+
+    @staticmethod
+    def _combine_error(s_n: float, o_n: float, s_e: float, o_e: float) -> float:
+        return np.sqrt(s_n**2 * s_e**2 + o_n**2 * o_e**2) / (s_n + o_n)
+
+
 class LayerData:
     """
     What this should do:
@@ -350,21 +427,34 @@ class AccumulatorModule(ABC):
     def get_observables(self) -> Dict[str, Any]:
         return dict()
 
+    def finalise(self) -> None:
+        """
+        Finalises the state of the AccumulatorModule, e.g. by calculating derived observables.
+        Called after all combinations are done, before reporting.
+        """
+        pass
 
-class Accumulator(AccumulatorModule):
+
+class Accumulator:
     def __init__(self,
                  modules: List[AccumulatorModule],):
         self.modules = modules
 
     def combine_with(self: 'Accumulator', other: 'Accumulator') -> None:
-        if not len(self.modules) == len(other.modules):
+        if not (type(self) is type(other) and len(self.modules) == len(other.modules)):
             raise TypeError("Cannot combine Accumulators of different types.")
 
         for s_module, o_module in zip(self.modules, other.modules):
             s_module.combine_with(o_module)
 
     def str_report(self) -> str:
-        return "\n".join(module.str_report() for module in self.modules)
+        line = 125*"="
+        report = [line]
+        for module in self.modules:
+            report.append(module.str_report())
+        report.append(line)
+
+        return "\n".join(report)
 
     def get_observables(self) -> Dict[str, Any]:
         obs = dict()
@@ -372,43 +462,41 @@ class Accumulator(AccumulatorModule):
             obs.update(module.get_observables())
         return obs
 
+    def finalise(self) -> None:
+        for module in self.modules:
+            module.finalise()
+
 
 class DefaultAccumulator(Accumulator):
     def __init__(self,
                  data: LayerData | None = None,
-                 dtype: DTypeLike | None = None,
-                 target_real: float | None = None,
-                 target_imag: float | None = None,
+                 target: Observables | None = None,
                  **kwargs):
+        self.statistics = IntegrationStatistics(data, target=target)
+        self.max_weight = MaxWeight(data)
+        self.failures_monitor = FailuresMonitor(data)
+        self.processing_times = ProcessingTimes(data)
+
         modules = [
-            IntegrationResult(data, dtype,
-                              target_real=target_real, target_imag=target_imag),
-            MaxWeight(data, dtype),
-            FailuresMonitor(data, dtype),
-            ProcessingTimes(data, dtype),
+            self.statistics,
+            self.max_weight,
+            self.failures_monitor,
+            self.processing_times,
         ]
         super().__init__(modules)
 
 
-class TrainingAccumulator(Accumulator):
+class TrainingAccumulator(DefaultAccumulator):
     def __init__(self,
                  data: LayerData,
-                 dtype: DTypeLike | None = None,
-                 target_real: float | None = None,
-                 target_imag: float | None = None,
                  training_phase: Literal['real', 'imag', 'abs'] = 'real',
                  **kwargs):
-        modules = [
-            IntegrationResult(data, dtype, target_real, target_imag),
-            MaxWeight(data, dtype),
-            FailuresMonitor(data, dtype),
-            ProcessingTimes(data, dtype),
-            TrainingData(data, dtype, training_phase),
-        ]
-        super().__init__(modules)
+        super().__init__(data=data, **kwargs)
+        self.training_data = TrainingData(data, training_phase=training_phase)
+        self.modules.append(self.training_data)
 
 
-class IntegrationResult(AccumulatorModule):
+class IntegrationStatistics(AccumulatorModule):
     """
     Implements AccumulatorModule. Calculates the integration result.
 
@@ -417,101 +505,100 @@ class IntegrationResult(AccumulatorModule):
 
     def __init__(self,
                  data: LayerData | None = None,
-                 dtype: DTypeLike | None = None,
-                 target_real: float | None = None,
-                 target_imag: float | None = None,
+                 target: Observables | None = None,
                  precision: int = 2,):
-        self.dtype = np.dtype(np.float64) if dtype is None else dtype
-        self.target_real = target_real
-        self.target_imag = target_imag
+        self.dtype = np.dtype(np.float64)
+        self.target = target if target is not None else Observables()
         self.precision = precision
         if data is None:
-            self.n_points = self.dtype(0)
-            self.real_central_value = self.dtype(0)
-            self.real_error = self.dtype(0)
-            self.imag_central_value = self.dtype(0)
-            self.imag_error = self.dtype(0)
-            self.real_rsd = self.dtype(0)
-            self.imag_rsd = self.dtype(0)
+            self.result = Observables()
         else:
             self.dtype = data.dtype
-            self.n_points = data.n_points
             m = data.success
             total_wgt = data.jac[m]*data.wgt[m]*data.func_val[m]
-            self.real_central_value = total_wgt.real.mean()
-            self.real_error = total_wgt.real.std() / np.sqrt(self.n_points)
-            self.real_rsd = self._rsd(self.real_central_value, self.real_error, self.n_points)
-            self.imag_central_value = total_wgt.imag.mean()
-            self.imag_error = total_wgt.imag.std() / np.sqrt(self.n_points)
-            self.real_rsd = self._rsd(self.real_central_value, self.real_error, self.n_points)
-            self.imag_rsd = self._rsd(self.imag_central_value, self.imag_error, self.n_points)
+            abs_real_total_wgt = np.abs(total_wgt.real)
+            abs_imag_total_wgt = np.abs(total_wgt.imag)
+            total_time = data.get_processing_times().get('total_time', 0)
+            self.result = Observables(
+                n_points=data.n_points,
+                real_central_value=total_wgt.real.mean(),
+                real_error=total_wgt.real.std() / np.sqrt(data.n_points),
+                imag_central_value=total_wgt.imag.mean(),
+                imag_error=total_wgt.imag.std() / np.sqrt(data.n_points),
+                abs_real_central_value=abs_real_total_wgt.mean(),
+                abs_real_error=abs_real_total_wgt.std() / np.sqrt(data.n_points),
+                abs_imag_central_value=abs_imag_total_wgt.mean(),
+                abs_imag_error=abs_imag_total_wgt.std() / np.sqrt(data.n_points),
+                total_time=total_time,
+            )
 
-    def combine_with(self: 'IntegrationResult', other: 'IntegrationResult') -> None:
-        n_combined = self.n_points + other.n_points
-        self.real_central_value = (self.n_points*self.real_central_value
-                                   + other.n_points*other.real_central_value) / n_combined
-        self.imag_central_value = (self.n_points*self.imag_central_value +
-                                   other.n_points*other.imag_central_value) / n_combined
-        self.real_error = np.sqrt(self.n_points**2 * self.real_error**2
-                                  + other.n_points**2 * other.real_error**2) / n_combined
-        self.imag_error = np.sqrt(self.n_points**2 * self.imag_error**2
-                                  + other.n_points**2 * other.imag_error**2) / n_combined
-
-        self.n_points = n_combined
-        self.real_rsd = self._rsd(self.real_central_value, self.real_error, self.n_points)
-        self.imag_rsd = self._rsd(self.imag_central_value, self.imag_error, self.n_points)
+    def combine_with(self: 'IntegrationStatistics', other: 'IntegrationStatistics') -> None:
+        self.result.combine_with(other.result)
 
     def str_report(self) -> str:
-        report = [125*"="]
+        report = []
         report.append(
-            f"Integration Result after {Colour.GREEN}{self.n_points}{Colour.END} evaluations:")
-        if not self.real_error <= 0.:
+            f"Integration Result after {Colour.GREEN}{self.result.n_points}{Colour.END} evaluations:")
+        if self.result.real_error > 0:
             report.append(f"    {Colour.DARKCYAN}RE{Colour.END} : {
-                error_fmter(self.real_central_value, self.real_error, self.precision)}")
-            err_perc = abs(100. * self.real_error / self.real_central_value)
+                error_fmter(self.result.real_central_value, self.result.real_error, self.precision)}")
+            err_perc = abs(100. * self.result.real_error / self.result.real_central_value)
             err_col = Colour.GREEN if err_perc < 1. else Colour.RED
-            rsd = err_perc / 100. * np.sqrt(self.n_points)
-            report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END}, RSD={rsd:.3f})"
-            if self.target_real is not None:
-                diff = self.real_central_value - self.target_real
-                rel_diff_perc = abs(100. * diff / self.target_real)
+            rsd = self.result.real_rsd
+            tvar = self.result.real_tvar
+            atvar = self.result.abs_real_tvar
+            report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END})"
+            if rsd > 0:
+                report[-1] += f", RSD={rsd:.3f}"
+            if tvar > 0:
+                report[-1] += f", TVAR={tvar:.3e}"
+            if atvar > 0:
+                report[-1] += f", ATVAR={atvar:.3e}"
+            if self.target.real_central_value != 0:
+                diff = self.result.real_central_value - self.target.real_central_value
+                rel_diff_perc = abs(100. * diff / self.target.real_central_value)
+                if self.target.real_error > 0:
+                    target_str = error_fmter(self.target.real_central_value, self.target.real_error, self.precision)
+                else:
+                    target_str = f"{self.target.real_central_value:<+25.16e}"
+
                 report.append(
-                    f"    vs target : {self.target_real:<+25.16e} Δ = {diff:<+12.2e}")
+                    f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
                 diff_col = Colour.GREEN if rel_diff_perc < 1. else Colour.RED
                 report[-1] += f" ({diff_col}{rel_diff_perc:.3f}%{Colour.END})"
 
-        if not self.imag_error <= 0.:
+        if not self.result.imag_error <= 0:
             report.append(f"    {Colour.DARKCYAN}IM{Colour.END} : {
-                error_fmter(self.imag_central_value, self.imag_error, self.precision)}")
-            err_perc = abs(100. * self.imag_error / self.imag_central_value)
+                error_fmter(self.result.imag_central_value, self.result.imag_error, self.precision)}")
+            err_perc = abs(100. * self.result.imag_error / self.result.imag_central_value)
             err_col = Colour.GREEN if err_perc < 1. else Colour.RED
-            rsd = err_perc / 100. * np.sqrt(self.n_points)
-            report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END}, RSD={rsd:.3f})"
-            if self.target_imag is not None:
-                diff = self.imag_central_value - self.target_imag
-                rel_diff_perc = abs(100. * diff / self.target_imag)
+            rsd = self.result.imag_rsd
+            tvar = self.result.imag_tvar
+            atvar = self.result.abs_imag_tvar
+            report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END})"
+            if rsd > 0:
+                report[-1] += f", RSD={rsd:.3f}"
+            if tvar > 0:
+                report[-1] += f", TVAR={tvar:.3e}"
+            if atvar > 0:
+                report[-1] += f", ATVAR={atvar:.3e}"
+            if self.target.imag_central_value != 0:
+                diff = self.result.imag_central_value - self.target.imag_central_value
+                rel_diff_perc = abs(100. * diff / self.target.imag_central_value)
+                if self.target.imag_error > 0:
+                    target_str = error_fmter(self.target.imag_central_value, self.target.imag_error, self.precision)
+                else:
+                    target_str = f"{self.target.imag_central_value:<+25.16e}"
+
                 report.append(
-                    f"    vs target : {self.target_imag:<+25.16e} Δ = {diff:<+12.2e}")
+                    f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
                 diff_col = Colour.GREEN if rel_diff_perc < 1. else Colour.RED
                 report[-1] += f" ({diff_col}{rel_diff_perc:.3f}%{Colour.END})"
 
-        return "\n".join(f"| > {line}" for line in report)
+        return "\n".join(line for line in report)
 
     def get_observables(self) -> Dict[str, Any]:
-        return dict(
-            real_central_value=self.real_central_value,
-            imag_central_value=self.imag_central_value,
-            real_error=self.real_error,
-            imag_error=self.imag_error,
-            real_rsd=self.real_rsd,
-            imag_rsd=self.imag_rsd,
-        )
-
-    @staticmethod
-    def _rsd(mean: float, err: float, n_points: int) -> float:
-        if mean == 0:
-            return mean
-        return err / np.abs(mean) * np.sqrt(n_points)
+        return self.result.__dict__.copy()
 
 
 class MaxWeight(AccumulatorModule):
@@ -558,7 +645,7 @@ class MaxWeight(AccumulatorModule):
         if other.imag_pos_max_wgt_point is not None:
             if other.imag_pos_max_wgt > self.imag_pos_max_wgt:
                 self.imag_pos_max_wgt = other.imag_pos_max_wgt
-                self.imag_pos_max_wgt_point = other.real_pos_max_wgt_point
+                self.imag_pos_max_wgt_point = other.imag_pos_max_wgt_point
         if other.imag_neg_max_wgt_point is not None:
             if other.imag_neg_max_wgt < self.imag_neg_max_wgt:
                 self.imag_neg_max_wgt = other.imag_neg_max_wgt
@@ -578,7 +665,7 @@ class MaxWeight(AccumulatorModule):
         if self.imag_neg_max_wgt < 0.:
             report.append(
                 f"    {Colour.DARKCYAN}IM[-]{Colour.END} : {self.imag_neg_max_wgt[0]:<15.12e} at {self.imag_neg_max_wgt_point}")
-        return "\n".join(f"| > {line}" for line in report)
+        return "\n".join(line for line in report)
 
     def get_observables(self) -> Dict[str, Any]:
         return dict(
@@ -634,7 +721,7 @@ class ProcessingTimes(AccumulatorModule):
                     f"{identifier}: {mus_factor*time:.1f} µs ({int(perc_time)}%)")
         report.append(" | ".join(subroutine_times))
 
-        return "\n".join(f"| > {line}" for line in report)
+        return "\n".join(line for line in report)
 
     def get_observables(self) -> Dict[str, Any]:
         return dict(
@@ -671,7 +758,7 @@ class FailuresMonitor(AccumulatorModule):
 
     def str_report(self) -> str:
         if self.n_points == self.n_success:
-            return f"""| > {Colour.GREEN}No Failures, successfully evaluated all {
+            return f"""{Colour.GREEN}No Failures, successfully evaluated all {
                 self.n_points}/{self.n_points} points!{Colour.END}"""
 
         n_failures = self.n_points - self.n_success
@@ -689,7 +776,7 @@ class FailuresMonitor(AccumulatorModule):
             report.append(
                 f"... And {Colour.RED}{n_failures-self.max_display}{Colour.END} more failed evaluations.")
 
-        return "\n".join(f"| > {line}" for line in report)
+        return "\n".join(line for line in report)
 
     def get_observables(self) -> Dict[str, Any]:
         return dict(
@@ -704,9 +791,8 @@ class TrainingData(AccumulatorModule):
 
     def __init__(self,
                  data: LayerData,
-                 dtype: DTypeLike | None = None,
                  training_phase: Literal['real', 'imag', 'abs'] = 'real',):
-        self.dtype = dtype
+        self.dtype = data.dtype
         self.training_phase = training_phase
         self.training_result: list[NDArray] = []
         self.has_failures = len(data.failures) > 0
@@ -735,9 +821,12 @@ class TrainingData(AccumulatorModule):
         self.training_result += other.training_result
 
     def str_report(self) -> str:
-        return f"| > Trained on phase: {Colour.GREEN}{self.training_phase.upper()}{Colour.END}"
+        return f"Trained on phase: {Colour.GREEN}{self.training_phase.upper()}{Colour.END}"
 
     def get_observables(self) -> Dict[str, Any]:
         return dict(
             training_phase=self.training_phase,
         )
+
+    def finalise(self) -> None:
+        self.training_result = [np.vstack(self.training_result)]

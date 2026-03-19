@@ -1,0 +1,11 @@
+[layered_parameterisation.layer_0]
+parameterisation_type = "rkaapo"
+mu = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+a = 0.5
+b = 1.0
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "fermi"
+ose_exponent = 6.0
+fermi_exponent = 1.0

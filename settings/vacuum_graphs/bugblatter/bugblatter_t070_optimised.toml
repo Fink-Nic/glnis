@@ -1,0 +1,7 @@
+run_name = "bugblatter_t070_optimised"
+templates = [
+    "settings/vacuum_graphs/bugblatter/bugblatter",
+    "settings/vacuum_graphs/bugblatter/bugblatter_tseries",
+    "settings/vacuum_graphs/bugblatter/bugblatter_t070",
+    "settings/vacuum_graphs/bugblatter/bugblatter_optimised",
+]

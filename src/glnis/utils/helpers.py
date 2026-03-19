@@ -118,9 +118,10 @@ def overwrite_settings(orig_dict: Dict[str, Any], new_dict: Dict[str, Any],
     return orig_dict
 
 
-def shell_print(*lines: str, prefix="| > "):
+def shell_print(*lines: str, prefix="| >"):
     for line in lines:
-        print(prefix, line)
+        for ln in line.split("\n"):
+            print(prefix, ln)
 
 
 def verify_path(path: str, suffix: str = None, _levels_to_root: int = 3) -> Path:

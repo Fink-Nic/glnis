@@ -6,6 +6,9 @@ momtrop_edge_weight = 0.75
 is_vacuum = true
 overwrite_graph_properties = true
 
+[integration_target]
+real_central_value = 1.0
+
 [graph.graph_properties]
 edge_src_dst_vertices = [
     [0, 1], 
@@ -48,7 +51,6 @@ lmb_array = [
 ]
 [model]
 from_state = false
-model_path = "/home/nic/Master/tropnis/kaapo_scalars.json"
 
 [layered_integrator]
 integrator_type = "madnis"
@@ -70,9 +72,7 @@ parameterisation_type = "spherical"
 
 [layered_integrand]
 integrand_type = "test"
-use_f128 = true
 n_cores = 1
-target_real = 1.0
 
 # Parameters used in the tprog subcommand
 [scripts.sampler_comp]
@@ -87,6 +87,14 @@ n_log = 1
 # Will also output the result +- error and rsd to console
 n_plot_rsd = 5
 # Training steps between plotting the loss
+n_plot_loss = 1
+
+[scripts.training_prog]
+n_training_steps = 50
+n_samples = 1000
+n_samples_after_training = 20000
+n_log = 1
+n_plot_rsd = 5
 n_plot_loss = 1
 
 [scripts.slice_plots]

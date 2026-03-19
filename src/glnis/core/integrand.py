@@ -9,7 +9,9 @@ from typing import Dict, List, Sequence, Callable, Literal, Any
 from copy import deepcopy
 
 from glnis.core.parameterisation import LayeredParameterisation
-from glnis.core.accumulator import Accumulator, TrainingData, GraphProperties, LayerData
+from glnis.core.accumulator import (
+    Accumulator, TrainingAccumulator, TrainingData, GraphProperties, LayerData, Observables
+)
 from glnis.utils.helpers import chunks
 
 try:
@@ -27,8 +29,7 @@ class Integrand(ABC):
                  continuous_dim: int = 0,
                  discrete_dims: List[int] = [],
                  use_f128: bool = False,
-                 target_real: float | None = None,
-                 target_imag: float | None = None,
+                 target: Observables | None = None,
                  training_phase: Literal['real', 'imag', 'abs'] = 'real',
                  **uncaught_kwargs):
         self.graph_properties = graph_properties
@@ -38,8 +39,7 @@ class Integrand(ABC):
         self.dtype = np.dtype(
             np.float128) if self.use_f128 else np.dtype(np.float64)
         self.training_phase = training_phase
-        self.target_real = None if target_real == 0. else target_real
-        self.target_imag = None if target_imag == 0. else target_imag
+        self.target = target if target is not None else Observables()
 
     @abstractmethod
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
@@ -106,7 +106,7 @@ class TestIntegrand(Integrand):
         self.sigma = sigma
         self.const_f = const_f
         if not self.const_f:
-            self.target_real = 1.
+            self.target = Observables(real_central_value=1)
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         if self.const_f:
@@ -272,8 +272,7 @@ class ParameterisedIntegrand:
         self.discrete_dims = self._get_discrete_dims()
 
         self.training_phase = self.integrand.training_phase
-        self.target_real = self.integrand.target_real
-        self.target_imag = self.integrand.target_imag
+        self.target = self.integrand.target
 
     def eval_integrand(self, layer_input: LayerData,
                        acc_type: Literal['default', 'training'] = 'default') -> Accumulator:
@@ -291,8 +290,7 @@ class ParameterisedIntegrand:
             parameterised.update('processing')
         integration_result = self.integrand.evaluate_batch(parameterised)
         acc_kwargs = dict(
-            target_real=self.integrand.target_real,
-            target_imag=self.integrand.target_imag,
+            target=self.integrand.target,
             training_phase=self.integrand.training_phase,)
         accumulator = integration_result.accumulate(acc_type, **acc_kwargs)
 
@@ -465,14 +463,14 @@ class MPIntegrand(ParameterisedIntegrand):
             print(accumulator.str_report())
 
         if acc_type == 'training':
+            accumulator: TrainingAccumulator
             result_sorted = n_chunks*[None]
-            training_acc: TrainingData = accumulator.modules[-1]
-            unsorted = [tres for tres in training_acc.training_result]
-            unsorted = [unsorted[0]] + unsorted
+            training_acc: TrainingData = accumulator.training_data
             for i, sorted_id in enumerate(chunk_id_return_order):
                 result_sorted[sorted_id] = training_acc.training_result[i]
-            numpy_result = np.vstack(result_sorted)
-            training_acc.training_result = [numpy_result]
+            training_acc.training_result[:] = result_sorted
+
+        accumulator.finalise()
 
         return accumulator
 

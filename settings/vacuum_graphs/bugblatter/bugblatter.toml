@@ -1,4 +1,4 @@
-run_name = "bugblatter_mc"
+run_name = "bugblatter"
 
 [graph]
 from_state = false
@@ -169,7 +169,6 @@ lmb_array = [
 
 [model]
 from_state = false
-model_path = "/home/nic/Master/tropnis/kaapo_scalars.json"
 
 [layered_integrator]
 integrator_type = "madnis"
@@ -198,8 +197,8 @@ b = 1.0
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"
 subtype = "fermi"
-ose_exponent = 3.0
-fermi_exponent = 0.5
+ose_exponent = 6.0
+fermi_exponent = 1.0
 
 [layered_integrand]
 integrand_type = "kaapo"
@@ -210,9 +209,6 @@ params = [6.283185307179586, 3.141592653589793, 1.0]
 use_prec = true
 use_f128 = true
 n_cores = 128
-# chem potential 0.0290399
-# no chem potential 0.714390
-target_real = 0.0
 
 [integrand.kaapo.symbolica_integrand_kwargs]
 rotation_seed = 42
@@ -236,10 +232,9 @@ escalate_large_momentum_multiplier = -1.0
 sum_orientations = true
 runtime_summation = false
 
-# Parameters used in the tprog subcommand
 [scripts.sampler_comp]
 n_training_steps = 2000
-n_samples = 10000
+n_samples = 1000
 nitn = 10
 # Number of samples drawn after the training to compute the final result
 n_samples_after_training = 1000000

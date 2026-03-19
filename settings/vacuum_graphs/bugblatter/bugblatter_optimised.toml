@@ -1,0 +1,29 @@
+[integrator.madnis]
+batch_size = 1000
+learning_rate = 1e-3
+discrete_model = "transformer"
+use_scheduler = true
+scheduler_type = "cosineannealing"
+loss_type = "kl_divergence_softclip"
+
+[integrator.madnis.scheduler_kwargs]
+
+# Parameters for the transformer model
+[integrator.madnis.transformer]
+embedding_dim  = 64
+feedforward_dim = 128
+heads = 4
+transformer_layers = 3
+mlp_layers = 3
+mlp_units = 128
+
+# Parameters for the Flow module
+[integrator.madnis.flow_kwargs]
+uniform_latent = true
+permutations = "log"
+layers = 4
+units = 128
+bins = 100
+min_bin_width = 1e-4
+min_bin_height = 1e-12
+min_bin_derivative = 1e-12

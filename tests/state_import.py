@@ -1,15 +1,13 @@
 # type: ignore
-from dataclasses import fields
-from pathlib import Path
-
-from glnis.utils.helpers import shell_print, verify_path
-from glnis.scripts.sampler_comparison import SamplerCompData
-
 
 def run_state_import(
     settings_file: str,
     state_file: str,
 ) -> None:
+    from pathlib import Path
+
+    from glnis.utils.helpers import shell_print, verify_path
+    from glnis.scripts.sampler_comparison import SamplerCompData
 
     import signal
     from torch import load
@@ -83,10 +81,7 @@ def run_state_import(
                     continue
                 shell_print(f"Successfully imported {name} state")
                 acc = integrator.integrate(n_points, progress_report=False)
-                acc_obs = acc.get_observables()
-                obs = SamplerCompData.Observables()
-                for f in fields(obs):
-                    setattr(obs, f.name, acc_obs.get(f.name, 0))
+                obs = acc.statistics.result
                 shell_print(f"Result for {name} after importing, run {i + 1}:")
                 if obs.real_error:
                     shell_print(
@@ -108,7 +103,7 @@ def main():
         print("Usage: python state_import.py <settings_file> <state_file>")
         return
 
-    shell_print("Starting state import test...")
+    print("Starting state import test...")
 
     run_state_import(sys.argv[1], sys.argv[2])
 

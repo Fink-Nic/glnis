@@ -8,7 +8,7 @@ import pydot
 import json
 import tomllib
 from glnis.utils.helpers import overwrite_settings, verify_path
-from glnis.core.accumulator import GraphProperties
+from glnis.core.accumulator import GraphProperties, Observables
 
 
 class ModelParser:
@@ -267,26 +267,30 @@ class DotParser:
 
 
 class SettingsParser:
-    def __init__(self, settings_file: str | Path,
+    def __init__(self, settings_file: str | Path = "settings/default.toml",
+                 existing_settings: Dict[str, Any] | None = None,
                  verbose: bool = False,):
-        self.settings_path = Path(settings_file)
-        here = Path(__file__).resolve()
         self.verbose = verbose
-        settings_default_path = verify_path("settings/default.toml")
-        self.settings_path = verify_path(self.settings_path, suffix=".toml")
-        with self.settings_path.open("rb") as f:
-            settings = tomllib.load(f)
-        with settings_default_path.open("rb") as f:
-            default_settings = tomllib.load(f)
+        if existing_settings is not None:
+            self.settings = existing_settings
+        else:
+            settings_path = Path(settings_file)
+            settings_default_path = verify_path("settings/default.toml")
+            settings_path = verify_path(settings_path, suffix=".toml")
+            with settings_path.open("rb") as f:
+                settings = tomllib.load(f)
+            with settings_default_path.open("rb") as f:
+                default_settings = tomllib.load(f)
 
-        for template in settings.get("templates", []):
-            template = verify_path(template, suffix=".toml")
-            with template.open("rb") as f:
-                template = tomllib.load(f)
-            default_settings = overwrite_settings(
-                default_settings, template)
-        self.settings: Dict[str, Any] = overwrite_settings(
-            default_settings, settings, always_overwrite=['layered_parameterisation'])
+            for template in settings.get("templates", []):
+                template = verify_path(template, suffix=".toml")
+                with template.open("rb") as f:
+                    template = tomllib.load(f)
+                default_settings = overwrite_settings(
+                    default_settings, template)
+            self.settings: Dict[str, Any] = overwrite_settings(
+                default_settings, settings,
+                always_overwrite=['layered_parameterisation', 'templates'])
 
         self.gammaloop_state_path = Path(self.settings['gammaloop_state']['state_dir'],
                                          self.settings['gammaloop_state']['state_name'])
@@ -319,6 +323,19 @@ class SettingsParser:
 
         return gammaloop_result
 
+    def get_integration_target(self) -> Observables:
+        gammaloop_result = self.get_gammaloop_integration_result()
+        if gammaloop_result is None:
+            return Observables(**self.settings.get('integration_target', {}))
+
+        return Observables(
+            n_points=gammaloop_result['neval'],
+            real_central_value=gammaloop_result['result']['re'],
+            imag_central_value=gammaloop_result['result']['im'],
+            real_error=gammaloop_result['error']['re'],
+            imag_error=gammaloop_result['error']['im'],
+        )
+
     def get_model(self) -> ModelParser:
         return ModelParser(self.model_path)
 
@@ -336,6 +353,7 @@ class SettingsParser:
 
     def get_integrand_kwargs(self) -> Dict[str, Any]:
         new_kwargs = self.settings['layered_integrand']
+        new_kwargs['target'] = self.get_integration_target()
         old_kwargs = deepcopy(
             self.settings['integrand'][new_kwargs['integrand_type']])
 

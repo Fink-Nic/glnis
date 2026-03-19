@@ -760,7 +760,7 @@ class OSEMCLayer(MCLayer):
     IDENTIFIER = "OSE MC Layer"
 
     def __init__(self,
-                 ose_exponent: float = 2.0,
+                 ose_exponent: float = 1.0,
                  **kwargs):
         super().__init__(**kwargs)
         self.ose_exponent = ose_exponent
@@ -788,8 +788,8 @@ class FermiMCLayer(MCLayer):
     IDENTIFIER = "Fermi MC Layer"
 
     def __init__(self,
-                 ose_exponent: float = 2.0,
-                 fermi_exponent: float = 0.5,
+                 ose_exponent: float = 4.0,
+                 fermi_exponent: float = 1.0,
                  set_bosonic_edge_to_one: bool = True,
                  **kwargs):
         super().__init__(**kwargs)
@@ -821,10 +821,10 @@ class FermiMCLayer(MCLayer):
             bosonic_edge_mask = self.channel_mu == 0.
             all_fermi_surface_terms[:, bosonic_edge_mask] = 1.
         all_fermi_surface_terms = np.abs(np.prod(
-            all_fermi_surface_terms, axis=2))**(-self.fermi_exponent)
+            all_fermi_surface_terms, axis=2))**(-self.fermi_exponent/2.)
         # Re-assigning to save at least a smidgen of memory
         all_e_surface_terms = np.prod(
-            all_e_surface_terms, axis=2)**(-self.ose_exponent)
+            all_e_surface_terms, axis=2)**(-self.ose_exponent/2.)
         all_fermi_surface_terms *= all_e_surface_terms
         mc_weight = np.take_along_axis(
             all_fermi_surface_terms, discrete, axis=1)
