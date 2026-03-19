@@ -29,6 +29,7 @@ class SlicePlotData:
         self.param_kwargs: Dict[str, Any] = param_kwargs
         self.slices1d: List[SlicePLotData.Slice] = slices1d
         self.slices2d: List[SlicePLotData.Slice] = slices2d
+        self.EPS = EPS
 
     @dataclass
     class Slice:
