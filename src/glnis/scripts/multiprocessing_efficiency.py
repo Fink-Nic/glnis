@@ -1,6 +1,5 @@
 # type: ignore
 import pickle
-from numpy.typing import NDArray
 from typing import Dict, List, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -27,22 +26,27 @@ class MPEfficiencyData:
 
 
 def run_multiprocessing_efficiency(
-    settings_file: str,
-    state_file: str = "",
+    file: str,
     comment: str = "",
     no_output: bool = False,
     no_plot: bool = False,
-    only_plot: bool = False,
-    subfolder: str = "multiprocessing_efficiency",
-) -> None:
+    subroutine: str = "multiprocessing_efficiency",
+) -> MPEfficiencyData | None:
 
-    if only_plot or Path(settings_file).suffix == ".pkl":
-        plot_multiprocessing_efficiency(settings_file, comment)
+    file = verify_path(file)
+    with file.open('rb') as f:
+        SData = torch.load(f, weights_only=False)
+    if isinstance(SData, SamplerCompData):
+        pass
+    elif isinstance(SData, MPEfficiencyData):
+        plot_multiprocessing_efficiency(file, comment)
         quit()
+    else:
+        raise ValueError(
+            f"Expected pickled object at '{file}' to contain either a SamplerCompData or MPEfficiencyData object, but found {type(SData)}.")
 
     import os
     import signal
-    import numpy as np
     import torch
 
     from glnis.core.integrator import (
@@ -50,29 +54,24 @@ def run_multiprocessing_efficiency(
         MadnisIntegrator,
     )
     from glnis.core.parser import SettingsParser
-    from madnis.integrator import Integrator as MadNIS
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
-        shell_print(f"Working on settings {settings_file}")
-        Settings = SettingsParser(settings_file)
+        shell_print(f"Working on settings {file}")
+        Settings = SettingsParser(SData.settings)
 
         # parameters
         scripts: Dict[str, Any] = Settings.settings.get("scripts", dict())
-        params: Dict[str, Any] = scripts.get(subfolder, dict())
-        n_cores: List[int] = params.get("n_cores", [1, 2, 4, 8, 16, 32, 64, 128, 256])
+        params: Dict[str, Any] = scripts.get(subroutine, dict())
+        n_cores: List[int] = params.get("n_cores", [1, 2, 4, 8, 16, 32, 64, 128])
         n_samples: List[int] = params.get("n_samples", [1_000, 10_000, 100_000, 1_000_000, 10_000_000])
         max_samples_per_core: int = params.get("max_samples_per_core", 100_000)
-
-        state_file: Path = verify_path(state_file)
-        with state_file.open('rb') as f:
-            SData: SamplerCompData = torch.load(f, weights_only=False)
 
         madnis_state = SData.integrator_states.get("MadNIS", None)
 
         if not no_output:
             OUTPUT_DIR = verify_path("outputs")
-            directory = Path(OUTPUT_DIR, Settings.settings['run_name'].replace(" ", "_"), subfolder)
+            directory = Path(OUTPUT_DIR, Settings.settings['run_name'].replace(" ", "_"), subroutine)
             if not os.path.exists(str(directory)):
                 os.makedirs(str(directory))
                 shell_print(f"Created output folder at {directory}")
@@ -82,19 +81,17 @@ def run_multiprocessing_efficiency(
         Settings.settings["layered_integrand"]["use_f128"] = False
         Settings.settings["layered_integrand"]["n_cores"] = max(n_cores)
         Settings.settings["layered_integrator"]["integrator_type"] = "madnis"
-        madnis_integrator: MadnisIntegrator = Integrator.from_dicts(
-            Settings.get_graph_properties(),
-            Settings.get_parameterisation_kwargs(),
-            Settings.get_integrand_kwargs(),
-            Settings.get_integrator_kwargs(),
+        Settings.settings["layered_integrator"]["pretrain_c_flow"] = False
+        madnis_integrator: MadnisIntegrator = Integrator.from_settings(
+            Settings.settings
         )
         integrand = madnis_integrator.integrand
         if madnis_state is None:
             print(
-                f"WARNING: Could not find MadNIS state in state file at '{state_file}'. Will use untrained MadNIS instance.")
+                f"WARNING: Could not find MadNIS state at '{file}'. Will use untrained MadNIS instance.")
         else:
             madnis_integrator.import_state(madnis_state)
-            print("Successfully imported madnis state (shirley)")
+            print("Successfully imported madnis state")
 
         # Will hold integration results to write to text file and plot
         Data = MPEfficiencyData(n_cores=n_cores, n_samples=n_samples)
@@ -134,7 +131,6 @@ def plot_multiprocessing_efficiency(file: str, comment: str = "") -> None:
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
     import numpy as np
-    from numpy.typing import NDArray
 
     file: Path = verify_path(file)
     if not file.is_absolute():

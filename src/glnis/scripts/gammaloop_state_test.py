@@ -8,19 +8,19 @@ from glnis.core.integrator import Integrator
 from glnis.core.parser import SettingsParser
 
 
-def run_state_test(settings_file: str) -> None:
+def run_state_test(file: str) -> None:
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
-        Settings = SettingsParser(settings_file)
+        Settings = SettingsParser(file)
         if not Settings.gammaloop_state_path.exists():
             raise NotADirectoryError(
                 f"""No GammaLoop state at {Settings.gammaloop_state_path}""")
 
-        # Initialize the gammaloop integrand and madnis integrator
+        # Initialize the integrand and integrator
         torch.set_default_dtype(torch.float64)
 
         time_last = time()
-        integrator = Integrator.from_settings_file(settings_file)
+        integrator = Integrator.from_settings(Settings.settings)
         print(f"""| > Initializing the Integrand and Integrator took {
             - time_last + (time_last := time()):.2f}s""")
 
@@ -51,7 +51,7 @@ def run_state_test(settings_file: str) -> None:
 
         print(f"| > Test successfully completed!")
         print(
-            f"| > The gammaloop state specified in {settings_file} should be good to go.")
+            f"| > The gammaloop state specified in {file} should be good to go.")
     except KeyboardInterrupt:
         print("\nCaught KeyboardInterrupt — stopping workers.")
         integrator.integrand.end()

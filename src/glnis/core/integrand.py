@@ -12,7 +12,7 @@ from glnis.core.parameterisation import LayeredParameterisation
 from glnis.core.accumulator import (
     Accumulator, TrainingAccumulator, TrainingData, GraphProperties, LayerData, Observables
 )
-from glnis.utils.helpers import chunks
+from glnis.utils.helpers import chunks, shell_print
 
 try:
     import kaapos.samplers as ksamplers
@@ -295,7 +295,7 @@ class ParameterisedIntegrand:
         accumulator = integration_result.accumulate(acc_type, **acc_kwargs)
 
         if self.verbose:
-            print(accumulator.str_report())
+            shell_print(accumulator.str_report())
 
         return accumulator
 
@@ -359,11 +359,13 @@ class MPIntegrand(ParameterisedIntegrand):
             integrand_kwargs,
             condition_integrand_first,
         )
-        for w_id in range(self.n_cores):
+        self.workers = [
             ctx.Process(target=self._integrand_worker,
-                        args=(
-                            (self.q_in[w_id], self.q_out[w_id]), *worker_args),
-                        daemon=True).start()
+                        args=((self.q_in[w_id], self.q_out[w_id]), *worker_args),
+                        daemon=True) for w_id in range(self.n_cores)
+        ]
+        for w in self.workers:
+            w.start()
         super().__init__(graph_properties,
                          param_kwargs,
                          integrand_kwargs,
@@ -373,7 +375,7 @@ class MPIntegrand(ParameterisedIntegrand):
             output = self.q_out[w_id].get()
             if output == 'STARTED':
                 if self.verbose:
-                    print(f"Core {w_id} has been initialized.")
+                    shell_print(f"Core {w_id} has been initialized.")
             else:
                 raise ValueError(
                     f"Unexpected initialization value in queue: {output}")
@@ -394,8 +396,8 @@ class MPIntegrand(ParameterisedIntegrand):
         while not stop_event.is_set():
             try:
                 data = q_in.get(timeout=0.5)
-                if data == 'STOP':
-                    break
+                # if data == 'STOP':
+                #     break
             except:
                 continue
             job_type, chunk_id, args = data
@@ -415,10 +417,10 @@ class MPIntegrand(ParameterisedIntegrand):
                     attr_name, value = args
                     integrand.set_attribute(attr_name, value)
                 case _:
-                    print("CRITICAL WARNING:")
-                    print(
+                    shell_print("CRITICAL WARNING:")
+                    shell_print(
                         f"Integrand worker has received invalid job type \"{job_type.upper()}\"")
-                    print("Consider terminating the program.")
+                    shell_print("Consider terminating the program.")
 
     def eval_integrand(self, layer_input: LayerData,
                        acc_type: Literal['default', 'training'] = 'default') -> Accumulator:
@@ -460,7 +462,7 @@ class MPIntegrand(ParameterisedIntegrand):
                 n_processed += 1
 
         if self.verbose:
-            print(accumulator.str_report())
+            shell_print(accumulator.str_report())
 
         if acc_type == 'training':
             accumulator: TrainingAccumulator
@@ -520,16 +522,20 @@ class MPIntegrand(ParameterisedIntegrand):
         Terminates all worker processes.
         """
         if not self.stop_event.is_set():
+            shell_print("Attempting to close queues.")
             self.stop_event.set()
 
-        print("Attempting to close queues.")
-        n_closed_queues = 0
-        for w_id in range(self.n_cores):
-            try:
-                self.q_in[w_id].put("STOP")
-            except:
-                n_closed_queues += 1
-        if n_closed_queues > 0:
-            print(f"   {n_closed_queues} queues have already been closed.")
+            for w in self.workers:
+                if w.is_alive():
+                    w.join(timeout=5)
 
-        print(f"{self.IDENTIFIER.upper()} has successfully terminated.")
+            alive_workers = 0
+            for w in self.workers:
+                if w.is_alive():
+                    alive_workers += 1
+                    w.terminate()
+                    w.join()
+
+            if alive_workers > 0:
+                shell_print(f"Terminated {alive_workers / self.n_cores} alive worker(s).")
+            shell_print(f"{self.IDENTIFIER.upper()} has successfully terminated.")

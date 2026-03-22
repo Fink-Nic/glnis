@@ -12,5 +12,5 @@ pretrain_c_flow = true
 [integrator.madnis.pretraining_kwargs]
 nitn=10
 neval=1000000
-bins_mult=4
-damping=0.7
+bins_mult=20
+alpha=0.3

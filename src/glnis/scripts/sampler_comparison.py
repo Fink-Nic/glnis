@@ -52,16 +52,14 @@ def run_sampler_comp(
     no_havana: bool = False,
     no_output: bool = False,
     no_plot: bool = False,
-    only_plot: bool = False,
     export_states: bool = True,
     subroutine: str = "sampler_comp",
-) -> None:
+) -> SamplerCompData | None:
 
-    if only_plot or Path(file).suffix == ".pkl":
+    if Path(file).suffix == ".pkl":
         plot_sampler_comp(file, comment)
         quit()
 
-    import math
     import os
     import signal
     from time import time
@@ -131,8 +129,8 @@ def run_sampler_comp(
         madnis_kwargs = Settings.get_integrator_kwargs()
         integrand_kwargs = Settings.get_integrand_kwargs()
         param_kwargs = Settings.get_parameterisation_kwargs()
-        madnis_integrator: MadnisIntegrator = Integrator.from_settings_file(
-            file
+        madnis_integrator: MadnisIntegrator = Integrator.from_settings(
+            Settings.settings
         )
         madnis_integrator.callback = callback
         integrand = madnis_integrator.integrand
@@ -172,7 +170,7 @@ def run_sampler_comp(
         if not no_vegas:
             shell_print("Training Vegas:")
             vegas_training_result = integrators["Vegas"].train(nitn, neval)
-            shell_print(vegas_training_result.summary())
+            shell_print(vegas_training_result)
             shell_print(f"Training Vegas took {-time_last + (time_last := time()): .2f}s")
 
         if not no_havana:
@@ -204,10 +202,10 @@ def run_sampler_comp(
         with file.open("wb") as f:
             save(Data, f)
 
-        if no_plot:
-            quit()
+        if not no_plot:
+            plot_sampler_comp(file, comment)
 
-        plot_sampler_comp(file, comment)
+        return Data
 
     except KeyboardInterrupt:
         shell_print("\nCaught KeyboardInterrupt — stopping workers.")
@@ -225,6 +223,8 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
     file: Path = verify_path(file, suffix=".pkl")
     with file.open('rb') as f:
         Data: SamplerCompData = load(f, weights_only=False)
+        if not isinstance(Data, SamplerCompData):
+            raise ValueError(f"Expected a SamplerCompData object in the file, but got {type(Data)}")
 
     shell_print(f"Plotting data from '{file}'")
 

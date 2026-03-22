@@ -267,14 +267,13 @@ class DotParser:
 
 
 class SettingsParser:
-    def __init__(self, settings_file: str | Path = "settings/default.toml",
-                 existing_settings: Dict[str, Any] | None = None,
+    def __init__(self, settings: str | Path | Dict = "settings/default.toml",
                  verbose: bool = False,):
         self.verbose = verbose
-        if existing_settings is not None:
-            self.settings = existing_settings
+        if isinstance(settings, dict):
+            self.settings = settings
         else:
-            settings_path = Path(settings_file)
+            settings_path = Path(settings)
             settings_default_path = verify_path("settings/default.toml")
             settings_path = verify_path(settings_path, suffix=".toml")
             with settings_path.open("rb") as f:

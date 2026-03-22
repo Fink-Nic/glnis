@@ -16,7 +16,7 @@ from glnis.core.accumulator import (
 )
 from glnis.core.integrand import MPIntegrand
 from glnis.core.parser import SettingsParser
-from glnis.utils.helpers import shell_print
+from glnis.utils.helpers import shell_print, error_fmter
 
 
 class Integrator(ABC):
@@ -33,24 +33,23 @@ class Integrator(ABC):
         self.input_dim = self.continuous_dim + self.num_discrete_dims
         self.dtype = integrand.dtype
         self.seed = seed
+        self.rng = np.random.default_rng(self.seed)
 
     @abstractmethod
     def get_samples(self, n_points: int) -> LayerData:
         """Returns a LayerData object containing the samples to be fed into the integrand."""
         pass
 
-    @abstractmethod
     def export_state(self) -> Any:
         """Exports the state of the integrator, e.g. for checkpointing or analysis."""
-        pass
+        return Integrator.IntegratorState(rng_state=deepcopy(self.rng.bit_generator.state))
 
-    @abstractmethod
-    def import_state(self, state: Any):
+    def import_state(self, state: 'Integrator.IntegratorState'):
         """
         Imports the state of the integrator from a previous export.
         Upon importing, the integrand must be set up to match the imported state.
         """
-        pass
+        self.rng.bit_generator.state = deepcopy(state.rng_state)
 
     def integrate(self,
                   n_samples: int,
@@ -94,7 +93,7 @@ class Integrator(ABC):
             cdf = np.cumsum(unnorm_probs, axis=1)
             norm = cdf[:, -1]
             cdf = cdf / norm[:, None]
-            r = np.random.random_sample((n, 1))
+            r = self.rng.random((n, 1))
             samples = np.sum(cdf < r, axis=1, dtype=np.uint64).reshape(-1, 1)
             indices = np.hstack((indices, samples))
             prob = prob * \
@@ -143,8 +142,8 @@ class Integrator(ABC):
                 return NaiveIntegrator(integrand, **integrator_kwargs)
 
     @staticmethod
-    def from_settings_file(settings_path: str) -> 'Integrator':
-        Parser = SettingsParser(settings_path)
+    def from_settings(settings: str | Dict) -> 'Integrator':
+        Parser = SettingsParser(settings)
         graph_properties = Parser.get_graph_properties()
         parameterisation_kwargs = Parser.get_parameterisation_kwargs()
         integrand_kwargs = Parser.get_integrand_kwargs()
@@ -157,6 +156,10 @@ class Integrator(ABC):
             integrator_kwargs=integrator_kwargs
         )
 
+    @dataclass(kw_only=True)
+    class IntegratorState:
+        rng_state: Dict
+
 
 class NaiveIntegrator(Integrator):
     IDENTIFIER = 'naive sampler'
@@ -165,7 +168,6 @@ class NaiveIntegrator(Integrator):
                  integrand: MPIntegrand,
                  **kwargs,):
         super().__init__(integrand=integrand, **kwargs)
-        self.rng = np.random.default_rng(self.seed)
 
     def get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)
@@ -177,18 +179,6 @@ class NaiveIntegrator(Integrator):
 
         return layer_input
 
-    def export_state(self) -> 'NaiveIntegrator.NaiveState':
-        return NaiveIntegrator.NaiveState(rng=deepcopy(self.rng))
-
-    def import_state(self, state: 'NaiveIntegrator.NaiveState'):
-        if not isinstance(state, NaiveIntegrator.NaiveState):
-            raise ValueError("State for NaiveIntegrator must be of type NaiveState.")
-        self.rng = np.random.default_rng(deepcopy(state.rng))
-
-    @dataclass
-    class NaiveState:
-        rng: np.random._generator.Generator
-
 
 class VegasIntegrator(Integrator):
     IDENTIFIER = 'vegas sampler'
@@ -196,61 +186,65 @@ class VegasIntegrator(Integrator):
     def __init__(self,
                  integrand: MPIntegrand,
                  vegas_init_kwargs: Dict[str, Any] = dict(),
+                 bins: int = 100,
+                 alpha: float = 0.7,
                  **kwargs):
         super().__init__(integrand=integrand, **kwargs)
-        self.rng = np.random.default_rng(self.seed)
         self.vegas_init_kwargs = vegas_init_kwargs
-        self.vegas = vegas.Integrator(self.input_dim*[[0, 1],], **self.vegas_init_kwargs)
-        self.vegas.ran_array_generator = self.rng.random
+        self.adaptive_map = vegas.AdaptiveMap(grid=self.input_dim*[[0, 1],], ninc=bins)
+        self.alpha = alpha
 
-    def train(self, nitn: int = 10, batch_size: int = 10000, **vegas_kwargs) -> vegas._vegas.RAvg:
-        return self.vegas(self._vegas_wrapper, nitn=nitn, neval=batch_size, **vegas_kwargs)
+    def train(self, nitn: int = 10, batch_size: int = 1000, alpha: float | None = None) -> vegas._vegas.RAvg:
+        if alpha is None:
+            alpha = self.alpha
+        shell_print(f"Training Vegas for {nitn} iterations à {batch_size} samples with alpha={alpha}:")
+        report = []
+        for itn in range(nitn):
+            layer_input, r = self.get_samples(batch_size, return_r=True)
+            accumulated_result: TrainingAccumulator = self.integrand.eval_integrand(
+                layer_input, 'training')
+            f = accumulated_result.training_data.training_result[0].astype(np.float64)
+            self.adaptive_map.add_training_data(r, f.ravel())
+            self.adaptive_map.adapt(alpha=alpha)
+            res = accumulated_result.training_data.central_value
+            err = accumulated_result.training_data.error
+            rsd = accumulated_result.training_data.rsd
+            report.append(f"itn {itn+1}: {error_fmter(res, err)}, RSD={rsd:.3f}")
 
-    def get_samples(self, n_points: int) -> LayerData:
+        return "\n".join(f"{line}" for line in report)
+
+    def get_samples(self, n_points: int, return_r: bool = False) -> LayerData:
         # Just need this for the timestamp, since vegas may decide on a different sample size.
-        dummy_input = self.init_layer_data(1)
-        sampling_wgt, samples = self.vegas.sample(n_points, mode="lbatch")
-        sampling_wgt = sampling_wgt.reshape(-1, 1)
-        n_points = len(sampling_wgt)
         layer_input = self.init_layer_data(n_points)
-        layer_input._timestamp = dummy_input._timestamp
-        layer_input.continuous = samples[:, :self.continuous_dim]
-        layer_input.discrete, disc_wgt = self._cont_to_discr(
-            samples[:, self.continuous_dim:])
-        layer_input.wgt *= disc_wgt * sampling_wgt * n_points
+        # adaptive_map.map will fill the containers x_all and jac with the mapped samples and weights
+        r = self.rng.random(size=(n_points, self.input_dim), dtype=np.float64)
+        x_all = np.empty(shape=(n_points, self.input_dim), dtype=np.float64)
+        jac = np.empty(shape=(n_points,), dtype=np.float64)
+        self.adaptive_map.map(r, x_all, jac)
+        layer_input.continuous = x_all[:, :self.continuous_dim]
+        layer_input.discrete, disc_wgt = self._cont_to_discr(x_all[:, self.continuous_dim:])
+        layer_input.wgt = disc_wgt * jac.reshape(-1, 1)
         layer_input.update(self.IDENTIFIER)
 
+        if return_r:
+            return layer_input, r
         return layer_input
 
-    @vegas.lbatchintegrand
-    def _vegas_wrapper(self, x: NDArray) -> NDArray:
-        layer_input = self.init_layer_data(len(x))
-        layer_input.continuous = x[:, :self.continuous_dim]
-        layer_input.discrete, layer_input.wgt = self._cont_to_discr(
-            x[:, self.continuous_dim:])
-        layer_input.update(self.IDENTIFIER)
-        accumulated_result: TrainingAccumulator = self.integrand.eval_integrand(
-            layer_input, 'training')
-
-        return accumulated_result.training_data.training_result[0]
-
     def export_state(self) -> 'VegasIntegrator.VegasState':
-        return VegasIntegrator.VegasState(integrator=deepcopy(self.vegas),
-                                          rng=deepcopy(self.rng))
+        return VegasIntegrator.VegasState(grid=deepcopy(self.adaptive_map.extract_grid()),
+                                          rng_state=deepcopy(self.rng.bit_generator.state))
 
     def import_state(self, state: 'VegasIntegrator.VegasState'):
         if not isinstance(state, VegasIntegrator.VegasState):
             raise ValueError("State for VegasIntegrator must be of type VegasState.")
-        self.rng = deepcopy(state.rng)
-        self.vegas = state.integrator
-        if self.vegas.map.dim != self.input_dim:
+        super().import_state(state)
+        self.adaptive_map = vegas.AdaptiveMap(grid=deepcopy(state.grid))
+        if self.adaptive_map.dim != self.input_dim:
             raise ValueError("Imported Vegas state does not match input dimension of integrand.")
-        self.vegas.ran_array_generator = self.rng.random
 
-    @dataclass
-    class VegasState:
-        integrator: vegas.Integrator
-        rng: np.random._generator.Generator
+    @dataclass(kw_only=True)
+    class VegasState(Integrator.IntegratorState):
+        grid: List[List[float]]
 
 
 class HavanaIntegrator(Integrator):
@@ -282,7 +276,7 @@ class HavanaIntegrator(Integrator):
             )
 
         self.stream_id = stream_id
-        self.rng = RandomNumberGenerator(self.seed, self.stream_id)
+        self.symbolica_rng = RandomNumberGenerator(self.seed, self.stream_id)
         self.discrete_learning_rate = discrete_learning_rate
         self.continuous_learning_rate = continuous_learning_rate
 
@@ -303,12 +297,12 @@ class HavanaIntegrator(Integrator):
             report.append(
                 f"It {itn+1:0>{n_digits}}: {avg:.6e} +- {err:.6e}, chi={chi_sq:.3f}")
 
-        return "\n".join(f"| > {line}" for line in report)
+        return "\n".join(f"{line}" for line in report)
 
     def get_samples(self, n_points: int, return_samples: bool = False, training: bool = False,
                     ) -> Tuple[List[Sample], LayerData] | LayerData:
         layer_input = self.init_layer_data(n_points)
-        samples = self.havana.sample(n_points, self.rng)
+        samples = self.havana.sample(n_points, self.symbolica_rng)
 
         continuous = np.zeros(
             (n_points, self.continuous_dim), dtype=self.integrand.dtype)
@@ -359,27 +353,26 @@ class HavanaIntegrator(Integrator):
         return layer_input
 
     def export_state(self) -> 'HavanaIntegrator.HavanaState':
-        return HavanaIntegrator.HavanaState(grid=deepcopy(self.havana.export_grid()),
+        return HavanaIntegrator.HavanaState(grid=deepcopy(self.havana.export_grid(export_samples=False)),
                                             seed=self.seed,
                                             stream_id=self.stream_id,
-                                            # rng=deepcopy(self.rng),
+                                            rng_state=deepcopy(self.rng.bit_generator.state)
                                             )
 
     def import_state(self, state: 'HavanaIntegrator.HavanaState'):
         if not isinstance(state, HavanaIntegrator.HavanaState):
             raise ValueError("State for HavanaIntegrator must be of type HavanaState.")
+        super().import_state(state)
         self.havana.merge(NumericalIntegrator.import_grid(state.grid))
         self.seed = state.seed
         self.stream_id = state.stream_id
-        self.rng = RandomNumberGenerator(self.seed, self.stream_id)
-        # self.rng = state.rng
+        self.symbolica_rng = RandomNumberGenerator(self.seed, self.stream_id)
 
-    @dataclass
-    class HavanaState:
+    @dataclass(kw_only=True)
+    class HavanaState(Integrator.IntegratorState):
         grid: bytes
         seed: int
         stream_id: int
-        # rng: RandomNumberGenerator
 
 
 class MadnisIntegrator(Integrator):
@@ -413,12 +406,12 @@ class MadnisIntegrator(Integrator):
                      min_bin_width=1e-3,
                      min_bin_height=1e-3,
                      min_bin_derivative=1e-3,),
-                 pretrain_c_flow: bool = True,
+                 pretrain_c_flow: bool = False,
                  pretraining_kwargs: Dict[str, Any] = dict(
                      nitn=10,
                      neval=10000,
                      bins_mult=4,
-                     damping=0.7,
+                     alpha=0.7,
                  ),
                  callback: Callable[[object], None] | None = None,
                  max_batch_size: int = 100_000,
@@ -484,21 +477,31 @@ class MadnisIntegrator(Integrator):
         self.max_batch_size = max_batch_size
 
         if pretrain_c_flow:
-            from madnis.integrator import VegasPreTraining
-            self.pretrainer = VegasPreTraining(
-                self.madnis,
-                bins=pretraining_kwargs.get('bins_mult', 4)*flow_kwargs.get('bins', 100),
-                damping=pretraining_kwargs.get('damping', 0.7),
+            bins = int(pretraining_kwargs.get('bins_mult', 4)*flow_kwargs.get('bins', 100))
+            vegas_integrator = VegasIntegrator(
+                self.integrand,
+                bins=bins,
+                alpha=pretraining_kwargs.get('alpha', 0.7)
             )
             shell_print(f"Pretraining continuous flow...")
             nitn = pretraining_kwargs.get('nitn', 10)
-            for itn in range(nitn):
-                self.pretrainer.train_step(pretraining_kwargs.get('neval', 10000))
-                shell_print(f"Pretraining iteration {itn+1}/{nitn} completed.")
-            self.pretrainer.initialize_integrator()
+            report = vegas_integrator.train(
+                nitn=nitn, batch_size=pretraining_kwargs.get('neval', 10000))
+            shell_print(report)
+            grid = torch.as_tensor(
+                vegas_integrator.adaptive_map.extract_grid(),
+                device=self.madnis.dummy.device,
+                dtype=self.madnis.dummy.dtype,
+            )
+            if self.num_discrete_dims > 0:
+                if self.discrete_dims_position == "first":
+                    grid = grid[self.num_discrete_dims:, :]
+                elif self.discrete_dims_position == "last":
+                    grid = grid[:-self.num_discrete_dims, :]
+                self.madnis.flow.continuous_flow.init_with_grid(grid)
+            else:
+                self.madnis.flow.init_with_grid(grid)
             shell_print(f"MadNIS pretraining successfully completed!")
-        else:
-            self.pretrainer = None
 
     def train(self, nitn: int = 10, _=None):
         if self.use_scheduler:
@@ -666,7 +669,8 @@ class MadnisIntegrator(Integrator):
         optimizer_state = self.madnis.optimizer.state_dict() if self.madnis.optimizer is not None else None
         scheduler_state = self.madnis.scheduler.state_dict() if self.madnis.scheduler is not None else None
         return MadnisIntegrator.MadnisState(
-            rng_state=torch.get_rng_state(),
+            rng_state=deepcopy(self.rng.bit_generator.state),
+            torch_rng_state=torch.get_rng_state(),
             flow_state=flow_state,
             cwnet_state=cwnet_state,
             optimizer_state=optimizer_state,
@@ -676,7 +680,8 @@ class MadnisIntegrator(Integrator):
     def import_state(self, state: 'MadnisIntegrator.MadnisState'):
         if not isinstance(state, MadnisIntegrator.MadnisState):
             raise ValueError("Invalid state type for MadnisIntegrator.")
-        torch.set_rng_state(state.rng_state)
+        super().import_state(state)
+        torch.set_rng_state(state.torch_rng_state)
         self.madnis.flow.load_state_dict(state.flow_state)
         if state.cwnet_state is not None:
             if self.madnis.cwnet is None:
@@ -692,9 +697,9 @@ class MadnisIntegrator(Integrator):
             self.madnis.scheduler = self._get_scheduler(T_max=1, scheduler_type=self.scheduler_type)
             self.madnis.scheduler.load_state_dict(state.scheduler_state)
 
-    @dataclass
-    class MadnisState:
-        rng_state: Tensor
+    @dataclass(kw_only=True)
+    class MadnisState(Integrator.IntegratorState):
+        torch_rng_state: Tensor
         flow_state: Dict[str, Any]
         cwnet_state: Dict[str, Any] | None
         optimizer_state: Dict[str, Any] | None

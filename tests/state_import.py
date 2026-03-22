@@ -1,8 +1,7 @@
 # type: ignore
 
 def run_state_import(
-    settings_file: str,
-    state_file: str,
+    file: str,
 ) -> None:
     from pathlib import Path
 
@@ -21,18 +20,25 @@ def run_state_import(
     )
     from glnis.core.parser import SettingsParser
 
+    file = verify_path(file)
+    with file.open('rb') as f:
+        SData: SamplerCompData = load(f, weights_only=False)
+    if not isinstance(SData, SamplerCompData):
+        shell_print(f"File {file} does not contain SamplerCompData. Exiting.")
+        return
+
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
-        shell_print(f"Working on settings {settings_file}")
-        Settings = SettingsParser(settings_file)
+        shell_print(f"Working on file {file}")
+        Settings = SettingsParser(SData.settings)
 
         state_file: Path = verify_path(state_file)
         with state_file.open('rb') as f:
             SData: SamplerCompData = load(f, weights_only=False)
 
         Settings.settings["layered_integrator"]["integrator_type"] = "madnis"
-        madnis_integrator: MadnisIntegrator = Integrator.from_settings_file(
-            settings_file
+        madnis_integrator: MadnisIntegrator = Integrator.from_settings(
+            Settings.settings
         )
         integrand = madnis_integrator.integrand
 
@@ -99,13 +105,13 @@ def run_state_import(
 
 def main():
     import sys
-    if len(sys.argv) != 3:
-        print("Usage: python state_import.py <settings_file> <state_file>")
+    if len(sys.argv) != 2:
+        print("Usage: python state_import.py <state_file>")
         return
 
     print("Starting state import test...")
 
-    run_state_import(sys.argv[1], sys.argv[2])
+    run_state_import(sys.argv[1])
 
 
 if __name__ == "__main__":

@@ -542,12 +542,12 @@ class IntegrationStatistics(AccumulatorModule):
         if self.result.real_error > 0:
             report.append(f"    {Colour.DARKCYAN}RE{Colour.END} : {
                 error_fmter(self.result.real_central_value, self.result.real_error, self.precision)}")
-            err_perc = abs(100. * self.result.real_error / self.result.real_central_value)
-            err_col = Colour.GREEN if err_perc < 1. else Colour.RED
+            err_rel = abs(self.result.real_error / self.result.real_central_value)
+            err_col = Colour.GREEN if err_rel < 0.01 else Colour.RED
             rsd = self.result.real_rsd
             tvar = self.result.real_tvar
             atvar = self.result.abs_real_tvar
-            report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END})"
+            report[-1] += f" ({err_col}{err_rel:.3%}{Colour.END})"
             if rsd > 0:
                 report[-1] += f", RSD={rsd:.3f}"
             if tvar > 0:
@@ -556,7 +556,7 @@ class IntegrationStatistics(AccumulatorModule):
                 report[-1] += f", ATVAR={atvar:.3e}"
             if self.target.real_central_value != 0:
                 diff = self.result.real_central_value - self.target.real_central_value
-                rel_diff_perc = abs(100. * diff / self.target.real_central_value)
+                rel_diff = abs(diff / self.target.real_central_value)
                 if self.target.real_error > 0:
                     target_str = error_fmter(self.target.real_central_value, self.target.real_error, self.precision)
                 else:
@@ -564,8 +564,8 @@ class IntegrationStatistics(AccumulatorModule):
 
                 report.append(
                     f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
-                diff_col = Colour.GREEN if rel_diff_perc < 1. else Colour.RED
-                report[-1] += f" ({diff_col}{rel_diff_perc:.3f}%{Colour.END})"
+                diff_col = Colour.GREEN if rel_diff < 0.01 else Colour.RED
+                report[-1] += f" ({diff_col}{rel_diff:.3%}{Colour.END})"
                 rsd = self.target.real_rsd
                 tvar = self.target.real_tvar
                 atvar = self.target.abs_real_tvar
@@ -579,12 +579,12 @@ class IntegrationStatistics(AccumulatorModule):
         if not self.result.imag_error <= 0:
             report.append(f"    {Colour.DARKCYAN}IM{Colour.END} : {
                 error_fmter(self.result.imag_central_value, self.result.imag_error, self.precision)}")
-            err_perc = abs(100. * self.result.imag_error / self.result.imag_central_value)
-            err_col = Colour.GREEN if err_perc < 1. else Colour.RED
+            err_rel = abs(self.result.imag_error / self.result.imag_central_value)
+            err_col = Colour.GREEN if err_rel < 0.01 else Colour.RED
             rsd = self.result.imag_rsd
             tvar = self.result.imag_tvar
             atvar = self.result.abs_imag_tvar
-            report[-1] += f" ({err_col}{err_perc:.3f}%{Colour.END})"
+            report[-1] += f" ({err_col}{err_rel:.3%}{Colour.END})"
             if rsd > 0:
                 report[-1] += f", RSD={rsd:.3f}"
             if tvar > 0:
@@ -593,7 +593,7 @@ class IntegrationStatistics(AccumulatorModule):
                 report[-1] += f", ATVAR={atvar:.3e}"
             if self.target.imag_central_value != 0:
                 diff = self.result.imag_central_value - self.target.imag_central_value
-                rel_diff_perc = abs(100. * diff / self.target.imag_central_value)
+                rel_diff = abs(diff / self.target.imag_central_value)
                 if self.target.imag_error > 0:
                     target_str = error_fmter(self.target.imag_central_value, self.target.imag_error, self.precision)
                 else:
@@ -601,8 +601,8 @@ class IntegrationStatistics(AccumulatorModule):
 
                 report.append(
                     f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
-                diff_col = Colour.GREEN if rel_diff_perc < 1. else Colour.RED
-                report[-1] += f" ({diff_col}{rel_diff_perc:.3f}%{Colour.END})"
+                diff_col = Colour.GREEN if rel_diff < 0.01 else Colour.RED
+                report[-1] += f" ({diff_col}{rel_diff:.3%}{Colour.END})"
                 rsd = self.target.imag_rsd
                 tvar = self.target.imag_tvar
                 atvar = self.target.abs_imag_tvar
@@ -830,6 +830,9 @@ class TrainingData(AccumulatorModule):
         int_result[np.isnan(int_result)] = self.FAILUREVALUE
 
         self.training_result.append(int_result)
+        self.central_value = 0.0
+        self.error = 0.0
+        self.rsd = 0.0
 
     def combine_with(self: 'TrainingData', other: 'TrainingData') -> None:
         if not self.training_phase == other.training_phase:
@@ -848,3 +851,7 @@ class TrainingData(AccumulatorModule):
 
     def finalise(self) -> None:
         self.training_result = [np.vstack(self.training_result)]
+        sqr_n_points = np.sqrt(self.training_result[0].shape[0])
+        self.central_value = np.mean(self.training_result[0])
+        self.error = np.std(self.training_result[0]) / sqr_n_points
+        self.rsd = self.error / self.central_value * sqr_n_points if self.central_value != 0 else 0
