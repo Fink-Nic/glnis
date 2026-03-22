@@ -1,6 +1,6 @@
 [layered_integrator]
 batch_size = 10000
-learning_rate = 2e-4
+learning_rate = 5e-4
 discrete_model = "transformer"
 use_scheduler = true
 scheduler_type = "cosineannealing"
@@ -12,7 +12,7 @@ loss_type = "kl_divergence_softclip"
 [integrator.madnis.transformer]
 embedding_dim  = 64
 feedforward_dim = 256
-heads = 8
+heads = 4
 transformer_layers = 3
 mlp_layers = 3
 mlp_units = 256
@@ -25,5 +25,8 @@ layers = 4
 units = 128
 bins = 50
 min_bin_width = 4e-4
-min_bin_height = 1e-4
+min_bin_height = 1e-3
 min_bin_derivative = 1e-4
+
+[scripts.slice_plots]
+n_samples_2d = 200

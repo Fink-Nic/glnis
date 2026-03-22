@@ -77,7 +77,7 @@ class Integrator(ABC):
         return accumulator
 
     def train(self, nitn: int = 10, batch_size: int = 10000, ):
-        print(f"Training not available for Integrator {self.IDENTIFIER}.")
+        shell_print(f"Training not available for Integrator {self.IDENTIFIER}.")
 
     def _cont_to_discr(self, continuous: NDArray
                        ) -> Tuple[NDArray, NDArray]:
@@ -334,8 +334,8 @@ class HavanaIntegrator(Integrator):
                     discrete[:, [i]]).ravel()
                 total_wgt /= discrete_wgt
             except Exception as e:
-                print(f"Error computing discrete weight for dimension {i}: {e}")
-                print(f"Discrete samples for this dimension: {discrete[:, i]}")
+                shell_print(f"Error computing discrete weight for dimension {i}: {e}")
+                shell_print(f"Discrete samples for this dimension: {discrete[:, i]}")
                 raise e
 
         if training:
@@ -413,7 +413,15 @@ class MadnisIntegrator(Integrator):
                      min_bin_width=1e-3,
                      min_bin_height=1e-3,
                      min_bin_derivative=1e-3,),
+                 pretrain_c_flow: bool = True,
+                 pretraining_kwargs: Dict[str, Any] = dict(
+                     nitn=10,
+                     neval=10000,
+                     bins_mult=4,
+                     damping=0.7,
+                 ),
                  callback: Callable[[object], None] | None = None,
+                 max_batch_size: int = 100_000,
                  **kwargs,):
         super().__init__(integrand, **kwargs)
         import torch
@@ -427,13 +435,13 @@ class MadnisIntegrator(Integrator):
                 major, minor = torch.cuda.get_device_capability(i)
                 if (7, 0) <= (major, minor) < (12, 0):
                     self.device = torch.device(f'cuda:{i}')
-                    print(
+                    shell_print(
                         f"Using CUDA device {i}: {torch.cuda.get_device_name(i)} (capability {major}.{minor})")
                     break
             else:
-                print("CUDA devices found but none are compatible. Using CPU.")
+                shell_print("CUDA devices found but none are compatible. Using CPU.")
         else:
-            print("No CUDA device found. Using CPU.")
+            shell_print("No CUDA device found. Using CPU.")
 
         self.use_scheduler = use_scheduler
         self.scheduler_type = scheduler_type
@@ -473,6 +481,24 @@ class MadnisIntegrator(Integrator):
             flow_kwargs=flow_kwargs,
         )
         self.callback = self._default_callback if callback is None else callback
+        self.max_batch_size = max_batch_size
+
+        if pretrain_c_flow:
+            from madnis.integrator import VegasPreTraining
+            self.pretrainer = VegasPreTraining(
+                self.madnis,
+                bins=pretraining_kwargs.get('bins_mult', 4)*flow_kwargs.get('bins', 100),
+                damping=pretraining_kwargs.get('damping', 0.7),
+            )
+            shell_print(f"Pretraining continuous flow...")
+            nitn = pretraining_kwargs.get('nitn', 10)
+            for itn in range(nitn):
+                self.pretrainer.train_step(pretraining_kwargs.get('neval', 10000))
+                shell_print(f"Pretraining iteration {itn+1}/{nitn} completed.")
+            self.pretrainer.initialize_integrator()
+            shell_print(f"MadNIS pretraining successfully completed!")
+        else:
+            self.pretrainer = None
 
     def train(self, nitn: int = 10, _=None):
         if self.use_scheduler:
@@ -480,7 +506,7 @@ class MadnisIntegrator(Integrator):
                 nitn, self.scheduler_type)
         self.madnis.train(nitn, self.callback, True)
 
-    def get_samples(self, n_points: int, batch_size: int = 100_000) -> LayerData:
+    def get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)
         # LayerData objects return a view of the fields, so we can fill them directly,
         # but this would sidestep data validation, so we fill a copy and then assign it
@@ -490,7 +516,7 @@ class MadnisIntegrator(Integrator):
 
         n_eval = 0
         while n_eval < n_points:
-            n = min(batch_size, n_points - n_eval)
+            n = min(self.max_batch_size, n_points - n_eval)
             with torch.no_grad():
                 x_all, prob = self.madnis.flow.sample(
                     n,
@@ -552,7 +578,7 @@ class MadnisIntegrator(Integrator):
 
     @staticmethod
     def _default_callback(status: madnis_integrator.TrainingStatus) -> None:
-        print(f"Step {status.step+1}: Loss={status.loss} ")
+        shell_print(f"Step {status.step+1}: Loss={status.loss} ")
 
     @staticmethod
     def softclip(x: torch.Tensor, threshold: torch.Tensor = 30.0):
@@ -654,12 +680,12 @@ class MadnisIntegrator(Integrator):
         self.madnis.flow.load_state_dict(state.flow_state)
         if state.cwnet_state is not None:
             if self.madnis.cwnet is None:
-                print("WARNING: Cannot load CWNet state: Madnis integrator was not initialized with a CWNet.")
+                shell_print("WARNING: Cannot load CWNet state: Madnis integrator was not initialized with a CWNet.")
             else:
                 self.madnis.cwnet.load_state_dict(state.cwnet_state)
         if state.optimizer_state is not None:
             if self.madnis.optimizer is None:
-                print("WARNING: Cannot load optimizer state: Madnis integrator was not initialized with an optimizer.")
+                shell_print("WARNING: Cannot load optimizer state: Madnis integrator was not initialized with an optimizer.")
             else:
                 self.madnis.optimizer.load_state_dict(state.optimizer_state)
         if state.scheduler_state is not None:
