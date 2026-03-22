@@ -212,12 +212,12 @@ n_cores = 128
 
 [integrand.kaapo.symbolica_integrand_kwargs]
 rotation_seed = 42
-stability_tolerance = 1e-6
-stability_abs_threshold = 1e-8
-stability_abs_tolerance = 1e-10
+stability_tolerance = 1e-5
+stability_abs_tolerance = 1e-15
+stability_abs_threshold = 1e-12
 escalate_large_weight_multiplier = 0.9
 escalate_small_momentum_multiplier = 1e-4
-escalate_large_momentum_multiplier = 1e2
+escalate_large_momentum_multiplier = 1e3
 n_shots = 3
 force_rebuild = false
 sum_orientations = true
