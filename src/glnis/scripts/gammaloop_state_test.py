@@ -6,6 +6,7 @@ from time import time
 
 from glnis.core.integrator import Integrator
 from glnis.core.parser import SettingsParser
+from glnis.utils.helpers import shell_print
 
 
 def run_state_test(file: str) -> None:
@@ -21,7 +22,7 @@ def run_state_test(file: str) -> None:
 
         time_last = time()
         integrator = Integrator.from_settings(Settings.settings)
-        print(f"""| > Initializing the Integrand and Integrator took {
+        shell_print(f"""Initializing the Integrand and Integrator took {
             - time_last + (time_last := time()):.2f}s""")
 
         # Training parameters
@@ -36,24 +37,28 @@ def run_state_test(file: str) -> None:
             gl_err = gl_res['error'][RE_OR_IM]
             gl_rsd = abs(gl_err / gl_int) * math.sqrt(gl_res['neval'])
 
-            print(f"""| > Gammaloop Result:    {
+            shell_print(f"""Gammaloop Result:    {
                 gl_int:.8g} +- {gl_err:.8g}, RSD = {gl_rsd:.2f}""")
 
-        print("| > Attempting training step.")
+        shell_print("Attempting training step.")
         integrator.train(nitn, batch_size)
 
-        print("| > Attempting integration.")
+        shell_print("Attempting integration.")
         time_last = time()
         output = integrator.integrate(batch_size)
-        print(f"""| > Evaluating {batch_size} samples using {integrator.integrand.n_cores} cores took {
+        shell_print(f"""Evaluating {batch_size} samples using {integrator.integrand.n_cores} cores took {
             - time_last + (time_last := time()):.2f}s""")
-        print(output.str_report())
+        shell_print(output.str_report())
 
-        print(f"| > Test successfully completed!")
-        print(
-            f"| > The gammaloop state specified in {file} should be good to go.")
+        shell_print(f"Test successfully completed!")
+        shell_print(
+            f"The gammaloop state specified in {file} should be good to go.")
+
     except KeyboardInterrupt:
-        print("\nCaught KeyboardInterrupt — stopping workers.")
+        shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
+        integrator.integrand.end()
+    except Exception as e:
+        shell_print(f"\nCaught Exception — stopping workers: {e}")
         integrator.integrand.end()
     finally:
         integrator.integrand.end()

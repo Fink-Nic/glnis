@@ -46,8 +46,18 @@ class Integrand(ABC):
         pass
 
     def evaluate_batch(self, layer_input: LayerData) -> LayerData:
-        layer_input.func_val = self._evaluate_batch(
-            layer_input.momenta, layer_input.discrete)
+        n_failed = layer_input.n_points - layer_input.success.sum()
+        if n_failed > 0:
+            shell_print(f"CRITICAL WARNING: {n_failed} failed points detected in integrand evaluation.")
+            shell_print(
+                f"Evaluating {self.IDENTIFIER.upper()} with {layer_input.n_points - n_failed} successfull points.")
+            f = np.zeros(layer_input.n_points, dtype=np.complex128)
+            f[layer_input.success.ravel()] = self._evaluate_batch(
+                layer_input.momenta[layer_input.success], layer_input.discrete[layer_input.success]).ravel()
+            layer_input.func_val = f
+        else:
+            layer_input.func_val = self._evaluate_batch(
+                layer_input.momenta, layer_input.discrete)
         layer_input.update(self.IDENTIFIER)
 
         return layer_input

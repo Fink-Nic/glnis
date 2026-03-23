@@ -224,7 +224,10 @@ def run_slice_plots(
         return Data
 
     except KeyboardInterrupt:
-        shell_print("\nCaught KeyboardInterrupt — stopping workers.")
+        shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
+        integrand.end()
+    except Exception as e:
+        shell_print(f"\nCaught Exception — stopping workers: {e}")
         integrand.end()
     finally:
         integrand.end()
@@ -276,13 +279,13 @@ def plot_slices(file: str, comment: str = "") -> None:
     cmap_segmented = colors.LinearSegmentedColormap.from_list('plasma', all_colors)
     fraction = 0.046  # Default fraction for colorbar size
     padding = 0.04  # Default padding between plot and colorbar
-    threshold = 2  # Threshold for switching to TwoSlopeNorm
+    threshold = 4  # Threshold for switching to TwoSlopeNorm
 
     for i, slice in enumerate(Data.slices2d):
         slice: Slice
         data_log_titles = [r"|I / <I>|", "Probability", r"|Ratio|"]
         data_log = [np.abs(slice.func_val), slice.prob, np.abs(slice.func_val) / slice.prob]
-        data_discrete = np.sign(slice.func_val)  # * np.sign(slice.prob)
+        data_discrete = np.sign(slice.func_val).astype(np.float64)  # * np.sign(slice.prob)
 
         fig, axes = plt.subplots(2, 2, figsize=(10, 8),
                                  sharex=True, sharey=True, constrained_layout=True)
@@ -295,9 +298,9 @@ def plot_slices(file: str, comment: str = "") -> None:
 
         imgs = []
         for ax, data, title in zip([ax1, ax2, ax3], data_log, data_log_titles):
-            data = np.log10(data)  # Add EPS to avoid log(0)
-            vmin = data.min()
-            vmax = data.max()
+            data: np.ndarray = np.log10(data, out=np.full_like(data, np.nan, dtype=np.float64), where=(data > 0))
+            vmin = data.min(where=(~np.isnan(data)), initial=np.inf)
+            vmax = data.max(where=(~np.isnan(data)), initial=-np.inf)
             log_range = vmax - vmin
             log_norm = (
                 colors.Normalize(vmin=vmin, vmax=vmax) if log_range < threshold

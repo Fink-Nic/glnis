@@ -121,7 +121,10 @@ def run_multiprocessing_efficiency(
         plot_multiprocessing_efficiency(file, comment)
 
     except KeyboardInterrupt:
-        shell_print("\nCaught KeyboardInterrupt — stopping workers.")
+        shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
+        integrand.end()
+    except Exception as e:
+        shell_print(f"\nCaught Exception — stopping workers: {e}")
         integrand.end()
     finally:
         integrand.end()

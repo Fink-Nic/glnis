@@ -54,7 +54,7 @@ class Integrator(ABC):
     def integrate(self,
                   n_samples: int,
                   n_start: int = 1_000_000,
-                  n_increase: int = 0,
+                  n_increase: int = 1_000_000,
                   max_batch: int = 10_000_000,
                   progress_report: bool = True) -> DefaultAccumulator:
         n_eval = 0

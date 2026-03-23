@@ -1,0 +1,2 @@
+[[scripts.hpcomp]]
+blocks = ["settings/vacuum_graphs/bugblatter/bugblatter.toml"]

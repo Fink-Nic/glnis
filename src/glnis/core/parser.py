@@ -271,25 +271,26 @@ class SettingsParser:
                  verbose: bool = False,):
         self.verbose = verbose
         if isinstance(settings, dict):
-            self.settings = settings
+            pass
         else:
             settings_path = Path(settings)
-            settings_default_path = verify_path("settings/default.toml")
             settings_path = verify_path(settings_path, suffix=".toml")
             with settings_path.open("rb") as f:
                 settings = tomllib.load(f)
-            with settings_default_path.open("rb") as f:
-                default_settings = tomllib.load(f)
 
-            for template in settings.get("templates", []):
-                template = verify_path(template, suffix=".toml")
-                with template.open("rb") as f:
-                    template = tomllib.load(f)
-                default_settings = overwrite_settings(
-                    default_settings, template)
-            self.settings: Dict[str, Any] = overwrite_settings(
-                default_settings, settings,
-                always_overwrite=['layered_parameterisation', 'templates'])
+        settings_default_path = verify_path("settings/default.toml")
+        with settings_default_path.open("rb") as f:
+            default_settings = tomllib.load(f)
+
+        for template in settings.get("templates", []):
+            template = verify_path(template, suffix=".toml")
+            with template.open("rb") as f:
+                template = tomllib.load(f)
+            default_settings = overwrite_settings(
+                default_settings, template)
+        self.settings: Dict[str, Any] = overwrite_settings(
+            default_settings, settings,
+            always_overwrite=['layered_parameterisation', 'templates'])
 
         self.gammaloop_state_path = Path(self.settings['gammaloop_state']['state_dir'],
                                          self.settings['gammaloop_state']['state_name'])

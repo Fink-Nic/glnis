@@ -7,44 +7,10 @@ from madnis.integrator import TrainingStatus
 
 from glnis.utils.helpers import shell_print, verify_path
 from glnis.core.accumulator import GraphProperties, Observables
+from glnis.scripts.sampler_comparison import run_sampler_comp, SamplerCompData
 
 
-class SamplerCompData:
-    def __init__(self,
-                 integrator_identifiers: List[str],
-                 graph_properties: GraphProperties,
-                 target: Observables,
-                 settings: Dict[str, Any] = dict(),
-                 madnis_kwargs: Dict[str, Any] = dict(),
-                 integrand_kwargs: Dict[str, Any] = dict(),
-                 param_kwargs: Dict[str, Any] = dict(),) -> None:
-        self.observables: Dict[str, Observables] = dict()
-        for name in integrator_identifiers:
-            self.observables[name] = Observables()
-        self.graph_properties = graph_properties
-        self.target = target
-        self.settings: Dict[str, Any] = settings
-        self.madnis_kwargs: Dict[str, Any] = madnis_kwargs
-        self.integrand_kwargs: Dict[str, Any] = integrand_kwargs
-        self.param_kwargs: Dict[str, Any] = param_kwargs
-        self.plottables: SamplerCompData.Plottables = self.Plottables()
-        self.integrator_states: Dict[str, Any] = dict()
-        for name in integrator_identifiers:
-            self.integrator_states[name] = None
-
-    @dataclass
-    class Plottables:
-        losses: List[float] = field(default_factory=list)
-        rsds: List[float] = field(default_factory=list)
-        tvars: List[float] = field(default_factory=list)
-        abs_tvars: List[float] = field(default_factory=list)
-        steps_losses: List[int] = field(default_factory=list)
-        steps_snapshot: List[int] = field(default_factory=list)
-        means: List[float] = field(default_factory=list)
-        errors: List[float] = field(default_factory=list)
-
-
-def run_sampler_comp(
+def run_hparam_comp(
     file: str,
     comment: str = "",
     no_naive: bool = False,
@@ -53,11 +19,11 @@ def run_sampler_comp(
     no_output: bool = False,
     no_plot: bool = False,
     export_states: bool = True,
-    subroutine: str = "sampler_comp",
+    subroutine: str = "hyperparam_comparison",
 ) -> SamplerCompData | None:
 
     if Path(file).suffix == ".pkl":
-        plot_sampler_comp(file, comment)
+        plot_hparam_comp(file, comment)
         quit()
 
     import os
@@ -207,7 +173,7 @@ def run_sampler_comp(
 
         return Data
 
-    except KeyboardInterrupt as e:
+    except KeyboardInterrupt:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
         integrand.end()
     except Exception as e:
@@ -217,7 +183,7 @@ def run_sampler_comp(
         integrand.end()
 
 
-def plot_sampler_comp(file: str, comment: str = "") -> None:
+def plot_hparam_comp(file: str, comment: str = "") -> None:
     import matplotlib.pyplot as plt
     import numpy as np
     from numpy.typing import NDArray
