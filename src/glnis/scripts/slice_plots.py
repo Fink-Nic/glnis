@@ -297,7 +297,7 @@ def plot_slices(file: str, comment: str = "") -> None:
         # log_range = min(d[d > 0].min() for d in data_log) / max(d.max() for d in data_log)
 
         imgs = []
-        for ax, data, title in zip([ax1, ax2, ax3], data_log, data_log_titles):
+        for ax, data, title in zip([ax1, ax2], data_log[:2], data_log_titles[:2]):
             data: np.ndarray = np.log10(data, out=np.full_like(data, np.nan, dtype=np.float64), where=(data > 0))
             vmin = data.min(where=(~np.isnan(data)), initial=np.inf)
             vmax = data.max(where=(~np.isnan(data)), initial=-np.inf)
@@ -313,6 +313,13 @@ def plot_slices(file: str, comment: str = "") -> None:
             imgs.append(im)
             ax.set_title(title)
             fig.colorbar(im, ax=ax, fraction=fraction, pad=padding)
+        new_data = np.abs(slice.func_val / slice.prob)
+        np.clip(new_data, 5, 12, out=new_data)
+        im = ax3.imshow(new_data, cmap='plasma', extent=[0, 1, 0, 1],
+                        norm=colors.Normalize(new_data.min(), new_data.max()))
+        ax3.set_title(data_log_titles[2])
+        print(f"min={new_data.min()}, max={new_data.max()}, mean={new_data.mean()}, median={np.median(new_data)}")
+        fig.colorbar(im, ax=ax3, fraction=fraction, pad=padding)
 
         # ratio = np.abs(slice.func_val) / np.abs(slice.prob)
         # log_norm_ratio = colors.LogNorm(vmin=ratio[ratio > 0].min(), vmax=ratio.max())

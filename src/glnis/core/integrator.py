@@ -69,8 +69,17 @@ class Integrator(ABC):
                 accumulator.combine_with(self.integrand.eval_integrand(layer_input))
             n_eval += n
             if progress_report:
-                shell_print(f"Evaluated {n_eval} / {n_samples} samples using {self.IDENTIFIER}...")
-                shell_print(accumulator.str_report())
+                if n_eval % 1e6 == 0 and n_samples % 1e6 == 0:
+                    shell_print(
+                        f"Evaluated {n_eval / 1e6:.0f}M / {n_samples / 1e6:.0f}M samples using {self.IDENTIFIER}...")
+                    shell_print(accumulator.str_report())
+                elif n_eval % 1e3 == 0 and n_samples % 1e3 == 0:
+                    shell_print(
+                        f"Evaluated {n_eval / 1e3:.0f}k / {n_samples / 1e3:.0f}k samples using {self.IDENTIFIER}...")
+                    shell_print(accumulator.str_report())
+                else:
+                    shell_print(f"Evaluated {n_eval} / {n_samples} samples using {self.IDENTIFIER}...")
+                    shell_print(accumulator.str_report())
             n_curr_iter += n_increase
 
         return accumulator
@@ -156,6 +165,22 @@ class Integrator(ABC):
             integrator_kwargs=integrator_kwargs
         )
 
+    def get_info(self) -> Dict[str, Any]:
+        info = {
+            "Integrator type": self.IDENTIFIER,
+            "Input dimension": self.input_dim,
+            "Continuous dimension": self.continuous_dim,
+            "Discrete dimension": self.discrete_dims,
+            "Random seed": self.seed
+        }
+        return info
+
+    def display_info(self) -> None:
+        info = self.get_info()
+        shell_print("Integrator information:")
+        for key, value in info.items():
+            shell_print(f"  {key}: {value}")
+
     @dataclass(kw_only=True)
     class IntegratorState:
         rng_state: Dict
@@ -190,6 +215,7 @@ class VegasIntegrator(Integrator):
                  alpha: float = 0.7,
                  **kwargs):
         super().__init__(integrand=integrand, **kwargs)
+        self.bins = bins
         self.vegas_init_kwargs = vegas_init_kwargs
         self.adaptive_map = vegas.AdaptiveMap(grid=self.input_dim*[[0, 1],], ninc=bins)
         self.alpha = alpha
@@ -246,6 +272,12 @@ class VegasIntegrator(Integrator):
     class VegasState(Integrator.IntegratorState):
         grid: List[List[float]]
 
+    def get_info(self) -> Dict[str, Any]:
+        info = super().get_info()
+        info["bins"] = self.bins
+        info["alpha"] = self.alpha
+        return info
+
 
 class HavanaIntegrator(Integrator):
     IDENTIFIER = "havana sampler"
@@ -262,19 +294,24 @@ class HavanaIntegrator(Integrator):
         if self.num_discrete_dims == 0:
             self.havana = NumericalIntegrator.continuous(
                 self.continuous_dim, n_continuous_bins)
+            self.uniform_disc_grid = None
         elif self.num_discrete_dims == 1 and not use_uniform:
             self.havana = NumericalIntegrator.discrete(
                 [NumericalIntegrator.continuous(
-                    self.continuous_dim) for _ in range(self.discrete_dims[0])],
+                    self.continuous_dim, n_continuous_bins) for _ in range(self.discrete_dims[0])],
                 max_prob_ratio,
             )
+            self.uniform_disc_grid = False
         else:
             self.havana = NumericalIntegrator.uniform(
                 self.discrete_dims,
                 NumericalIntegrator.continuous(
                     self.continuous_dim, n_continuous_bins)
             )
+            self.uniform_disc_grid = True
 
+        self.bins = n_continuous_bins
+        self.max_prob_ratio = max_prob_ratio
         self.stream_id = stream_id
         self.symbolica_rng = RandomNumberGenerator(self.seed, self.stream_id)
         self.discrete_learning_rate = discrete_learning_rate
@@ -373,6 +410,16 @@ class HavanaIntegrator(Integrator):
         grid: bytes
         seed: int
         stream_id: int
+
+    def get_info(self) -> Dict[str, Any]:
+        info = super().get_info()
+        info["Stream ID"] = self.stream_id
+        info["bins"] = self.bins
+        info["max_prob_ratio"] = self.max_prob_ratio
+        info["uniform_disc_grid"] = self.uniform_disc_grid
+        info["discrete_learning_rate"] = self.discrete_learning_rate
+        info["continuous_learning_rate"] = self.continuous_learning_rate
+        return info
 
 
 class MadnisIntegrator(Integrator):
@@ -704,3 +751,32 @@ class MadnisIntegrator(Integrator):
         cwnet_state: Dict[str, Any] | None
         optimizer_state: Dict[str, Any] | None
         scheduler_state: Dict[str, Any] | None
+
+    def get_info(self) -> Dict[str, Any]:
+        info = super().get_info()
+        info["scheduler_type"] = self.scheduler_type
+        info["device"] = str(self.device)
+        if self.num_discrete_dims > 0:
+            trainable_disc_flow = sum(p.numel() for p in self.madnis.flow.discrete_flow.parameters() if p.requires_grad)
+            total_disc_flow = sum(p.numel() for p in self.madnis.flow.discrete_flow.parameters())
+            info["discrete flow trainable parameters"] = trainable_disc_flow
+            info["discrete flow total parameters"] = total_disc_flow
+
+            trainable_cont_flow = sum(p.numel()
+                                      for p in self.madnis.flow.continuous_flow.parameters() if p.requires_grad)
+            total_cont_flow = sum(p.numel() for p in self.madnis.flow.continuous_flow.parameters())
+            info["continuous flow trainable parameters"] = trainable_cont_flow
+            info["continuous flow total parameters"] = total_cont_flow
+
+        trainable_flow = sum(p.numel() for p in self.madnis.flow.parameters() if p.requires_grad)
+        total_flow = sum(p.numel() for p in self.madnis.flow.parameters())
+        info["flow trainable parameters"] = trainable_flow
+        info["flow total parameters"] = total_flow
+
+        if self.madnis.cwnet is not None:
+            trainable_cwnet = sum(p.numel() for p in self.madnis.cwnet.parameters() if p.requires_grad)
+            total_cwnet = sum(p.numel() for p in self.madnis.cwnet.parameters())
+            info["CWNet trainable parameters"] = trainable_cwnet
+            info["CWNet total parameters"] = total_cwnet
+
+        return info

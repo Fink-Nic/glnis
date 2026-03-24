@@ -7,6 +7,7 @@ def main() -> None:
     from glnis.scripts.sampler_comparison import run_sampler_comp
     from glnis.scripts.slice_plots import run_slice_plots
     from glnis.scripts.multiprocessing_efficiency import run_multiprocessing_efficiency
+    from glnis.scripts.hyperparam_comparison import run_hyperparam_comparison
 
     parser = argparse.ArgumentParser(prog="glnis")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -65,6 +66,18 @@ def main() -> None:
     mp_efficiency.add_argument('--no_plot', action='store_true', default=False,
                                help="Enable this flag to not output the plot file.")
 
+    hp_comp = subparsers.add_parser("hpcomp")
+    hp_comp.add_argument('--file', '-f', type=str,
+                         help="File containing either settings .toml or HyperparamCompData.")
+    hp_comp.add_argument('--recovery_file', '-r', type=str, default=None,
+                         help="File containing a HyperparamCompData to recover from.")
+    hp_comp.add_argument('--comment', '-c', type=str, default='No comment.',
+                         help="Add a comment to the output summary file.")
+    hp_comp.add_argument('--no_output', action='store_true', default=False,
+                         help="Enable this flag to not save anything to disk.")
+    hp_comp.add_argument('--no_plot', action='store_true', default=False,
+                         help="Enable this flag to not output the plot file(s).")
+
     args = parser.parse_args()
 
     match args.command:
@@ -93,5 +106,11 @@ def main() -> None:
                                            comment=args.comment,
                                            no_output=args.no_output,
                                            no_plot=args.no_plot,)
+        case "hpcomp":
+            run_hyperparam_comparison(file=args.file,
+                                      recovery_file=args.recovery_file,
+                                      comment=args.comment,
+                                      no_output=args.no_output,
+                                      no_plot=args.no_plot,)
         case _:
             raise ValueError(f"Unknown command {args.command}")

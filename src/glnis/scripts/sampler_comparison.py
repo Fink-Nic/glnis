@@ -16,6 +16,7 @@ class SamplerCompData:
                  target: Observables,
                  settings: Dict[str, Any] = dict(),
                  madnis_kwargs: Dict[str, Any] = dict(),
+                 madnis_info: Dict[str, Any] = dict(),
                  integrand_kwargs: Dict[str, Any] = dict(),
                  param_kwargs: Dict[str, Any] = dict(),) -> None:
         self.observables: Dict[str, Observables] = dict()
@@ -24,6 +25,7 @@ class SamplerCompData:
         self.graph_properties = graph_properties
         self.target = target
         self.settings: Dict[str, Any] = settings
+        self.madnis_info: Dict[str, Any] = madnis_info
         self.madnis_kwargs: Dict[str, Any] = madnis_kwargs
         self.integrand_kwargs: Dict[str, Any] = integrand_kwargs
         self.param_kwargs: Dict[str, Any] = param_kwargs
@@ -31,6 +33,14 @@ class SamplerCompData:
         self.integrator_states: Dict[str, Any] = dict()
         for name in integrator_identifiers:
             self.integrator_states[name] = None
+
+    def __setstate__(self, state):
+        """Custom unpickling logic to handle changes in the class definition over time."""
+        self.__dict__.update(state)
+
+        # Provide defaults for fields that didn't exist when the file was saved
+        if 'madnis_info' not in state:
+            self.madnis_info = dict()
 
     @dataclass
     class Plottables:
@@ -45,7 +55,7 @@ class SamplerCompData:
 
 
 def run_sampler_comp(
-    file: str,
+    file: str | Dict,
     comment: str = "",
     no_naive: bool = False,
     no_vegas: bool = False,
@@ -56,7 +66,9 @@ def run_sampler_comp(
     subroutine: str = "sampler_comp",
 ) -> SamplerCompData | None:
 
-    if Path(file).suffix == ".pkl":
+    if isinstance(file, dict):
+        pass
+    elif Path(file).suffix == ".pkl":
         plot_sampler_comp(file, comment)
         quit()
 
@@ -76,7 +88,7 @@ def run_sampler_comp(
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
-        shell_print(f"Working on settings {file}")
+        shell_print(f"Working on settings {"dictionary" if isinstance(file, dict) else file}")
         Settings = SettingsParser(file)
 
         # Training parameters
@@ -155,6 +167,7 @@ def run_sampler_comp(
                                target=integrand.target,
                                settings=Settings.settings,
                                madnis_kwargs=madnis_kwargs,
+                               madnis_info=madnis_integrator.get_info(),
                                integrand_kwargs=integrand_kwargs,
                                param_kwargs=param_kwargs,)
 
@@ -162,9 +175,7 @@ def run_sampler_comp(
             f"""Initializing the Integrand and Integrators took {
                 -time_last + (time_last := time()):.2f}s"""
         )
-        shell_print(f"MadNIS is using device: {madnis_integrator.madnis.dummy.device}")
-        shell_print(f"MadNIS is using scheduler: {madnis_integrator.madnis.scheduler}")
-        shell_print(f"Integrand discrete dims: {integrand.discrete_dims}")
+        madnis_integrator.display_info()
 
         # Training all the integrators
         if not no_vegas:
@@ -194,7 +205,7 @@ def run_sampler_comp(
         integrand.end()
 
         if no_output:
-            quit()
+            return Data
 
         run_name = Data.settings['run_name'].replace(' ', '_')
         filename = run_name + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
@@ -225,7 +236,7 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
 
     file: Path = verify_path(file, suffix=".pkl")
     with file.open('rb') as f:
-        Data: SamplerCompData = load(f, weights_only=False)
+        Data: SamplerCompData = load(f, weights_only=False, strict=False)
         if not isinstance(Data, SamplerCompData):
             raise ValueError(f"Expected a SamplerCompData object in the file, but got {type(Data)}")
 

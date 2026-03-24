@@ -1,3 +1,0 @@
-[scripts.hpcomp]
-[[blocks]] = ["settings/vacuum_graphs/bugblatter/bugblatter_optimised.toml"]
-[[blocks]] = ["settings/test_nomc.toml"]

@@ -1,0 +1,5 @@
+[integrator.madnis.flow_kwargs]
+uniform_latent = true
+permutations = "log"
+layers = 2
+units = 128

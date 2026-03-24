@@ -1,0 +1,10 @@
+[integrator.madnis]
+discrete_model = "transformer"
+
+[integrator.madnis.transformer]
+embedding_dim  = 32
+feedforward_dim = 64
+heads = 1
+transformer_layers = 2
+mlp_layers = 2
+mlp_units = 32

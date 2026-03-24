@@ -268,26 +268,29 @@ class DotParser:
 
 class SettingsParser:
     def __init__(self, settings: str | Path | Dict = "settings/default.toml",
-                 verbose: bool = False,):
+                 verbose: bool = False, _from_existing: bool = False):
         self.verbose = verbose
-        if isinstance(settings, dict):
-            pass
-        else:
+        if not isinstance(settings, dict):
             settings_path = Path(settings)
             settings_path = verify_path(settings_path, suffix=".toml")
             with settings_path.open("rb") as f:
                 settings = tomllib.load(f)
 
-        settings_default_path = verify_path("settings/default.toml")
-        with settings_default_path.open("rb") as f:
-            default_settings = tomllib.load(f)
+        if _from_existing:
+            # This ensures that the actual settings are being overwritten
+            default_settings = settings
+        else:
+            settings_default_path = verify_path("settings/default.toml")
+            with settings_default_path.open("rb") as f:
+                default_settings = tomllib.load(f)
 
-        for template in settings.get("templates", []):
-            template = verify_path(template, suffix=".toml")
+        for t in settings.get("templates", []):
+            template = verify_path(t, suffix=".toml")
             with template.open("rb") as f:
                 template = tomllib.load(f)
             default_settings = overwrite_settings(
                 default_settings, template)
+        # if _from_existing, default_settings = settings and hence this overwrite does nothing
         self.settings: Dict[str, Any] = overwrite_settings(
             default_settings, settings,
             always_overwrite=['layered_parameterisation', 'templates'])
@@ -310,6 +313,13 @@ class SettingsParser:
                                    self.settings['gammaloop_state']['model_name'])
         else:
             self.model_path = self.settings['model']['model_path']
+
+    def settings_with_additional_templates(self, template_list: List[str | Path]) -> 'SettingsParser':
+        new_settings = deepcopy(self.settings)
+        if not isinstance(template_list, list):
+            template_list = [template_list]
+        new_settings['templates'].extend(template_list)
+        return SettingsParser(new_settings, _from_existing=True)
 
     def get_gammaloop_integration_result(self) -> Dict | None:
         result_path = Path(self.settings['gammaloop_state']['state_dir'],

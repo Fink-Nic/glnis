@@ -1,0 +1,6 @@
+[integrator.madnis]
+discrete_model = "made"
+
+[integrator.madnis.made]
+layers = 1
+nodes_per_feature = 4
