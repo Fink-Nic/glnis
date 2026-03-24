@@ -74,6 +74,7 @@ def run_sampler_comp(
 
     import os
     import signal
+    import gc
     from time import time
     from torch import save
 
@@ -87,6 +88,20 @@ def run_sampler_comp(
     from glnis.core.parser import SettingsParser
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
+    integrators: dict[str, Integrator] = dict()
+    cleanup_done = False
+
+    def end_all_integrators() -> None:
+        nonlocal cleanup_done
+        if cleanup_done:
+            return
+        for integrator in integrators.values():
+            integrator.end()
+        # Force prompt cleanup of cycles (e.g. mp queues/process wrappers)
+        # in repeated run_sampler_comp calls.
+        gc.collect()
+        cleanup_done = True
+
     try:
         shell_print(f"Working on settings {"dictionary" if isinstance(file, dict) else file}")
         Settings = SettingsParser(file)
@@ -136,7 +151,6 @@ def run_sampler_comp(
                 shell_print(acc.statistics.str_report())
 
         time_last = time()
-        integrators: dict[str, Integrator] = dict()
         Settings.settings["layered_integrator"]["integrator_type"] = "madnis"
         madnis_kwargs = Settings.get_integrator_kwargs()
         integrand_kwargs = Settings.get_integrand_kwargs()
@@ -144,6 +158,7 @@ def run_sampler_comp(
         madnis_integrator: MadnisIntegrator = Integrator.from_settings(
             Settings.settings
         )
+        integrators["MadNIS"] = madnis_integrator
         madnis_integrator.callback = callback
         integrand = madnis_integrator.integrand
         n_total_training_samples = n_training_steps * madnis_kwargs["batch_size"]
@@ -158,8 +173,6 @@ def run_sampler_comp(
         if not no_havana:
             Settings.settings["layered_integrator"]["integrator_type"] = "havana"
             integrators["Havana"] = HavanaIntegrator(integrand, **Settings.get_integrator_kwargs())
-
-        integrators["MadNIS"] = madnis_integrator
 
         # Will hold integration results to write to text file and plot
         Data = SamplerCompData(integrator_identifiers=list(integrators.keys()),
@@ -202,7 +215,7 @@ def run_sampler_comp(
             Data.observables[identifier] = acc.statistics.result
 
         # IMPORTANT: close the worker functions, or your script will hang
-        integrand.end()
+        end_all_integrators()
 
         if no_output:
             return Data
@@ -220,12 +233,12 @@ def run_sampler_comp(
 
     except KeyboardInterrupt as e:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
-        integrand.end()
+        end_all_integrators()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
-        integrand.end()
+        end_all_integrators()
     finally:
-        integrand.end()
+        end_all_integrators()
 
 
 def plot_sampler_comp(file: str, comment: str = "") -> None:

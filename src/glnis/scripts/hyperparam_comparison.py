@@ -1,8 +1,7 @@
 # type: ignore
 from typing import Dict, List, Tuple, Any
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from datetime import datetime
-from copy import deepcopy
 from pathlib import Path
 from pickle import dump, load
 
@@ -102,6 +101,25 @@ def run_hyperparam_comparison(
         quit()
 
     from time import perf_counter
+    import gc
+
+    def _open_fd_count() -> int | None:
+        proc_fd_path = Path('/proc/self/fd')
+        if not proc_fd_path.exists():
+            return None
+        try:
+            return len(list(proc_fd_path.iterdir()))
+        except Exception:
+            return None
+
+    def _fd_limit() -> int | None:
+        try:
+            import resource
+            return resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+        except Exception:
+            return None
+
+    fd_limit = _fd_limit()
 
     from glnis.core.parser import SettingsParser
 
@@ -158,10 +176,14 @@ def run_hyperparam_comparison(
             if Data.check_if_done(comp_name, block_name):
                 shell_print(f"Comparison '{comp_name}' and block '{block_name}' already done, skipping...")
                 continue
+            NewSettings = MasterSettings.settings_with_additional_templates(templates)
+            fd_before = _open_fd_count()
+            if fd_before is not None:
+                limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
+                shell_print(f"FD diagnostic before run: {fd_before}{limit_msg}")
             shell_print(f"Starting comparison '{comp_name}' and block '{block_name}'")
             shell_print(hline)
             shell_print(hline)
-            NewSettings = MasterSettings.settings_with_additional_templates(templates)
 
             before = perf_counter()
             run_result: SamplerCompData = run_sampler_comp(
@@ -173,14 +195,27 @@ def run_hyperparam_comparison(
                 no_output=True,
                 subroutine='hpcomp_training_run')
             run_time = perf_counter() - before
+            fd_after_run = _open_fd_count()
 
             Data.add_result(
                 comp_name, block_name,
                 additional_params={'run_time': run_time},
                 result=run_result, save=not no_output)
+
+            gc.collect()
+            fd_after_gc = _open_fd_count()
+
             shell_print(hline)
             shell_print(hline)
             shell_print(f"Finished comparison '{comp_name}' and block '{block_name}' in {run_time:.2f} seconds.")
+            if fd_after_run is not None:
+                delta = fd_after_run - (fd_before if fd_before is not None else fd_after_run)
+                limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
+                shell_print(f"FD diagnostic after run: {fd_after_run}{limit_msg} (delta={delta:+d})")
+            if fd_after_gc is not None:
+                delta = fd_after_gc - (fd_before if fd_before is not None else fd_after_gc)
+                limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
+                shell_print(f"FD diagnostic after gc.collect(): {fd_after_gc}{limit_msg} (delta={delta:+d})")
 
     if no_output:
         return Data

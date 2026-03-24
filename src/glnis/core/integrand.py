@@ -357,6 +357,7 @@ class MPIntegrand(ParameterisedIntegrand):
                  verbose: bool = False,
                  **kwargs):
         self.n_cores = n_cores
+        self._ended = False
 
         ctx = mp.get_context()
         self.q_in = [ctx.Queue() for _ in range(self.n_cores)]
@@ -460,8 +461,8 @@ class MPIntegrand(ParameterisedIntegrand):
                     break
                 try:
                     output = self.q_out[idx].get()
-                except:
-                    self.end()
+                except Exception:
+                    continue
                 chunk_id, acc = output
 
                 if n_processed == 0:
@@ -470,6 +471,9 @@ class MPIntegrand(ParameterisedIntegrand):
                     accumulator.combine_with(acc)
                 chunk_id_return_order.append(chunk_id)
                 n_processed += 1
+
+        if n_processed != n_chunks:
+            raise RuntimeError("MPIntegrand evaluation was interrupted before all chunks were processed.")
 
         if self.verbose:
             shell_print(accumulator.str_report())
@@ -511,10 +515,16 @@ class MPIntegrand(ParameterisedIntegrand):
                 idx = readers.index(r)
                 if self.stop_event.is_set():
                     break
-                data = self.q_out[idx].get()
+                try:
+                    data = self.q_out[idx].get()
+                except Exception:
+                    continue
                 chunk_id, res = data
                 result_sorted[chunk_id] = res
                 n_processed += 1
+
+        if n_processed != n_chunks:
+            raise RuntimeError("MPIntegrand prior computation was interrupted before all chunks were processed.")
 
         return np.vstack(result_sorted)
 
@@ -531,21 +541,44 @@ class MPIntegrand(ParameterisedIntegrand):
         """
         Terminates all worker processes.
         """
-        if not self.stop_event.is_set():
-            shell_print("Attempting to close queues.")
-            self.stop_event.set()
+        if self._ended:
+            return
 
-            for w in self.workers:
-                if w.is_alive():
-                    w.join(timeout=5)
+        shell_print("Attempting to close queues.")
+        self.stop_event.set()
 
-            alive_workers = 0
-            for w in self.workers:
-                if w.is_alive():
-                    alive_workers += 1
-                    w.terminate()
-                    w.join()
+        for w in self.workers:
+            if w.is_alive():
+                w.join(timeout=5)
 
-            if alive_workers > 0:
-                shell_print(f"Terminated {alive_workers / self.n_cores} alive worker(s).")
-            shell_print(f"{self.IDENTIFIER.upper()} has successfully terminated.")
+        alive_workers = 0
+        for w in self.workers:
+            if w.is_alive():
+                alive_workers += 1
+                w.terminate()
+                w.join()
+
+        if alive_workers > 0:
+            shell_print(f"Terminated {alive_workers / self.n_cores} alive worker(s).")
+
+        # Explicitly close queue pipes to avoid file-descriptor leaks
+        # when constructing and tearing down many MPIntegrand instances.
+        for q in self.q_in + self.q_out:
+            try:
+                q.close()
+            except Exception:
+                pass
+            try:
+                q.join_thread()
+            except Exception:
+                pass
+
+        # Explicitly close process handles to release sentinel file descriptors.
+        for w in self.workers:
+            try:
+                w.close()
+            except Exception:
+                pass
+
+        self._ended = True
+        shell_print(f"{self.IDENTIFIER.upper()} has successfully terminated.")

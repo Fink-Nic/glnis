@@ -34,6 +34,7 @@ class Integrator(ABC):
         self.dtype = integrand.dtype
         self.seed = seed
         self.rng = np.random.default_rng(self.seed)
+        self._ended = False
 
     @abstractmethod
     def get_samples(self, n_points: int) -> LayerData:
@@ -180,6 +181,13 @@ class Integrator(ABC):
         shell_print("Integrator information:")
         for key, value in info.items():
             shell_print(f"  {key}: {value}")
+
+    def end(self) -> None:
+        """Performs any necessary cleanup after integration is done."""
+        if self._ended:
+            return
+        self.integrand.end()
+        self._ended = True
 
     @dataclass(kw_only=True)
     class IntegratorState:
@@ -743,6 +751,29 @@ class MadnisIntegrator(Integrator):
         if state.scheduler_state is not None:
             self.madnis.scheduler = self._get_scheduler(T_max=1, scheduler_type=self.scheduler_type)
             self.madnis.scheduler.load_state_dict(state.scheduler_state)
+
+    def end(self) -> None:
+        """Performs any necessary cleanup after integration is done."""
+        super().end()
+        # Move modules off GPU and drop references so repeated runs do not accumulate memory.
+        if hasattr(self, "madnis") and self.madnis is not None:
+            if self.device.type == 'cuda':
+                try:
+                    self.madnis.flow.to('cpu')
+                    if self.madnis.cwnet is not None:
+                        self.madnis.cwnet.to('cpu')
+                except Exception:
+                    # Best-effort cleanup; continue with reference release.
+                    pass
+
+            self.madnis.optimizer = None
+            self.madnis.scheduler = None
+            self.madnis = None
+
+            if self.device.type == 'cuda':
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, 'ipc_collect'):
+                    torch.cuda.ipc_collect()
 
     @dataclass(kw_only=True)
     class MadnisState(Integrator.IntegratorState):
