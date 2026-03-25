@@ -36,47 +36,43 @@ blocks = [
         ["settings/templates/transformer/size2"],
         ["settings/templates/transformer/size3"],
         ["settings/templates/transformer/size4"],
-        ["settings/templates/transformer/size5"],
     ]
-block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64", "8_3_3_128"]
+block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64"]
 
 [[scripts.hyperparam_comparison]]
 comparison_name = "made network"
 blocks = [
-        ["settings/templates/made/size0"],
-        ["settings/templates/made/size1"],
         ["settings/templates/made/size2"],
         ["settings/templates/made/size3"],
         ["settings/templates/made/size4"],
-        ["settings/templates/made/size5"],
     ]
-block_names = ["1_4", "1_8", "2_8", "2_16", "3_16", "3_32"]
+block_names = ["2_8", "2_16", "3_16"]
 
 [[scripts.hyperparam_comparison]]
 comparison_name = "big flow bins"
 blocks = [
         [
             "settings/templates/flow/size9",
-            "settings/templates/bins/size0",
+            "settings/templates/madnis_bins/size0",
         ],
         [
             "settings/templates/flow/size9",
-            "settings/templates/bins/size1",
+            "settings/templates/madnis_bins/size1",
         ],
         [
             "settings/templates/flow/size9",
-            "settings/templates/bins/size2",
+            "settings/templates/madnis_bins/size2",
         ],
         [
             "settings/templates/flow/size9",
-            "settings/templates/bins/size3",
+            "settings/templates/madnis_bins/size3",
         ],
         [
             "settings/templates/flow/size9",
-            "settings/templates/bins/size4",
+            "settings/templates/madnis_bins/size4",
         ],
     ]
-block_names = ["5_1024_20", "5_1024_50", "5_1024_100"]
+block_names = ["5_1024_5", "5_1024_10", "5_1024_20", "5_1024_50", "5_1024_100"]
 
 [scripts.hpcomp_training_run]
 n_training_steps = 1000

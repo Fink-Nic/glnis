@@ -63,26 +63,26 @@ comparison_name = "big flow bins"
 blocks = [
         [
             "settings/templates/flow/size9",
-            "settings/templates/bins/size0",
+            "settings/templates/madnis_bins/size0",
         ],
         [
             "settings/templates/flow/size9",
-            "settings/templates/bins/size1",
+            "settings/templates/madnis_bins/size1",
         ],
         [
             "settings/templates/flow/size9",
-            "settings/templates/bins/size2",
+            "settings/templates/madnis_bins/size2",
         ],
         [
             "settings/templates/flow/size9",
-            "settings/templates/bins/size3",
+            "settings/templates/madnis_bins/size3",
         ],
         [
             "settings/templates/flow/size9",
-            "settings/templates/bins/size4",
+            "settings/templates/madnis_bins/size4",
         ],
     ]
-block_names = ["5_1024_20", "5_1024_50", "5_1024_100"]
+block_names = ["5_1024_5", "5_1024_10", "5_1024_20", "5_1024_50", "5_1024_100"]
 
 [scripts.hpcomp_training_run]
 n_training_steps = 1000
