@@ -247,9 +247,8 @@ blocks = [
         ["settings/templates/madnis_bins/size2"],
         ["settings/templates/madnis_bins/size3"],
         ["settings/templates/madnis_bins/size4"],
-        ["settings/templates/madnis_bins/size5"],
     ]
-block_names = [5, 10, 20, 50, 100, 200]
+block_names = [5, 10, 20, 50, 100]
 
 [[scripts.hyperparam_comparison]]
 comparison_name = "flow network"

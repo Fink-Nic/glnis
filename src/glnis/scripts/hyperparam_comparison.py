@@ -340,7 +340,7 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
                     color='white', edgecolor='black', hatch='..')
         axs3[0].set_ylabel("Number of parameters")
         axs3[1].set_ylabel("Run time (s)")
-        axs3[0].legend(loc='upper right')
+        axs3[0].legend(loc='upper left')
 
         axs1[0].legend(loc='upper right')
         fig1.suptitle(f"MadNIS training progression for {comp_name}")
@@ -360,23 +360,31 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
         plt.close(fig3)
         shell_print(f"Finished plotting comparison '{comp_name}'. Plots saved to '{subdirectory}'.")
 
+    ignore = ["n_points", "real_central_value", "imag_central_value",
+              "abs_real_central_value", "abs_imag_central_value"]
+    n_show = 5
     # Overall observables comparison
-    n_obs = len(Data.sorted_by_obs)
-    fig4, axs4 = plt.subplots(nrows=n_obs, ncols=1, layout="constrained", figsize=(10, 4*n_obs))
+    observables_to_plot = [(obs, Data.sorted_by_obs[obs]) for obs in Data.sorted_by_obs.keys() if obs not in ignore]
+    n_obs = len(observables_to_plot)
+    fig4, axs4 = plt.subplots(nrows=n_obs, ncols=2, layout="constrained", figsize=(10, 4*n_obs))
     axs4: List[plt.Axes]
-    for i, (obs_name, obs_tuples) in enumerate(Data.sorted_by_obs.items()):
+    axs4[0, 0].set_title(f"Lowest")
+    axs4[0, 1].set_title(f"Highest")
+    for i, (obs_name, obs_tuples) in enumerate(observables_to_plot):
         # obs_tuple: List[(comp_name, block_name, value)]
         n_blocks = len(obs_tuples)
-        n = min(5, n_blocks)
+        n = min(n_show, n_blocks)
         obs_values = [o[-1] for o in obs_tuples]
-        axs4[i].set_ylabel(obs_name)
-        if "time" in obs_name.lower() or "param" in obs_name.lower():
-            axs4[i].scatter(range(n), obs_values[-n:], color='black')
-            axs4[i].set_xticks(range(n), [f"{comp}\n{block}" for comp, block, _ in obs_tuples[-n:]], rotation=45)
-        else:
-            axs4[i].set_yscale("log")
-            axs4[i].scatter(range(n), obs_values[:n], color='black')
-            axs4[i].set_xticks(range(n), [f"{comp}\n{block}" for comp, block, _ in obs_tuples[:n]], rotation=45)
+        axs4[i, 0].set_ylabel(obs_name)
+        axs4[i, 0].set_yscale("log")
+        axs4[i, 1].set_yscale("log")
+        axs4[i, 0].set_xticks(range(n), [f"{comp}\n{block}" for comp, block, _ in obs_tuples[:n]], rotation=45)
+        axs4[i, 1].set_xticks(range(n), [f"{comp}\n{block}" for comp, block, _ in obs_tuples[-n:]], rotation=45)
+        axs4[i, 0].scatter(range(n), obs_values[:n], color='black')
+        axs4[i, 1].scatter(range(n), obs_values[-n:], color='black')
+        axs4[i, 0].set_ylim(bottom=0.9*min(obs_values[:n]), top=1.1*max(obs_values[:n]))
+        axs4[i, 1].set_ylim(bottom=0.9*min(obs_values[-n:]), top=1.1*max(obs_values[-n:]))
+
     fig4.suptitle(f"Overall observables comparison {comment}")
     fig4.savefig(
         Path(directory, filename + "_overall_observables_comparison.png"), dpi=300, bbox_inches="tight"
