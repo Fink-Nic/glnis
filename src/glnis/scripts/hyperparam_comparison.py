@@ -324,6 +324,7 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
         axs3[0].bar(range(n_blocks), disc_param_list, bottom=cont_param_list, label='Discrete',
                     color='white', edgecolor='black', hatch='..')
         axs3[0].set_ylabel("Number of parameters")
+        axs3[0].set_yscale("log")
         axs3[1].set_ylabel("Run time (s)")
         axs3[0].legend(loc='upper left')
 

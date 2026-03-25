@@ -22,7 +22,7 @@ from glnis.utils.helpers import shell_print, error_fmter
 
 def _block_if_ended(method) -> None:
     @functools.wraps(method)
-    def wrapper(self: Integrator, *args, **kwargs):
+    def wrapper(self: 'Integrator', *args, **kwargs):
         if self._ended:
             shell_print(
                 f"WARNING: Integrator {self.IDENTIFIER} has already been ended and can no longer be used.")
