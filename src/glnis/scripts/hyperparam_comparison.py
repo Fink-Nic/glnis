@@ -102,22 +102,7 @@ def run_hyperparam_comparison(
 
     from time import perf_counter
     import gc
-
-    def _open_fd_count() -> int | None:
-        proc_fd_path = Path('/proc/self/fd')
-        if not proc_fd_path.exists():
-            return None
-        try:
-            return len(list(proc_fd_path.iterdir()))
-        except Exception:
-            return None
-
-    def _fd_limit() -> int | None:
-        try:
-            import resource
-            return resource.getrlimit(resource.RLIMIT_NOFILE)[0]
-        except Exception:
-            return None
+    from glnis.utils.helpers import _open_fd_count, _fd_limit
 
     fd_limit = _fd_limit()
 

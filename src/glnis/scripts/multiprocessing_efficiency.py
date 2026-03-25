@@ -85,7 +85,6 @@ def run_multiprocessing_efficiency(
         madnis_integrator: MadnisIntegrator = Integrator.from_settings(
             Settings.settings
         )
-        integrand = madnis_integrator.integrand
         if madnis_state is None:
             print(
                 f"WARNING: Could not find MadNIS state at '{file}'. Will use untrained MadNIS instance.")
@@ -97,7 +96,7 @@ def run_multiprocessing_efficiency(
         Data = MPEfficiencyData(n_cores=n_cores, n_samples=n_samples)
 
         for cores in n_cores:
-            integrand.n_cores = cores
+            madnis_integrator.integrand.n_cores = cores
 
             for samples in n_samples:
                 if samples / cores > max_samples_per_core:
@@ -122,12 +121,12 @@ def run_multiprocessing_efficiency(
 
     except KeyboardInterrupt:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
-        integrand.end()
+        madnis_integrator.end()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
-        integrand.end()
+        madnis_integrator.end()
     finally:
-        integrand.end()
+        madnis_integrator.end()
 
 
 def plot_multiprocessing_efficiency(file: str, comment: str = "") -> None:

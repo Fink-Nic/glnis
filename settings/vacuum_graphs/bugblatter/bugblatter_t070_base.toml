@@ -1,0 +1,240 @@
+run_name = "bugblatter_t070_base"
+templates = [
+    "settings/templates/flow/size5",
+    "settings/templates/madnis_bins/size3",
+    "settings/templates/transformer/size3",
+]
+
+[integration_target]
+n_points = 290000000
+real_central_value = -0.00000624159212391007
+real_error = 0.0000000179007098142485
+
+[graph]
+from_state = false
+momtrop_edge_weight = 0.75
+is_vacuum = true
+overwrite_graph_properties = true
+
+[graph.graph_properties]
+edge_src_dst_vertices = [
+    [3, 0], 
+    [4, 3], 
+    [0, 1],
+    [1, 4],
+    [2, 5],
+    [5, 4],
+    [1, 2],
+    [3, 5],
+    [2, 0]
+]
+edge_masses = [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+]
+edge_momentum_shifts = [
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ]
+]
+graph_external_vertices = []
+graph_signature = [
+    [1, 0, 0, 0], 
+    [0, 1, 0, 0], 
+    [0, 0, 1, 0],
+    [0, 0, 0, 1],
+    [1, 0, 0, -1],
+    [0, 1, 0, -1],
+    [0, 0, 1, -1],
+    [-1, 1, 0, 0],
+    [-1, 0, 1, 0],
+]
+momtrop_edge_weight = []
+lmb_array = [
+    [0, 1, 2, 3],
+    [3, 6, 7, 8],
+    [1, 6, 7, 8],
+    [3, 5, 7, 8],
+    [1, 5, 7, 8],
+    [3, 5, 6, 8],
+    [1, 5, 6, 8],
+    [3, 5, 6, 7],
+    [1, 5, 6, 7],
+    [1, 3, 7, 8],
+    [1, 3, 6, 8],
+    [1, 3, 6, 7],
+    [2, 6, 7, 8],
+    [2, 5, 7, 8],
+    [2, 5, 6, 8],
+    [2, 5, 6, 7],
+    [1, 2, 6, 8],
+    [1, 2, 5, 8],
+    [1, 2, 6, 7],
+    [1, 2, 5, 7],
+    [2, 3, 7, 8],
+    [2, 3, 5, 8],
+    [2, 3, 5, 7],
+    [1, 2, 3, 8],
+    [1, 2, 3, 7],
+    [3, 4, 7, 8],
+    [2, 3, 4, 7],
+    [1, 4, 7, 8],
+    [1, 2, 4, 7],
+    [3, 4, 5, 8],
+    [2, 3, 4, 5],
+    [1, 4, 5, 8],
+    [1, 2, 4, 5],
+    [1, 3, 4, 8],
+    [1, 2, 3, 4],
+    [2, 4, 7, 8],
+    [2, 4, 5, 8],
+    [1, 2, 4, 8],
+    [3, 4, 6, 7],
+    [1, 4, 6, 7],
+    [3, 4, 5, 6],
+    [1, 4, 5, 6],
+    [1, 3, 4, 6],
+    [2, 4, 6, 7],
+    [2, 4, 5, 6],
+    [1, 2, 4, 6],
+    [0, 6, 7, 8],
+    [0, 5, 7, 8],
+    [0, 5, 6, 8],
+    [0, 5, 6, 7],
+    [0, 1, 6, 8],
+    [0, 1, 5, 8],
+    [0, 1, 5, 6],
+    [0, 3, 7, 8],
+    [0, 3, 6, 7],
+    [0, 3, 5, 8],
+    [0, 3, 5, 6],
+    [0, 1, 3, 8],
+    [0, 1, 3, 6],
+    [0, 4, 7, 8],
+    [0, 4, 6, 7],
+    [0, 4, 5, 8],
+    [0, 4, 5, 6],
+    [0, 1, 4, 8],
+    [0, 1, 4, 6],
+    [0, 2, 6, 7],
+    [0, 2, 5, 7],
+    [0, 2, 5, 6],
+    [0, 1, 2, 6],
+    [0, 1, 2, 5],
+    [0, 2, 3, 7],
+    [0, 2, 3, 5],
+    [0, 2, 4, 7],
+    [0, 2, 4, 5],
+    [0, 1, 2, 4],
+]
+
+[model]
+from_state = false
+
+[layered_integrator]
+integrator_type = "madnis"
+
+[integrator.madnis]
+batch_size = 10000
+learning_rate = 2e-4
+use_scheduler = true
+scheduler_type = "cosineannealing"
+loss_type = "kl_divergence_softclip"
+pretrain_c_flow = false
+
+[integrator.madnis.pretraining_kwargs]
+nitn=10
+neval=500000
+bins_mult=4
+alpha=0.3
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "rkaapo"
+mu = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+a = 0.5
+b = 1.0
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "fermi"
+ose_exponent = 6.0
+fermi_exponent = 1.0
+
+[layered_integrand]
+integrand_type = "kaapo"
+path_to_example = "/home/nfink/thermal_integrand_examples/examples/bugblatterPQ"
+params = [0.46390258023886, 1.0, 13.5441913341902]
+use_prec = true
+use_f128 = true
+n_cores = 128
+
+[integrand.kaapo.symbolica_integrand_kwargs]
+rotation_seed = 42
+stability_tolerance = 1e-5
+stability_abs_tolerance = 1e-15
+stability_abs_threshold = 1e-12
+escalate_large_weight_multiplier = 0.9
+escalate_small_momentum_multiplier = 1e-4
+escalate_large_momentum_multiplier = 1e3
+n_shots = 3
+force_rebuild = false
+sum_orientations = true
+runtime_summation = false
+
+[integrand.kaapo.symbolica_integrand_prec_kwargs]
+prec = 200
+n_shots = 1
+escalate_large_weight_multiplier = -1.0
+escalate_small_momentum_multiplier = -1.0
+escalate_large_momentum_multiplier = -1.0
+sum_orientations = true
+runtime_summation = false

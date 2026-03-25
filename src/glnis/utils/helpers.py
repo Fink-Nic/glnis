@@ -147,3 +147,21 @@ def verify_path(path: str, suffix: str = None, _levels_to_root: int = 3) -> Path
         raise FileNotFoundError(
             f"File at '{path}' does not exist. Path must be either absolute, or relative to the glnis root folder.")
     return path
+
+
+def _open_fd_count() -> int | None:
+    proc_fd_path = Path('/proc/self/fd')
+    if not proc_fd_path.exists():
+        return None
+    try:
+        return len(list(proc_fd_path.iterdir()))
+    except Exception:
+        return None
+
+
+def _fd_limit() -> int | None:
+    try:
+        import resource
+        return resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+    except Exception:
+        return None

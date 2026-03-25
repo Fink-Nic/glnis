@@ -140,7 +140,7 @@ def run_sampler_comp(
             if step % n_plot_rsd == 0:
                 acc = madnis_integrator.integrate(n_samples, progress_report=False)
                 obs = acc.get_observables()
-                phase = integrand.training_phase.lower()
+                phase = madnis_integrator.integrand.training_phase.lower()
                 Data.plottables.means.append(obs[f"{phase}_central_value"])
                 Data.plottables.errors.append(obs[f"{phase}_error"])
                 Data.plottables.rsds.append(obs[f"{phase}_rsd"])
@@ -160,7 +160,6 @@ def run_sampler_comp(
         )
         integrators["MadNIS"] = madnis_integrator
         madnis_integrator.callback = callback
-        integrand = madnis_integrator.integrand
         n_total_training_samples = n_training_steps * madnis_kwargs["batch_size"]
         neval = int(n_total_training_samples / nitn)
 
@@ -176,8 +175,8 @@ def run_sampler_comp(
 
         # Will hold integration results to write to text file and plot
         Data = SamplerCompData(integrator_identifiers=list(integrators.keys()),
-                               graph_properties=integrand.graph_properties,
-                               target=integrand.target,
+                               graph_properties=madnis_integrator.integrand.graph_properties,
+                               target=madnis_integrator.integrand.target,
                                settings=Settings.settings,
                                madnis_kwargs=madnis_kwargs,
                                madnis_info=madnis_integrator.get_info(),

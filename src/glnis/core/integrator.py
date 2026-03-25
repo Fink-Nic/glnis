@@ -2,6 +2,7 @@
 import vegas
 import numpy as np
 import torch
+import functools
 from copy import deepcopy
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -17,6 +18,17 @@ from glnis.core.accumulator import (
 from glnis.core.integrand import MPIntegrand
 from glnis.core.parser import SettingsParser
 from glnis.utils.helpers import shell_print, error_fmter
+
+
+def _block_if_ended(method) -> None:
+    @functools.wraps(method)
+    def wrapper(self: Integrator, *args, **kwargs):
+        if self._ended:
+            shell_print(
+                f"WARNING: Integrator {self.IDENTIFIER} has already been ended and can no longer be used.")
+            return None
+        return method(self, *args, **kwargs)
+    return wrapper
 
 
 class Integrator(ABC):
@@ -36,22 +48,35 @@ class Integrator(ABC):
         self.rng = np.random.default_rng(self.seed)
         self._ended = False
 
-    @abstractmethod
+    @_block_if_ended
     def get_samples(self, n_points: int) -> LayerData:
         """Returns a LayerData object containing the samples to be fed into the integrand."""
+        return self._get_samples(n_points)
+
+    @abstractmethod
+    def _get_samples(self, n_points: int) -> LayerData:
         pass
 
+    @_block_if_ended
     def export_state(self) -> Any:
         """Exports the state of the integrator, e.g. for checkpointing or analysis."""
+        return self._export_state()
+
+    def _export_state(self) -> 'Integrator.IntegratorState':
         return Integrator.IntegratorState(rng_state=deepcopy(self.rng.bit_generator.state))
 
+    @_block_if_ended
     def import_state(self, state: 'Integrator.IntegratorState'):
         """
         Imports the state of the integrator from a previous export.
         Upon importing, the integrand must be set up to match the imported state.
         """
+        self._import_state(state)
+
+    def _import_state(self, state: 'Integrator.IntegratorState'):
         self.rng.bit_generator.state = deepcopy(state.rng_state)
 
+    @_block_if_ended
     def integrate(self,
                   n_samples: int,
                   n_start: int = 1_000_000,
@@ -85,6 +110,7 @@ class Integrator(ABC):
 
         return accumulator
 
+    @_block_if_ended
     def train(self, nitn: int = 10, batch_size: int = 10000, ):
         shell_print(f"Training not available for Integrator {self.IDENTIFIER}.")
 
@@ -111,6 +137,7 @@ class Integrator(ABC):
 
         return indices, (1/prob).reshape(-1, 1)
 
+    @_block_if_ended
     def init_layer_data(self, n_points: int) -> LayerData:
         return LayerData(
             n_points,
@@ -166,7 +193,11 @@ class Integrator(ABC):
             integrator_kwargs=integrator_kwargs
         )
 
+    @_block_if_ended
     def get_info(self) -> Dict[str, Any]:
+        return self._get_info()
+
+    def _get_info(self) -> Dict[str, Any]:
         info = {
             "Integrator type": self.IDENTIFIER,
             "Input dimension": self.input_dim,
@@ -176,6 +207,7 @@ class Integrator(ABC):
         }
         return info
 
+    @_block_if_ended
     def display_info(self) -> None:
         info = self.get_info()
         shell_print("Integrator information:")
@@ -187,6 +219,7 @@ class Integrator(ABC):
         if self._ended:
             return
         self.integrand.end()
+        self.integrand = None
         self._ended = True
 
     @dataclass(kw_only=True)
@@ -202,7 +235,7 @@ class NaiveIntegrator(Integrator):
                  **kwargs,):
         super().__init__(integrand=integrand, **kwargs)
 
-    def get_samples(self, n_points: int) -> LayerData:
+    def _get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)
         layer_input.continuous = self.rng.random((n_points, self.continuous_dim))
         discrete = self.rng.uniform(
@@ -228,6 +261,7 @@ class VegasIntegrator(Integrator):
         self.adaptive_map = vegas.AdaptiveMap(grid=self.input_dim*[[0, 1],], ninc=bins)
         self.alpha = alpha
 
+    @_block_if_ended
     def train(self, nitn: int = 10, batch_size: int = 1000, alpha: float | None = None) -> vegas._vegas.RAvg:
         if alpha is None:
             alpha = self.alpha
@@ -247,7 +281,7 @@ class VegasIntegrator(Integrator):
 
         return "\n".join(f"{line}" for line in report)
 
-    def get_samples(self, n_points: int, return_r: bool = False) -> LayerData:
+    def _get_samples(self, n_points: int, return_r: bool = False) -> LayerData:
         # Just need this for the timestamp, since vegas may decide on a different sample size.
         layer_input = self.init_layer_data(n_points)
         # adaptive_map.map will fill the containers x_all and jac with the mapped samples and weights
@@ -264,14 +298,14 @@ class VegasIntegrator(Integrator):
             return layer_input, r
         return layer_input
 
-    def export_state(self) -> 'VegasIntegrator.VegasState':
+    def _export_state(self) -> 'VegasIntegrator.VegasState':
         return VegasIntegrator.VegasState(grid=deepcopy(self.adaptive_map.extract_grid()),
                                           rng_state=deepcopy(self.rng.bit_generator.state))
 
-    def import_state(self, state: 'VegasIntegrator.VegasState'):
+    def _import_state(self, state: 'VegasIntegrator.VegasState'):
         if not isinstance(state, VegasIntegrator.VegasState):
             raise ValueError("State for VegasIntegrator must be of type VegasState.")
-        super().import_state(state)
+        super()._import_state(state)
         self.adaptive_map = vegas.AdaptiveMap(grid=deepcopy(state.grid))
         if self.adaptive_map.dim != self.input_dim:
             raise ValueError("Imported Vegas state does not match input dimension of integrand.")
@@ -280,8 +314,8 @@ class VegasIntegrator(Integrator):
     class VegasState(Integrator.IntegratorState):
         grid: List[List[float]]
 
-    def get_info(self) -> Dict[str, Any]:
-        info = super().get_info()
+    def _get_info(self) -> Dict[str, Any]:
+        info = super()._get_info()
         info["bins"] = self.bins
         info["alpha"] = self.alpha
         return info
@@ -325,6 +359,7 @@ class HavanaIntegrator(Integrator):
         self.discrete_learning_rate = discrete_learning_rate
         self.continuous_learning_rate = continuous_learning_rate
 
+    @_block_if_ended
     def train(self, nitn: int = 10, batch_size: int = 10000) -> str:
         report = [
             f"Training Havana for {nitn} iterations à {batch_size} samples:"]
@@ -344,8 +379,8 @@ class HavanaIntegrator(Integrator):
 
         return "\n".join(f"{line}" for line in report)
 
-    def get_samples(self, n_points: int, return_samples: bool = False, training: bool = False,
-                    ) -> Tuple[List[Sample], LayerData] | LayerData:
+    def _get_samples(self, n_points: int, return_samples: bool = False, training: bool = False,
+                     ) -> Tuple[List[Sample], LayerData] | LayerData:
         layer_input = self.init_layer_data(n_points)
         samples = self.havana.sample(n_points, self.symbolica_rng)
 
@@ -397,17 +432,17 @@ class HavanaIntegrator(Integrator):
 
         return layer_input
 
-    def export_state(self) -> 'HavanaIntegrator.HavanaState':
+    def _export_state(self) -> 'HavanaIntegrator.HavanaState':
         return HavanaIntegrator.HavanaState(grid=deepcopy(self.havana.export_grid(export_samples=False)),
                                             seed=self.seed,
                                             stream_id=self.stream_id,
                                             rng_state=deepcopy(self.rng.bit_generator.state)
                                             )
 
-    def import_state(self, state: 'HavanaIntegrator.HavanaState'):
+    def _import_state(self, state: 'HavanaIntegrator.HavanaState'):
         if not isinstance(state, HavanaIntegrator.HavanaState):
             raise ValueError("State for HavanaIntegrator must be of type HavanaState.")
-        super().import_state(state)
+        super()._import_state(state)
         self.havana.merge(NumericalIntegrator.import_grid(state.grid))
         self.seed = state.seed
         self.stream_id = state.stream_id
@@ -419,8 +454,8 @@ class HavanaIntegrator(Integrator):
         seed: int
         stream_id: int
 
-    def get_info(self) -> Dict[str, Any]:
-        info = super().get_info()
+    def _get_info(self) -> Dict[str, Any]:
+        info = super()._get_info()
         info["Stream ID"] = self.stream_id
         info["bins"] = self.bins
         info["max_prob_ratio"] = self.max_prob_ratio
@@ -558,13 +593,14 @@ class MadnisIntegrator(Integrator):
                 self.madnis.flow.init_with_grid(grid)
             shell_print(f"MadNIS pretraining successfully completed!")
 
+    @_block_if_ended
     def train(self, nitn: int = 10, _=None):
         if self.use_scheduler:
             self.madnis.scheduler = self._get_scheduler(
                 nitn, self.scheduler_type)
         self.madnis.train(nitn, self.callback, True)
 
-    def get_samples(self, n_points: int) -> LayerData:
+    def _get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)
         # LayerData objects return a view of the fields, so we can fill them directly,
         # but this would sidestep data validation, so we fill a copy and then assign it
@@ -718,7 +754,7 @@ class MadnisIntegrator(Integrator):
                           madnis_integrator.losses.dtype_epsilon(f_true))
         return torch.mean(clipped_weight * (log_f - log_q))
 
-    def export_state(self) -> 'MadnisIntegrator.MadnisState':
+    def _export_state(self) -> 'MadnisIntegrator.MadnisState':
         flow_state = self.madnis.flow.state_dict()
         cwnet_state = self.madnis.cwnet.state_dict() if self.madnis.cwnet is not None else None
         optimizer_state = self.madnis.optimizer.state_dict() if self.madnis.optimizer is not None else None
@@ -732,10 +768,10 @@ class MadnisIntegrator(Integrator):
             scheduler_state=scheduler_state,
         )
 
-    def import_state(self, state: 'MadnisIntegrator.MadnisState'):
+    def _import_state(self, state: 'MadnisIntegrator.MadnisState'):
         if not isinstance(state, MadnisIntegrator.MadnisState):
             raise ValueError("Invalid state type for MadnisIntegrator.")
-        super().import_state(state)
+        super()._import_state(state)
         torch.set_rng_state(state.torch_rng_state)
         self.madnis.flow.load_state_dict(state.flow_state)
         if state.cwnet_state is not None:
@@ -783,8 +819,8 @@ class MadnisIntegrator(Integrator):
         optimizer_state: Dict[str, Any] | None
         scheduler_state: Dict[str, Any] | None
 
-    def get_info(self) -> Dict[str, Any]:
-        info = super().get_info()
+    def _get_info(self) -> Dict[str, Any]:
+        info = super()._get_info()
         info["scheduler_type"] = self.scheduler_type
         info["device"] = str(self.device)
         if self.num_discrete_dims > 0:
