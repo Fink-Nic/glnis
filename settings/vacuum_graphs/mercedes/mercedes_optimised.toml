@@ -1,0 +1,16 @@
+run_name = "mercedes_optimised"
+templates = [
+    "settings/vacuum_graphs/mercedes/mercedes_base",
+    "settings/templates/flow/size2",
+    "settings/templates/madnis_bins/size2",
+    "settings/templates/transformer/size2",
+]
+
+[scripts.sampler_comp]
+n_training_steps = 2000
+n_samples = 1000000
+n_samples_after_training = 10000000
+n_log = 20
+n_plot_rsd = 100
+n_plot_loss = 2
+n_itn = 10

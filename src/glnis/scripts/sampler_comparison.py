@@ -248,7 +248,7 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
 
     file: Path = verify_path(file, suffix=".pkl")
     with file.open('rb') as f:
-        Data: SamplerCompData = load(f, weights_only=False, strict=False)
+        Data: SamplerCompData = load(f, weights_only=False)
         if not isinstance(Data, SamplerCompData):
             raise ValueError(f"Expected a SamplerCompData object in the file, but got {type(Data)}")
 
@@ -330,7 +330,8 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
             Path(directory, filename + "_training_prog.png"), dpi=300, bbox_inches="tight"
         )
 
-    if len(Data.observables) > 1:
+    n_spl = len(Data.observabels)
+    if n_spl > 1:
         fig, axs = plt.subplots(4, 2, sharex=True, layout="constrained",
                                 height_ratios=(3, 1, 1, 1), figsize=(10, 8))
         axs: NDArray[plt.Axes]
@@ -343,13 +344,31 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
         axs[2, 0].set_ylabel("TVAR")
         axs[3, 0].set_ylabel("ATVAR")
         for i in range(2):
-            axs[3, i].set_xticks(range(len(Data.observables)), list(Data.observables.keys()), rotation=45)
+            axs[3, i].set_xticks(range(n_spl), list(Data.observables.keys()), rotation=45)
             axs[1, i].set_yscale("log")
             axs[2, i].set_yscale("log")
             axs[3, i].set_yscale("log")
 
-        axs[0, 0].hlines(Data.target.real_central_value, 0, len(Data.observables)-1, color='red')
-        axs[0, 1].hlines(Data.target.imag_central_value, 0, len(Data.observables)-1, color='red')
+        tgt_line_len = n_spl - 1
+        tgt = Data.target
+        if tgt.real_central_value:
+            axs[0, 0].hlines(tgt.real_central_value, 0, tgt_line_len, color='red')
+        if tgt.real_rsd:
+            axs[1, 0].hlines(tgt.real_rsd, 0, tgt_line_len, color='red')
+        if tgt.real_tvar:
+            axs[2, 0].hlines(tgt.real_tvar, 0, tgt_line_len, color='red')
+        if tgt.abs_real_tvar:
+            axs[3, 0].hlines(tgt.abs_real_tvar, 0, tgt_line_len, color='red')
+
+        if tgt.imag_central_value:
+            axs[0, 1].hlines(tgt.imag_central_value, 0, tgt_line_len, color='red')
+        if tgt.imag_rsd:
+            axs[1, 1].hlines(tgt.imag_rsd, 0, tgt_line_len, color='red')
+        if tgt.imag_tvar:
+            axs[2, 1].hlines(tgt.imag_tvar, 0, tgt_line_len, color='red')
+        if tgt.abs_imag_tvar:
+            axs[3, 1].hlines(tgt.abs_imag_tvar, 0, tgt_line_len, color='red')
+
         for i, obs in enumerate(Data.observables.values()):
             if obs.real_error > 0:
                 axs[0, 0].errorbar(i, obs.real_central_value, yerr=obs.real_error,

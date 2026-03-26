@@ -273,8 +273,25 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
             axs2[2, i].set_yscale("log")
             axs2[3, i].set_yscale("log")
 
-        axs2[0, 0].hlines(target.real_central_value, 0, len(blocks)-1, color='red')
-        axs2[0, 1].hlines(target.imag_central_value, 0, len(blocks)-1, color='red')
+        tgt_line_len = n_blocks - 1
+        if target.real_central_value:
+            axs2[0, 0].hlines(target.real_central_value, 0, tgt_line_len, color='red')
+        if target.real_rsd:
+            axs2[1, 0].hlines(target.real_rsd, 0, tgt_line_len, color='red')
+        if target.real_tvar:
+            axs2[2, 0].hlines(target.real_tvar, 0, tgt_line_len, color='red')
+        if target.abs_real_tvar:
+            axs2[3, 0].hlines(target.abs_real_tvar, 0, tgt_line_len, color='red')
+
+        if target.imag_central_value:
+            axs2[0, 1].hlines(target.imag_central_value, 0, tgt_line_len, color='red')
+        if target.imag_rsd:
+            axs2[1, 1].hlines(target.imag_rsd, 0, tgt_line_len, color='red')
+        if target.imag_tvar:
+            axs2[2, 1].hlines(target.imag_tvar, 0, tgt_line_len, color='red')
+        if target.abs_imag_tvar:
+            axs2[3, 1].hlines(target.abs_imag_tvar, 0, tgt_line_len, color='red')
+
         fig3, axs3 = plt.subplots(nrows=2, ncols=1, sharex=True, layout="constrained", figsize=(8, 6))
         axs3: List[plt.Axes]
         axs3[-1].set_xticks(range(n_blocks), block_ticks, rotation=45)
@@ -346,6 +363,20 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
         plt.close(fig3)
         shell_print(f"Finished plotting comparison '{comp_name}'. Plots saved to '{subdirectory}'.")
 
+    all_rsds = []
+    for (comp, block, real_err) in Data.sorted_by_obs['real_error']:
+        _rsd = None
+        for (c, b, real_mean) in Data.sorted_by_obs['real_central_value']:
+            if c == comp and b == block and real_mean != 0:
+                _rsd = real_err / abs(real_mean)
+        for (c, b, n_points) in Data.sorted_by_obs['n_points']:
+            if c == comp and b == block and n_points > 0:
+                if _rsd is not None:
+                    _rsd *= np.sqrt(n_points)
+        if _rsd is not None:
+            all_rsds.append((comp, block, _rsd))
+    all_rsds.sort(key=lambda x: x[2])
+    Data.sorted_by_obs['real_rsd'] = all_rsds
     ignore = ["n_points", "real_central_value", "imag_central_value",
               "abs_real_central_value", "abs_imag_central_value"]
     n_show = 5

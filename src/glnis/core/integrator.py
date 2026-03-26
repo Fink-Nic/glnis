@@ -473,7 +473,8 @@ class MadnisIntegrator(Integrator):
                  batch_size: int = 1024,
                  learning_rate: float = 1e-3,
                  use_scheduler: bool = True,
-                 scheduler_type: Literal["cosineannealing"] | None = None,
+                 scheduler_type: Literal["cosineannealing"] | List[str] | None = None,
+                 warmup_steps: List[int] = [],
                  scheduler_kwargs: Dict[str, Any] = dict(),
                  loss_type: Literal["variance", "variance_softclip",
                                     "kl_divergence", "kl_divergence_softclip"] = "kl_divergence",
@@ -667,8 +668,27 @@ class MadnisIntegrator(Integrator):
             case 'reducelronplateau':
                 return torch.optim.lr_scheduler.ReduceLROnPlateau(
                     self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
+            case 'linear':
+                return torch.optim.lr_scheduler.LinearLR(
+                    self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
             case _:
                 return None
+        # if not isinstance(scheduler_type, list):
+        #     scheduler_type = [scheduler_type]
+
+        # sched_list = []
+        # for sched in scheduler_type:
+        #     match sched.lower():
+        #         case 'cosineannealing':
+        #             sched_list.append(torch.optim.lr_scheduler.CosineAnnealingLR)
+        #         case 'reducelronplateau':
+        #             sched_list.append(torch.optim.lr_scheduler.ReduceLROnPlateau)
+        #         case 'linear':
+        #             sched_list.append(torch.optim.lr_scheduler.LinearLR)
+        #         case _:
+        #             return None
+
+        # torch.optim.lr_scheduler.LambdaLR(self.madnis.optimizer, self.)
 
     @staticmethod
     def _default_callback(status: madnis_integrator.TrainingStatus) -> None:

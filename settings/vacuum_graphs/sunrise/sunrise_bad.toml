@@ -1,13 +1,13 @@
-run_name = "sunrise_optimised"
+run_name = "sunrise_bad"
 templates = [
     "settings/vacuum_graphs/sunrise/sunrise_base",
-    "settings/templates/flow/size9",
-    "settings/templates/madnis_bins/size2",
+    "settings/templates/flow/size1",
+    "settings/templates/madnis_bins/size4",
     "settings/templates/transformer/size2",
 ]
 
 # Parameters used in the tprog subcommand
-[scripts.sampler_comp]
+[scripts.training_prog]
 n_training_steps = 2000
 n_samples = 1000000
 nitn = 10

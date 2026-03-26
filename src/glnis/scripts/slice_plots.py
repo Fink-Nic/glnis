@@ -272,63 +272,61 @@ def plot_slices(file: str, comment: str = "") -> None:
         )
         plt.close(fig)
 
-    cmap = plt.get_cmap('plasma')
-    colors_low = cmap(np.linspace(0, 0.2, 128))
-    colors_high = cmap(np.linspace(0.3, 1, 128))
-    all_colors = np.vstack((colors_low, colors_high))
-    cmap_segmented = colors.LinearSegmentedColormap.from_list('plasma', all_colors)
+    cmap_name = 'plasma'
     fraction = 0.046  # Default fraction for colorbar size
     padding = 0.04  # Default padding between plot and colorbar
-    threshold = 4  # Threshold for switching to TwoSlopeNorm
+    high_threshold = 1
+    center = -2
+    low_threshold = -10
+    low_high_ratio = 0.25  # Ratio of low to high colors in the segmented colormap
+    low_high_gap = 0.05  # Gap between low and high colors in the segmented colormap
+    cmap = plt.get_cmap(cmap_name)
+    colors_low = cmap(np.linspace(0, low_high_ratio, 128))
+    colors_high = cmap(np.linspace(low_high_ratio+low_high_gap, 1, 128))
+    all_colors = np.vstack((colors_low, colors_high))
+    cmap_segmented = colors.LinearSegmentedColormap.from_list(cmap_name, all_colors)
+    cmap_segmented.set_bad(color='lightgrey')  # Color for NaN values
+    cmap_segmented.set_under(color='black')  # Color for values below vmin
+    cmap_segmented.set_over(color='white')  # Color for values above vmax
+    norm12 = colors.TwoSlopeNorm(vcenter=center, vmin=low_threshold, vmax=high_threshold)
+    norm3 = colors.Normalize(vmin=-high_threshold, vmax=high_threshold)
+    cmap3 = plt.get_cmap(cmap_name)
+    cmap3.set_bad(color='lightgrey')  # Color for NaN values
+    cmap3.set_under(color='black')  # Color for values below vmin
+    cmap3.set_over(color='white')  # Color for values above vmax
 
     for i, slice in enumerate(Data.slices2d):
         slice: Slice
-        data_log_titles = [r"|I / <I>|", "Probability", r"|Ratio|"]
-        data_log = [np.abs(slice.func_val), slice.prob, np.abs(slice.func_val) / slice.prob]
+        data_log_titles = ["|I / <I>|", "Probability"]
+        data_log = [np.abs(slice.func_val), slice.prob]
+        data_log = [d / np.nanmean(d) for d in data_log]  # Normalize by mean for better color scaling
+        data_log = [np.log10(d, out=np.full_like(d, np.nan, dtype=np.float64), where=(d > 0)) for d in data_log]
         data_discrete = np.sign(slice.func_val).astype(np.float64)  # * np.sign(slice.prob)
 
         fig, axes = plt.subplots(2, 2, figsize=(10, 8),
                                  sharex=True, sharey=True, constrained_layout=True)
         (ax1, ax2), (ax3, ax4) = axes
 
-        # Plot the funcval and probability with shared log color scale
-        # vmin = min(d[d > 0].min() for d in data_log)
-        # vmax = max(d.max() for d in data_log)
-        # log_range = min(d[d > 0].min() for d in data_log) / max(d.max() for d in data_log)
-
         imgs = []
-        for ax, data, title in zip([ax1, ax2], data_log[:2], data_log_titles[:2]):
-            data: np.ndarray = np.log10(data, out=np.full_like(data, np.nan, dtype=np.float64), where=(data > 0))
-            vmin = data.min(where=(~np.isnan(data)), initial=np.inf)
-            vmax = data.max(where=(~np.isnan(data)), initial=-np.inf)
-            log_range = vmax - vmin
-            log_norm = (
-                colors.Normalize(vmin=vmin, vmax=vmax) if log_range < threshold
-                else colors.TwoSlopeNorm(vcenter=vmax - threshold/2, vmin=vmin, vmax=vmax)
-            )
-            log_cm = cmap if log_range < threshold else cmap_segmented
+        for ax, data, title in zip([ax1, ax2], data_log, data_log_titles):
+            # vmin = data.min(where=(~np.isnan(data)), initial=np.inf)
+            # vmax = data.max(where=(~np.isnan(data)), initial=-np.inf)
             ax: plt.Axes
-            im = ax.imshow(data, norm=log_norm, cmap=log_cm,
+            im = ax.imshow(data, norm=norm12, cmap=cmap_segmented,
                            origin='lower', extent=[0, 1, 0, 1])
             imgs.append(im)
             ax.set_title(title)
-            fig.colorbar(im, ax=ax, fraction=fraction, pad=padding)
-        new_data = np.abs(slice.func_val / slice.prob)
-        np.clip(new_data, 5, 12, out=new_data)
-        im = ax3.imshow(new_data, cmap='plasma', extent=[0, 1, 0, 1],
-                        norm=colors.Normalize(new_data.min(), new_data.max()))
-        ax3.set_title(data_log_titles[2])
-        print(f"min={new_data.min()}, max={new_data.max()}, mean={new_data.mean()}, median={np.median(new_data)}")
-        fig.colorbar(im, ax=ax3, fraction=fraction, pad=padding)
+            fig.colorbar(im, ax=ax, fraction=fraction, pad=padding,
+                         extend='both', ticks=[low_threshold, center, high_threshold])
+        data3 = np.abs(slice.func_val / slice.prob)
+        # data3 /= np.nanmean(data3)  # Normalize by mean for better color scaling
+        data3 = np.log10(data3, out=np.full_like(data3, np.nan, dtype=np.float64), where=(data3 > 0))
+        im = ax3.imshow(data3, cmap=cmap3, extent=[0, 1, 0, 1],
+                        norm=norm3, origin='lower')
+        ax3.set_title("|Ratio|")
+        fig.colorbar(im, ax=ax3, fraction=fraction, pad=padding,
+                     extend='both', ticks=[-high_threshold, 0, high_threshold])
 
-        # ratio = np.abs(slice.func_val) / np.abs(slice.prob)
-        # log_norm_ratio = colors.LogNorm(vmin=ratio[ratio > 0].min(), vmax=ratio.max())
-        # imratio = ax3.imshow(np.abs(slice.func_val) / np.abs(slice.prob), norm=log_norm_ratio, cmap='plasma',
-        #                      origin='lower', extent=[0, 1, 0, 1])
-        # ax3.set_title("|Ratio|")
-
-        # Define Normalization for the 4th (Discrete: -1, 0, 1)
-        # Boundaries are set at the midpoints to center the colors
         discrete_cmap = colors.ListedColormap(['#e74c3c', '#ecf0f1', '#2ecc71'])  # Red, Grey, Green, italian
         bounds = [-1.5, -0.5, 0.5, 1.5]
         discrete_norm = colors.BoundaryNorm(bounds, discrete_cmap.N)
@@ -337,14 +335,6 @@ def plot_slices(file: str, comment: str = "") -> None:
                          origin='lower', extent=[0, 1, 0, 1])
         ax4.set_title("sgn(I)")
 
-        # Add Colorbars
-        # Shared colorbar for the first two, will be placed to the right of ax2
-        # cbar_f_p = fig.colorbar(imgs[0], ax=[ax1, ax2], fraction=fraction, pad=padding)
-
-        # Dedicated colorbar for the ratio
-        # cbar_ratio = fig.colorbar(imratio, ax=ax3, fraction=fraction, pad=padding)
-
-        # Dedicated colorbar for the discrete plot
         cbar_disc = fig.colorbar(im4, ax=ax4, fraction=fraction, pad=padding)
         # cbar_disc.set_label('Sign')
         cbar_disc.set_ticks([-1, 0, 1])

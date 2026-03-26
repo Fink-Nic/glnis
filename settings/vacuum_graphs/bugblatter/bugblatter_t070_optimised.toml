@@ -1,7 +1,15 @@
 run_name = "bugblatter_t070_optimised"
 templates = [
-    "settings/vacuum_graphs/bugblatter/bugblatter",
-    "settings/vacuum_graphs/bugblatter/bugblatter_tseries",
-    "settings/vacuum_graphs/bugblatter/bugblatter_t070",
-    "settings/vacuum_graphs/bugblatter/bugblatter_optimised",
+    "settings/vacuum_graphs/bugblatter/bugblatter_t070_base",
+    "settings/templates/flow/size9",
+    "settings/templates/transformer/size3",
+    "settings/templates/madnis_bins/size3",
 ]
+
+[scripts.training_prog]
+n_training_steps = 3000
+n_samples = 1000000
+n_samples_after_training = 100000000
+n_log = 20
+n_plot_rsd = 100
+n_plot_loss = 10
