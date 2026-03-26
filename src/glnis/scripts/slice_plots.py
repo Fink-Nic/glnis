@@ -315,16 +315,18 @@ def plot_slices(file: str, comment: str = "") -> None:
                            origin='lower', extent=[0, 1, 0, 1])
             imgs.append(im)
             ax.set_title(title)
-            fig.colorbar(im, ax=ax, fraction=fraction, pad=padding,
-                         extend='both', ticks=[low_threshold, center, high_threshold])
+            cb12 = fig.colorbar(im, ax=ax, fraction=fraction, pad=padding, extend='both')
+            cb12.set_ticks(ticks=[low_threshold, center, high_threshold],
+                           labels=[f"e{low_threshold:+.0f}", f"e{center:+.0f}", f"e{high_threshold:+.0f}"])
         data3 = np.abs(slice.func_val / slice.prob)
-        data3 /= np.nanmean(data3)  # Normalize by mean for better color scaling
+        # data3 /= np.nanmean(data3)  # Normalize by mean for better color scaling
         data3 = np.log10(data3, out=np.full_like(data3, np.nan, dtype=np.float64), where=(data3 > 0))
         im = ax3.imshow(data3, cmap=cmap3, extent=[0, 1, 0, 1],
                         norm=norm3, origin='lower')
         ax3.set_title("|Ratio|")
-        fig.colorbar(im, ax=ax3, fraction=fraction, pad=padding,
-                     extend='both', ticks=[-high_threshold, 0, high_threshold])
+        cb3 = fig.colorbar(im, ax=ax3, fraction=fraction, pad=padding, extend='both')
+        cb3.set_ticks(ticks=[-high_threshold, 0, high_threshold],
+                      labels=[f"e{-high_threshold:+.0f}", "e+0", f"e{high_threshold:+.0f}"])
 
         discrete_cmap = colors.ListedColormap(['#e74c3c', '#ecf0f1', '#2ecc71'])  # Red, Grey, Green, italian
         bounds = [-1.5, -0.5, 0.5, 1.5]
@@ -336,8 +338,7 @@ def plot_slices(file: str, comment: str = "") -> None:
 
         cbar_disc = fig.colorbar(im4, ax=ax4, fraction=fraction, pad=padding)
         # cbar_disc.set_label('Sign')
-        cbar_disc.set_ticks([-1, 0, 1])
-        cbar_disc.set_ticklabels(['-', '0', '+'])
+        cbar_disc.set_ticks(ticks=[-1, 0, 1], labels=['-', '0', '+'])
         fig.suptitle(f"2D Slices #{i} for {Data.settings['run_name']}")
 
         plt.savefig(

@@ -1,0 +1,8 @@
+[integrator.madnis.flow_kwargs]
+bins = 10
+min_bin_width = 5e-3
+min_bin_height = 1e-4
+min_bin_derivative = 1e-5
+
+[integrator.madnis.pretraining_kwargs]
+bins_mult = 40

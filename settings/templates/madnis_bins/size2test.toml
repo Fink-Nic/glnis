@@ -1,0 +1,20 @@
+[integrator.madnis.flow_kwargs]
+bins = 20
+min_bin_width = 1e-3
+min_bin_height = 1e-4
+min_bin_derivative = 1e-5
+
+[integrator.madnis.pretraining_kwargs]
+bins_mult = 20
+
+# What is max_prob_ratio for given b / w / h?
+# Naively, if we only care about bins:
+# Total distributed among b bins: b*h
+# If all the rest is in 1 bin:
+# h_max = (1 - b*h) 
+# -> max_prob_ratio = (1 - b*h) / h = 1/h - b
+# More interestingly: Can We find a bound for the actual max_prob, so the ratio of the derivatives?
+# Clearly, min_derivative = min_bin_derivative (WRONG, only at bin edges)
+# However, the derivative is not really bounded. But as a worst case scenario:
+# If the highest probability region falls into a single bin, and that bin is of size w and uniform:
+# max_derivative = h_max / w = 1/w - b*h/w ~ 1/w
