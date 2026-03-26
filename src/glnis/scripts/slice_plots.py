@@ -79,7 +79,7 @@ def run_slice_plots(
         scripts: Dict[str, Any] = Settings.settings.get("scripts", dict())
         params: Dict[str, Any] = scripts.get("slice_plots", dict())
         n_samples_1d = params.get("n_samples_1d", 1000)
-        n_samples_2d = params.get("n_samples_2d", 100)
+        n_samples_2d = params.get("n_samples_2d", 1000)
         n_slices_1d = params.get("n_slices_1d", 2)
         slice_dims_2d = params.get("slice_dims_2d", [[0, 1]])
         EPS = params.get("EPS", 1e-6)
@@ -257,9 +257,8 @@ def plot_slices(file: str, comment: str = "") -> None:
         axs[0].plot(slice.t, np.abs(slice.func_val), label="|I / <I>|")
         axs[0].plot(slice.t, slice.prob, label="Probability")
         axs[0].legend()
-        axs[1].plot(slice.t, np.abs(slice.func_val) / np.abs(slice.prob))
-        axs[2].plot(slice.t, np.sign(slice.func_val))  # * np.sign(slice.prob))
-        # axs[0].set_ylabel("|Integrand Value|")
+        axs[1].plot(slice.t, np.abs(slice.func_val) / slice.prob)
+        axs[2].plot(slice.t, np.sign(slice.func_val))
         axs[1].set_ylabel("|Ratio|")
         axs[2].set_ylabel("sgn(I)")
         axs[0].set_yscale("log")
@@ -319,7 +318,7 @@ def plot_slices(file: str, comment: str = "") -> None:
             fig.colorbar(im, ax=ax, fraction=fraction, pad=padding,
                          extend='both', ticks=[low_threshold, center, high_threshold])
         data3 = np.abs(slice.func_val / slice.prob)
-        # data3 /= np.nanmean(data3)  # Normalize by mean for better color scaling
+        data3 /= np.nanmean(data3)  # Normalize by mean for better color scaling
         data3 = np.log10(data3, out=np.full_like(data3, np.nan, dtype=np.float64), where=(data3 > 0))
         im = ax3.imshow(data3, cmap=cmap3, extent=[0, 1, 0, 1],
                         norm=norm3, origin='lower')

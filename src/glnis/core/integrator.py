@@ -49,12 +49,12 @@ class Integrator(ABC):
         self._ended = False
 
     @_block_if_ended
-    def get_samples(self, n_points: int) -> LayerData:
+    def get_samples(self, n_points: int, *args, **kwargs) -> LayerData:
         """Returns a LayerData object containing the samples to be fed into the integrand."""
-        return self._get_samples(n_points)
+        return self._get_samples(n_points, *args, **kwargs)
 
     @abstractmethod
-    def _get_samples(self, n_points: int) -> LayerData:
+    def _get_samples(self, n_points: int, *args, **kwargs) -> LayerData:
         pass
 
     @_block_if_ended

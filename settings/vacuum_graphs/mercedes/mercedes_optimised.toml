@@ -1,9 +1,9 @@
 run_name = "mercedes_optimised"
 templates = [
     "settings/vacuum_graphs/mercedes/mercedes_base",
-    "settings/templates/flow/size2",
+    "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size2",
-    "settings/templates/transformer/size2",
+    "settings/templates/transformer/size3",
 ]
 
 [scripts.sampler_comp]

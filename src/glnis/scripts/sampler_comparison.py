@@ -165,13 +165,13 @@ def run_sampler_comp(
 
         if not no_naive:
             Settings.settings["layered_integrator"]["integrator_type"] = "naive"
-            integrators["Naive"] = NaiveIntegrator(integrand, **Settings.get_integrator_kwargs())
+            integrators["Naive"] = NaiveIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
         if not no_vegas:
             Settings.settings["layered_integrator"]["integrator_type"] = "vegas"
-            integrators["Vegas"] = VegasIntegrator(integrand, **Settings.get_integrator_kwargs())
+            integrators["Vegas"] = VegasIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
         if not no_havana:
             Settings.settings["layered_integrator"]["integrator_type"] = "havana"
-            integrators["Havana"] = HavanaIntegrator(integrand, **Settings.get_integrator_kwargs())
+            integrators["Havana"] = HavanaIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
 
         # Will hold integration results to write to text file and plot
         Data = SamplerCompData(integrator_identifiers=list(integrators.keys()),
@@ -330,7 +330,7 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
             Path(directory, filename + "_training_prog.png"), dpi=300, bbox_inches="tight"
         )
 
-    n_spl = len(Data.observabels)
+    n_spl = len(Data.observables)
     if n_spl > 1:
         fig, axs = plt.subplots(4, 2, sharex=True, layout="constrained",
                                 height_ratios=(3, 1, 1, 1), figsize=(10, 8))
