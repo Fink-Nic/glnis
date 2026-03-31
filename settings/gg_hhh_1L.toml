@@ -1,4 +1,9 @@
 run_name = "gg_hhh_1L"
+templates = [
+    "settings/templates/flow/size6",
+    "settings/templates/madnis_bins/size1",
+    "settings/templates/transformer/size2",
+]
 
 [gammaloop_state]
 state_dir = "/home/nfink/gammaloop"
@@ -7,15 +12,10 @@ integration_state_name = "GL_OUTPUT/gg_hhh/1L/state/integration_workspace"
 integration_result_file = "integration_result.json"
 
 [integrator.madnis]
-batch_size = 2000
-discrete_model = "transformer"
-
-[integrator.madnis.transformer]
-embedding_dim = 128
-feedforward_dim = 256
-heads = 2
-mlp_units = 128
-transformer_layers = 2
+batch_size = 10000
+learning_rate = 1e-3
+use_scheduler = true
+scheduler_type = "cosineannealing"
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "spherical"
@@ -29,9 +29,9 @@ ose_exponent = 1.0
 [layered_integrand]
 integrand_type = "gammaloop"
 training_phase = "imag"
-n_cores = 8
+n_cores = 16
 
 [scripts.sampler_comp]
-n_training_steps = 500
-n_samples = 100000
-n_samples_after_training = 1000000
+n_training_steps = 1000
+n_samples = 1000000
+n_samples_after_training = 10000000

@@ -200,6 +200,7 @@ class Integrator(ABC):
     def _get_info(self) -> Dict[str, Any]:
         info = {
             "Integrator type": self.IDENTIFIER,
+            "Training phase": self.integrand.training_phase,
             "Input dimension": self.input_dim,
             "Continuous dimension": self.continuous_dim,
             "Discrete dimension": self.discrete_dims,
@@ -604,7 +605,7 @@ class MadnisIntegrator(Integrator):
         if self.use_scheduler:
             self.madnis.scheduler = self._get_scheduler(
                 nitn, self.scheduler_type)
-        self.madnis.train(nitn, self.callback, False)
+        self.madnis.train(nitn, self.callback, True)
 
     def _get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)

@@ -451,7 +451,6 @@ class SettingsParser:
                                  + "Number, Sequence of Numbers or \"default\".")
 
         graph_properties.momtrop_edge_weight = edge_weight
-        print(graph_properties)
 
         return graph_properties
 

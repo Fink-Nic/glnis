@@ -153,7 +153,6 @@ class GammaLoopIntegrand(Integrand):
             (len(continuous), 1), dtype=np.uint64)
         if discrete.shape[1] > 0:
             discrete_dims = np.hstack([discrete_dims, discrete])
-        print("we got here with discrete dims=", discrete_dims)
         res = self.gammaloop_state.evaluate_samples(
             points=continuous.astype(np.float64), discrete_dims=discrete_dims,
             momentum_space=self.momentum_space,
