@@ -212,13 +212,13 @@ class Integrator(ABC):
         info = self.get_info()
         shell_print("Integrator information:")
         for key, value in info.items():
-            shell_print(f"  {key}: {value}")
+            shell_print(f"    {key}: {value}")
 
-    def end(self) -> None:
+    def free(self) -> None:
         """Performs any necessary cleanup after integration is done."""
         if self._ended:
             return
-        self.integrand.end()
+        self.integrand.free()
         self.integrand = None
         self._ended = True
 
@@ -476,7 +476,7 @@ class MadnisIntegrator(Integrator):
                  scheduler_type: Literal["cosineannealing"] | List[str] | None = None,
                  warmup_steps: List[int] = [],
                  scheduler_kwargs: Dict[str, Any] = dict(),
-                 loss_type: Literal["variance", "variance_softclip",
+                 loss_type: Literal["test", "variance", "variance_softclip",
                                     "kl_divergence", "kl_divergence_softclip"] = "kl_divergence",
                  discrete_dims_position: Literal["first", "last"] = "first",
                  discrete_model: Literal["transformer",
@@ -542,6 +542,8 @@ class MadnisIntegrator(Integrator):
                 loss = madnis_integrator.losses.kl_divergence
             case "kl_divergence_softclip":
                 loss = MadnisIntegrator.kl_divergence_softclip
+            case "test":
+                loss = MadnisIntegrator.test
             case _:
                 loss = None
 
@@ -564,6 +566,8 @@ class MadnisIntegrator(Integrator):
             learning_rate=learning_rate,
             flow_kwargs=flow_kwargs,
         )
+        # self.madnis.optimizer = torch.optim.Adam(self.madnis.flow.parameters(), lr=learning_rate,
+        #                                          weight_decay=1e-5, betas=(0.8, 0.99))
         self.callback = self._default_callback if callback is None else callback
         self.max_batch_size = max_batch_size
 
@@ -599,7 +603,7 @@ class MadnisIntegrator(Integrator):
         if self.use_scheduler:
             self.madnis.scheduler = self._get_scheduler(
                 nitn, self.scheduler_type)
-        self.madnis.train(nitn, self.callback, True)
+        self.madnis.train(nitn, self.callback, False)
 
     def _get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)
@@ -637,6 +641,15 @@ class MadnisIntegrator(Integrator):
         accumulated_result: TrainingAccumulator = self.integrand.eval_integrand(
             layer_input, 'training')
         weighted_func_val = accumulated_result.training_data.training_result[0].flatten()
+
+        # start = 0.3
+        # max_step = 1500
+        # flatten_early = False
+        # if flatten_early:
+        #     exponent = start + self.madnis.step * (1.0 - start) / max_step
+        #     exponent = min(exponent, 1.0)
+        #     np.power(np.abs(weighted_func_val), exponent, out=weighted_func_val)
+
         torch_output = torch.from_numpy(
             weighted_func_val.astype(np.float64)).to(self.device)
         return torch_output
@@ -692,11 +705,46 @@ class MadnisIntegrator(Integrator):
 
     @staticmethod
     def _default_callback(status: madnis_integrator.TrainingStatus) -> None:
-        shell_print(f"Step {status.step+1}: Loss={status.loss} ")
+        if (status.step + 1) % 10 == 0:
+            shell_print(f"Step {status.step+1}: Loss={status.loss} ")
 
     @staticmethod
     def softclip(x: torch.Tensor, threshold: torch.Tensor = 30.0):
         return threshold * torch.arcsinh(x / threshold)
+
+    @staticmethod
+    def test(
+        f_true: torch.Tensor,
+        q_test: torch.Tensor,
+        q_sample: torch.Tensor | None = None,
+        channels: torch.Tensor | None = None,
+        threshold: torch.Tensor = 30.0,
+        sv_kl_ratio: torch.Tensor = 0.5,
+    ):
+        """
+        Args:
+            f_true: normalized integrand values
+            q_test: estimated function/probability
+            q_sample: sampling probability
+            channels: channel indices or None in the single-channel case
+            threshold: approximate point of transition between linear and logarithmic behavior
+        Returns:
+            computed stratified variance
+        """
+
+        return sv_kl_ratio*MadnisIntegrator.stratified_variance_softclip(
+            f_true=f_true,
+            q_test=q_test,
+            q_sample=q_sample,
+            channels=channels,
+            threshold=threshold,
+        ) + MadnisIntegrator.kl_divergence_softclip(
+            f_true=f_true,
+            q_test=q_test,
+            q_sample=q_sample,
+            channels=channels,
+            threshold=threshold,
+        )
 
     @staticmethod
     def stratified_variance_softclip(
@@ -808,9 +856,9 @@ class MadnisIntegrator(Integrator):
             self.madnis.scheduler = self._get_scheduler(T_max=1, scheduler_type=self.scheduler_type)
             self.madnis.scheduler.load_state_dict(state.scheduler_state)
 
-    def end(self) -> None:
+    def free(self) -> None:
         """Performs any necessary cleanup after integration is done."""
-        super().end()
+        super().free()
         # Move modules off GPU and drop references so repeated runs do not accumulate memory.
         if hasattr(self, "madnis") and self.madnis is not None:
             if self.device.type == 'cuda':

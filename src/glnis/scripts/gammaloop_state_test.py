@@ -56,9 +56,9 @@ def run_state_test(file: str) -> None:
 
     except KeyboardInterrupt:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
-        integrator.integrand.end()
+        integrator.integrand.free()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
-        integrator.integrand.end()
+        integrator.integrand.free()
     finally:
-        integrator.integrand.end()
+        integrator.integrand.free()

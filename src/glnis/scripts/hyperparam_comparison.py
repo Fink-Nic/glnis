@@ -11,7 +11,7 @@ from glnis.scripts.sampler_comparison import run_sampler_comp, SamplerCompData
 
 
 @dataclass
-class RunData:
+class OLDRunData:
     comp_name: str
     block_name: str
     settings: Dict[str, Any]
@@ -20,6 +20,83 @@ class RunData:
     target: Observables
     observables: Observables
     run_time: float
+
+
+@dataclass
+class RunData:
+    comp_name: str
+    block_name: str
+    settings: Dict[str, Any]
+    madnis_info: Dict[str, Any]
+    plottables: SamplerCompData.Plottables
+    target: Observables
+    observables: Dict[str, Any]
+    run_time: float
+
+
+class OLDHParamCompData:
+    def __init__(self, filename: str) -> None:
+        self.filename = filename
+        self.sorted_by_comp_and_name: Dict[str, Dict[str, RunData]] = dict()
+        self.sorted_by_obs: Dict[str, List[Tuple[str, str, float]]] = dict()
+        self._total_comparisons = 0
+
+    def check_if_done(self, comp_name: str, block_name: str) -> bool:
+        if comp_name in self.sorted_by_comp_and_name:
+            if block_name in self.sorted_by_comp_and_name[comp_name]:
+                return True
+        return False
+
+    def add_result(
+            self, comp_name: str, block_name: str, additional_params: Dict[str, Any],
+            result: SamplerCompData, save: bool = True) -> None:
+        if self.check_if_done(comp_name, block_name):
+            shell_print(f"Result for comparison '{comp_name}' and block '{block_name}' already exists, skipping...")
+            return
+        run_data = self.to_run_data(comp_name, block_name, additional_params, result)
+        if comp_name not in self.sorted_by_comp_and_name:
+            self.sorted_by_comp_and_name[comp_name] = dict()
+        self.sorted_by_comp_and_name[comp_name][block_name] = run_data
+
+        all_obs_dict = asdict(run_data.observables)
+        all_obs_dict['run_time'] = run_data.run_time
+        all_obs_dict['discrete_params'] = run_data.madnis_info.get('discrete flow total parameters', 0)
+        all_obs_dict['continuous_params'] = run_data.madnis_info.get('continuous flow total parameters', 0)
+        all_obs_dict['total_params'] = run_data.madnis_info.get('flow total parameters', 0)
+
+        for obs_name, value in all_obs_dict.items():
+            if value != 0:
+                if obs_name not in self.sorted_by_obs:
+                    self.sorted_by_obs[obs_name] = [(comp_name, block_name, value)]
+                else:
+                    self.sorted_by_obs[obs_name].append((comp_name, block_name, value))
+                    self.sorted_by_obs[obs_name].sort(key=lambda x: x[2])
+
+        self._total_comparisons += 1
+        if save:
+            self.save()
+
+    def to_run_data(
+            self, comp_name: str, block_name: str, additional_params: Dict[str, Any],
+            result: SamplerCompData) -> RunData:
+        madnis_observables = list(result.observables.values())[0] if result.observables else Observables()
+        return RunData(
+            comp_name=comp_name,
+            block_name=block_name,
+            settings=result.settings,
+            madnis_info=result.madnis_info,
+            plottables=result.plottables,
+            target=result.target,
+            observables=madnis_observables,
+            run_time=additional_params.get('run_time', 0.0)
+        )
+
+    def save(self, file: str | None = None) -> None:
+        path = Path(file if file is not None else self.filename)
+        temp_path = path.with_suffix(".tmp")
+        with temp_path.open("wb") as f:
+            dump(self, f)
+        temp_path.replace(path.with_suffix(".pkl"))
 
 
 class HParamCompData:

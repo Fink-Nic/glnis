@@ -12,7 +12,7 @@ from glnis.core.parameterisation import LayeredParameterisation
 from glnis.core.accumulator import (
     Accumulator, TrainingAccumulator, TrainingData, GraphProperties, LayerData, Observables
 )
-from glnis.utils.helpers import chunks, shell_print
+from glnis.utils.helpers import chunks, shell_print, verify_path
 
 try:
     import kaapos.samplers as ksamplers
@@ -68,16 +68,7 @@ class Integrand(ABC):
             return np.zeros_like(indices, dtype=np.float64)
 
         disc_dim = self.discrete_dims[num_disc_input]
-        norm_factor = disc_dim - indices.shape[1]
-        prior = np.ones(
-            (len(indices), disc_dim), dtype=np.float64)
-        if num_disc_input == 0:
-            return prior / norm_factor
-
-        rows = np.repeat(np.arange(len(indices)), num_disc_input)
-        prior[rows, indices.flatten()] = 0
-
-        return prior / norm_factor
+        return np.ones((len(indices), disc_dim), dtype=np.float64) / disc_dim
 
     def __call__(self, layer_input: LayerData) -> LayerData:
         return self.evaluate_batch(layer_input)
@@ -213,7 +204,7 @@ class KaapoIntegrand(Integrand):
                      runtime_summation=False,
                  ),
                  **kwargs):
-        self.path_to_example = path_to_example
+        self.path_to_example = str(verify_path(path_to_example))
         self.params = np.array(params)
         self.symbolica_integrand_kwargs = symbolica_integrand_kwargs
         self.symbolica_integrand_prec_kwargs = symbolica_integrand_prec_kwargs
@@ -537,9 +528,9 @@ class MPIntegrand(ParameterisedIntegrand):
         for w_id in range(self.n_cores):
             self.q_in[w_id].put((job_type, None, (attr_name, value)))
 
-    def end(self) -> None:
+    def free(self) -> None:
         """
-        Terminates all worker processes.
+        Terminates all worker processes and frees resources.
         """
         if self._ended:
             return
@@ -559,7 +550,7 @@ class MPIntegrand(ParameterisedIntegrand):
                 w.join()
 
         if alive_workers > 0:
-            shell_print(f"Terminated {alive_workers / self.n_cores} alive worker(s).")
+            shell_print(f"Terminated {alive_workers} / {self.n_cores} alive worker(s).")
 
         # Explicitly close queue pipes to avoid file-descriptor leaks
         # when constructing and tearing down many MPIntegrand instances.
@@ -579,6 +570,11 @@ class MPIntegrand(ParameterisedIntegrand):
                 w.close()
             except Exception:
                 pass
+
+        self.integrand = None
+        self.param = None
+        self.graph_properties = None
+        self.workers = None
 
         self._ended = True
         shell_print(f"{self.IDENTIFIER.upper()} has successfully terminated.")

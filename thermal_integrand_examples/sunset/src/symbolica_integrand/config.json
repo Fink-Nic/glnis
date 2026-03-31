@@ -1,0 +1,33 @@
+{
+	"n_params":3,
+	"n_edges":3,
+	"n_loops":2,
+	"dim":3,
+	"n_sps":6,
+	"edge_tags":[
+		"e1",
+		"e2",
+		"e3"
+	],
+	"loop_momentum_components":[
+		"ke1x",
+		"ke1y",
+		"ke1z",
+		"ke2x",
+		"ke2y",
+		"ke2z"
+	],
+	"parameters":[
+		"param1",
+		"param2",
+		"param3"
+	],
+	"dot_products":{
+		"sp1":"ke1x^2 + ke1y^2 + ke1z^2",
+		"sp2":"ke1x*ke2x + ke1y*ke2y + ke1z*ke2z",
+		"sp3":"-ke1x^2 - ke1y^2 - ke1z^2 + ke1x*ke2x + ke1y*ke2y + ke1z*ke2z",
+		"sp4":"ke1x*ke2x - ke2x^2 + ke1y*ke2y - ke2y^2 + ke1z*ke2z - ke2z^2",
+		"sp5":"ke2x^2 + ke2y^2 + ke2z^2",
+		"sp6":"ke1x^2 + ke1y^2 + ke1z^2 + ke2x^2 + ke2y^2 + ke2z^2 - 2*(ke1x*ke2x + ke1y*ke2y + ke1z*ke2z)"
+	}
+}

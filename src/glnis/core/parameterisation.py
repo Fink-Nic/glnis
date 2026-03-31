@@ -185,16 +185,7 @@ class Parameterisation(ABC):
             return np.zeros_like(indices, dtype=np.float64)
 
         disc_dim = self.layer_discrete_dims[num_disc_input]
-        norm_factor = disc_dim - indices.shape[1]
-        prior = np.ones(
-            (len(indices), disc_dim), dtype=np.float64)
-        if num_disc_input == 0:
-            return prior / norm_factor
-
-        rows = np.repeat(np.arange(len(indices)), num_disc_input)
-        prior[rows, indices.flatten()] = 0
-
-        return prior / norm_factor
+        return np.ones((len(indices), disc_dim), dtype=np.float64) / disc_dim
 
     def _to_lmb(self, momenta: NDArray, discrete: NDArray) -> NDArray:
         """
@@ -772,36 +763,27 @@ class OSEMCLayer(MCLayer):
         # shape: (n_samples, n_channels, n_loops)
         backward = self.graph_properties.channel_inv_transforms[0]
         transforms = backward @ self.graph_properties.channel_transforms
-        if self.n_channels > 10:
-            mc_weight = np.prod(  # Multiply for each loop
+
+        mc_weight = np.prod(  # Multiply for each loop
+            np.sum(  # Dot product
+                (transforms[discrete.ravel()] @ momentum.reshape(-1, self.n_loops, 3)
+                    + self.channel_shifts[discrete.ravel()])**2, axis=2
+            ) + self.channel_masses[discrete.ravel()]**2, axis=1
+        )
+        mc_weight = np.power(mc_weight, -self.ose_exponent/2., where=mc_weight != 0, out=np.zeros_like(mc_weight))
+        norm_factor = np.zeros_like(mc_weight)
+        for ch in range(self.n_channels):
+            transform = transforms[ch]
+            shift = self.channel_shifts[ch]
+            mass = self.channel_masses[ch]
+            weight = np.prod(  # Multiply for each loop
                 np.sum(  # Dot product
-                    (transforms[discrete.ravel()] @ momentum.reshape(-1, self.n_loops, 3)
-                     + self.channel_shifts[discrete.ravel()])**2, axis=2
-                ) + self.channel_masses[discrete.ravel()]**2, axis=1
-            )**(-self.ose_exponent/2.)
-            norm_factor = np.zeros_like(mc_weight)
-            for ch in range(self.n_channels):
-                transform = transforms[ch]
-                shift = self.channel_shifts[ch]
-                mass = self.channel_masses[ch]
-                norm_factor += np.prod(  # Multiply for each loop
-                    np.sum(  # Dot product
-                        (transform @ momentum.reshape(-1, self.n_loops, 3) + shift)**2, axis=2
-                    ) + mass**2, axis=1
-                )**(-self.ose_exponent/2.)
+                    (transform @ momentum.reshape(-1, self.n_loops, 3) + shift)**2, axis=2
+                ) + mass**2, axis=1
+            )
+            norm_factor += np.power(weight, -self.ose_exponent/2., where=weight != 0, out=np.zeros_like(weight))
 
-            return mc_weight / norm_factor
-
-        edge_momentum_squared = np.sum(
-            (transforms @ momentum.reshape(
-                -1, 1, self.n_loops, 3) + self.channel_shifts)**2, axis=3)
-        # shape: (n_samples, n_channels, n_loops) -- prod --> (n_samples, n_channels)
-        all_e_surface_terms = np.prod(
-            edge_momentum_squared + self.channel_masses**2, axis=2)**(-self.ose_exponent/2.)
-        mc_weight = np.take_along_axis(
-            all_e_surface_terms, discrete, axis=1).ravel()
-        # Normalize and return
-        return mc_weight / np.sum(all_e_surface_terms, axis=1)
+        return np.divide(mc_weight, norm_factor, out=np.zeros_like(mc_weight), where=norm_factor != 0)
 
 
 class FermiMCLayer(MCLayer):
@@ -829,53 +811,37 @@ class FermiMCLayer(MCLayer):
         # shape: (n_samples, n_channels, n_loops)
         backward = self.graph_properties.channel_inv_transforms[0]
         transforms = backward @ self.graph_properties.channel_transforms
-        if self.n_channels > 10:
-            e_surface_terms = np.sqrt(np.sum(
-                (transforms[discrete.ravel()] @ momentum.reshape(-1, self.n_loops, 3)
-                 + self.channel_shifts[discrete.ravel()])**2, axis=2) + self.channel_masses[discrete.ravel()]**2)
-            fermi_weights = np.abs(e_surface_terms - self.channel_mu[discrete.ravel()])
-            if self.set_bosonic_edge_to_one:
-                bosonic_edge_mask = self.channel_mu[discrete.ravel()] == 0.
-                fermi_weights[bosonic_edge_mask] = 1.
-            mc_weight = np.prod(e_surface_terms, axis=1)**(-self.ose_exponent)
-            mc_weight *= np.prod(fermi_weights, axis=1)**(-self.fermi_exponent)
 
-            norm_factor = np.zeros_like(mc_weight)
-            for ch in range(self.n_channels):
-                transform = transforms[ch]
-                shift = self.channel_shifts[ch]
-                mass = self.channel_masses[ch]
-                mu = self.channel_mu[ch]
-                e_surface_terms = np.sqrt(np.sum(
-                    (transform @ momentum.reshape(-1, self.n_loops, 3) + shift)**2, axis=2) + mass**2)
-                fermi_surface_terms = np.abs(e_surface_terms - mu)
-                if self.set_bosonic_edge_to_one:
-                    bosonic_edge_mask = mu == 0.
-                    fermi_surface_terms[:, bosonic_edge_mask] = 1.
-                weight = np.prod(e_surface_terms, axis=1)**(-self.ose_exponent)
-                weight *= np.prod(fermi_surface_terms, axis=1)**(-self.fermi_exponent)
-                norm_factor += weight
-
-            return mc_weight / norm_factor
-
-        edge_momentum_squared = np.sum(
-            (transforms @ momentum.reshape(
-                -1, 1, self.n_loops, 3) + self.channel_shifts)**2, axis=3)
-        # shape: (n_samples, n_channels, n_loops) -- prod --> (n_samples, n_channels)
-        all_e_surface_terms = np.sqrt(
-            edge_momentum_squared + self.channel_masses**2)
-        # shape: (n_samples, n_channels, n_loops) -- prod --> (n_samples, n_channels)
-        all_fermi_surface_terms = all_e_surface_terms - self.channel_mu
+        e_surface_terms = np.sqrt(np.sum(
+            (transforms[discrete.ravel()] @ momentum.reshape(-1, self.n_loops, 3)
+                + self.channel_shifts[discrete.ravel()])**2, axis=2) + self.channel_masses[discrete.ravel()]**2)
+        fermi_weights = np.abs(e_surface_terms - self.channel_mu[discrete.ravel()])
         if self.set_bosonic_edge_to_one:
-            bosonic_edge_mask = self.channel_mu == 0.
-            all_fermi_surface_terms[:, bosonic_edge_mask] = 1.
-        all_fermi_surface_terms = np.abs(np.prod(
-            all_fermi_surface_terms, axis=2))**(-self.fermi_exponent)
-        # Re-assigning to save at least a smidgen of memory
-        all_e_surface_terms = np.prod(
-            all_e_surface_terms, axis=2)**(-self.ose_exponent)
-        all_fermi_surface_terms *= all_e_surface_terms
-        mc_weight = np.take_along_axis(
-            all_fermi_surface_terms, discrete, axis=1).ravel()
-        # Normalize and return
-        return mc_weight / np.sum(all_fermi_surface_terms, axis=1)
+            bosonic_edge_mask = self.channel_mu[discrete.ravel()] == 0.
+            fermi_weights[bosonic_edge_mask] = 1.
+        mc_weight = np.prod(e_surface_terms, axis=1)
+        mc_weight = np.power(mc_weight, -self.ose_exponent, where=mc_weight != 0, out=np.zeros_like(mc_weight))
+        fermi_weight = np.prod(fermi_weights, axis=1)
+        mc_weight *= np.power(fermi_weight, -self.fermi_exponent,
+                              where=fermi_weight != 0, out=np.zeros_like(fermi_weight))
+
+        norm_factor = np.zeros_like(mc_weight)
+        for ch in range(self.n_channels):
+            transform = transforms[ch]
+            shift = self.channel_shifts[ch]
+            mass = self.channel_masses[ch]
+            mu = self.channel_mu[ch]
+            e_surface_terms = np.sqrt(np.sum(
+                (transform @ momentum.reshape(-1, self.n_loops, 3) + shift)**2, axis=2) + mass**2)
+            fermi_surface_terms = np.abs(e_surface_terms - mu)
+            if self.set_bosonic_edge_to_one:
+                bosonic_edge_mask = mu == 0.
+                fermi_surface_terms[:, bosonic_edge_mask] = 1.
+            weight = np.prod(e_surface_terms, axis=1)
+            weight = np.power(weight, -self.ose_exponent, where=weight != 0, out=np.zeros_like(weight))
+            fermi_weight = np.prod(fermi_surface_terms, axis=1)
+            weight *= np.power(fermi_weight, -self.fermi_exponent,
+                               where=fermi_weight != 0, out=np.zeros_like(fermi_weight))
+            norm_factor += weight
+
+        return np.divide(mc_weight, norm_factor, out=np.zeros_like(mc_weight), where=norm_factor != 0)

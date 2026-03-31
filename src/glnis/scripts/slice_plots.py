@@ -39,10 +39,12 @@ class Slice:
 
 
 def run_slice_plots(
-    file: str,
+    file: str | SamplerCompData,
     comment: str = "",
     no_output: bool = False,
     no_plot: bool = False,
+    only_plot: bool = False,
+    force_directory: str | None = None,
     subroutine: str = "slice_plots",
 ) -> SlicePlotData | None:
 
@@ -58,17 +60,20 @@ def run_slice_plots(
     from glnis.core.parser import SettingsParser
     from madnis.integrator import Integrator as MadNIS
 
-    file = verify_path(file)
-    with file.open('rb') as f:
-        SData = torch.load(f, weights_only=False)
-    if isinstance(SData, SamplerCompData):
-        pass
-    elif isinstance(SData, SlicePlotData):
-        plot_slices(file, comment)
-        quit()
+    if isinstance(file, SamplerCompData):
+        SData = file
     else:
-        raise ValueError(
-            f"Unrecognized data type in file '{file}'. Expected either SamplerCompData or SlicePlotData, but got {type(SData)}.")
+        file = verify_path(file)
+        with file.open('rb') as f:
+            SData = torch.load(f, weights_only=False)
+        if isinstance(SData, SamplerCompData):
+            pass
+        elif isinstance(SData, SlicePlotData):
+            plot_slices(file, comment)
+            quit()
+        else:
+            raise ValueError(
+                f"Unrecognized data type in file '{file}'. Expected either SamplerCompData or SlicePlotData, but got {type(SData)}.")
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
@@ -87,7 +92,9 @@ def run_slice_plots(
 
         madnis_state = SData.integrator_states.get("MadNIS", None)
 
-        if not no_output:
+        if force_directory is not None:
+            directory = Path(force_directory)
+        elif not no_output:
             OUTPUT_DIR = verify_path("outputs")
             directory = Path(OUTPUT_DIR, Settings.settings['run_name'].replace(" ", "_"), subroutine)
             if not os.path.exists(str(directory)):
@@ -191,10 +198,16 @@ def run_slice_plots(
             if res:
                 func_val /= res
             # Molest MadNIS to get the probabilities for the slice
-            x_all = torch.as_tensor(
-                np.hstack([discrete, continuous]),
-                device=madnis.dummy.device,
-                dtype=madnis.dummy.dtype)
+            if madnis.integrand.discrete_dims_position == "first":
+                x_all = torch.as_tensor(
+                    np.hstack([discrete, continuous]),
+                    device=madnis.dummy.device,
+                    dtype=madnis.dummy.dtype)
+            elif madnis.integrand.discrete_dims_position == "last":
+                x_all = torch.as_tensor(
+                    np.hstack([continuous, discrete]),
+                    device=madnis.dummy.device,
+                    dtype=madnis.dummy.dtype)
             prob = np.empty((n_samples_2d**2,), dtype=integrand.dtype)
 
             n_eval = 0
@@ -207,7 +220,11 @@ def run_slice_plots(
             Data.slices2d.append(Slice(t=grid_2d, func_val=func_val, prob=prob))
 
         # IMPORTANT: close the worker functions, or your script will hang
-        integrand.end()
+        integrand.free()
+
+        if only_plot:
+            plot_slices(file, comment, force_directory=force_directory)
+            quit()
 
         if no_output:
             quit()
@@ -219,34 +236,41 @@ def run_slice_plots(
             torch.save(Data, f)
 
         if not no_plot:
-            plot_slices(file, comment)
+            plot_slices(file, comment, force_directory=force_directory)
 
         return Data
 
     except KeyboardInterrupt:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
-        integrand.end()
+        integrand.free()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
-        integrand.end()
+        integrand.free()
     finally:
-        integrand.end()
+        integrand.free()
 
 
-def plot_slices(file: str, comment: str = "") -> None:
+def plot_slices(file: str, comment: str = "", force_directory: str | None = None) -> None:
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
     import numpy as np
     from torch import load
 
-    file: Path = verify_path(file)
-    with file.open('rb') as f:
-        Data: SlicePlotData = load(f, weights_only=False)
+    if isinstance(file, SlicePlotData):
+        Data = file
+        shell_print(f"Plottin SlicePlotData from argument")
+    else:
+        file: Path = verify_path(file)
+        with file.open('rb') as f:
+            Data: SlicePlotData = load(f, weights_only=False)
+        shell_print(f"Plotting data from '{file}'")
 
-    shell_print(f"Plotting data from '{file}'")
+        directory = file.parent
+        filename = file.stem
 
-    directory = file.parent
-    filename = file.stem
+    if force_directory is not None:
+        directory = Path(force_directory)
+        filename = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     EPS = Data.EPS
 
     for i, slice in enumerate(Data.slices1d):
@@ -272,6 +296,7 @@ def plot_slices(file: str, comment: str = "") -> None:
         plt.close(fig)
 
     cmap_name = 'plasma'
+    use_blue_green_red = True  # Whether to use a custom blue-green-red colormap for the ratio plot
     fraction = 0.046  # Default fraction for colorbar size
     padding = 0.04  # Default padding between plot and colorbar
     high_threshold = 1
@@ -289,10 +314,19 @@ def plot_slices(file: str, comment: str = "") -> None:
     cmap_segmented.set_over(color='white')  # Color for values above vmax
     norm12 = colors.TwoSlopeNorm(vcenter=center, vmin=low_threshold, vmax=high_threshold)
     norm3 = colors.Normalize(vmin=-high_threshold, vmax=high_threshold)
-    cmap3 = plt.get_cmap(cmap_name)
-    cmap3.set_bad(color='lightgrey')  # Color for NaN values
-    cmap3.set_under(color='black')  # Color for values below vmin
-    cmap3.set_over(color='white')  # Color for values above vmax
+    if use_blue_green_red:
+        blue = "#2b83ba"
+        green = "#22bc27"
+        red = "#d72d30"
+        cmap3 = colors.LinearSegmentedColormap.from_list("core_scaling", [blue, green, red])
+        cmap3.set_bad(color='lightgrey')  # Color for NaN values
+        cmap3.set_under(color=blue)  # Color for values below vmin
+        cmap3.set_over(color=red)  # Color for values above vmax
+    else:
+        cmap3 = plt.get_cmap(cmap_name)
+        cmap3.set_bad(color='lightgrey')  # Color for NaN values
+        cmap3.set_under(color='black')  # Color for values below vmin
+        cmap3.set_over(color='white')  # Color for values above vmax
 
     for i, slice in enumerate(Data.slices2d):
         slice: Slice
@@ -302,9 +336,17 @@ def plot_slices(file: str, comment: str = "") -> None:
         data_log = [np.log10(d, out=np.full_like(d, np.nan, dtype=np.float64), where=(d > 0)) for d in data_log]
         data_discrete = np.sign(slice.func_val).astype(np.float64)  # * np.sign(slice.prob)
 
-        fig, axes = plt.subplots(2, 2, figsize=(10, 8),
-                                 sharex=True, sharey=True, constrained_layout=True)
-        (ax1, ax2), (ax3, ax4) = axes
+        fig, axes = plt.subplots(2, 3, figsize=(10, 6.2),
+                                 sharex=False, sharey=False, constrained_layout=True)
+        (ax1, ax2, axh1), (ax3, ax4, axh2) = axes
+        ax2.sharex(ax1)
+        ax2.sharey(ax1)
+        ax3.sharex(ax1)
+        ax3.sharey(ax1)
+        ax4.sharex(ax1)
+        ax4.sharey(ax1)
+        axh1.set_box_aspect(1)
+        axh2.set_box_aspect(1)
 
         imgs = []
         for ax, data, title in zip([ax1, ax2], data_log, data_log_titles):
@@ -326,7 +368,7 @@ def plot_slices(file: str, comment: str = "") -> None:
         ax3.set_title("|Ratio|")
         cb3 = fig.colorbar(im, ax=ax3, fraction=fraction, pad=padding, extend='both')
         cb3.set_ticks(ticks=[-high_threshold, 0, high_threshold],
-                      labels=[f"e{-high_threshold:+.0f}", "e+0", f"e{high_threshold:+.0f}"])
+                      labels=[f"e{-high_threshold:+.0f}", "1", f"e{high_threshold:+.0f}"])
 
         discrete_cmap = colors.ListedColormap(['#e74c3c', '#ecf0f1', '#2ecc71'])  # Red, Grey, Green, italian
         bounds = [-1.5, -0.5, 0.5, 1.5]
@@ -339,6 +381,39 @@ def plot_slices(file: str, comment: str = "") -> None:
         cbar_disc = fig.colorbar(im4, ax=ax4, fraction=fraction, pad=padding)
         # cbar_disc.set_label('Sign')
         cbar_disc.set_ticks(ticks=[-1, 0, 1], labels=['-', '0', '+'])
+
+        # Simple histograms to visualize variance
+        axh1: plt.Axes
+        axh2: plt.Axes
+        # Add one explicit underflow and overflow bin outside the xtick range.
+        axh1_inner_edges = np.linspace(low_threshold, high_threshold, 31)
+        axh1_outer_width = max((high_threshold - low_threshold) * 0.1, 1e-3)
+        axh1_bins = np.concatenate((
+            [low_threshold - axh1_outer_width],
+            axh1_inner_edges,
+            [high_threshold + axh1_outer_width],
+        ))
+        axh1.hist(data_log[0].ravel(), bins=axh1_bins, label=data_log_titles[0],
+                  density=True, histtype='step', alpha=0.75, linewidth=1.5)
+        axh1.hist(data_log[1].ravel(), bins=axh1_bins, label=data_log_titles[1],
+                  density=True, histtype='step', alpha=0.75, linewidth=1.5)
+        axh1.legend()
+        axh1.set_title("Normalized Log Values")
+        axh1.set_xticks(ticks=[low_threshold, center, high_threshold],
+                        labels=[f"e{low_threshold:+.0f}", f"e{center:+.0f}", f"e{high_threshold:+.0f}"])
+        axh2_inner_edges = np.linspace(-high_threshold, high_threshold, 31)
+        axh2_outer_width = max(2*high_threshold * 0.1, 1e-3)
+        axh2_bins = np.concatenate((
+            [-high_threshold - axh2_outer_width],
+            axh2_inner_edges,
+            [high_threshold + axh2_outer_width],
+        ))
+        axh2.hist(data3.ravel(), bins=axh2_bins, label="|I / <I>| / Probability",
+                  density=True, histtype='step', alpha=0.75, linewidth=1.5, color='purple')
+        axh2.legend()
+        axh2.set_title("Weighted Log Ratio")
+        axh2.set_xticks(ticks=[-high_threshold, 0, high_threshold],
+                        labels=[f"e{-high_threshold:+.0f}", "1", f"e{high_threshold:+.0f}"])
         fig.suptitle(f"2D Slices #{i} for {Data.settings['run_name']}")
 
         plt.savefig(

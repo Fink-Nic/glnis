@@ -94,7 +94,10 @@ blocks = [
             "settings/templates/madnis_bins/size2test",
         ],
     ]
-block_names = ["5_1024_5", "5_1024_10", "5_1024_20", "5_1024_50", "5_1024_100"]
+block_names = [
+    "5_1024_5", "5_1024_10", "5_1024_20", "5_1024_50", "5_1024_100",
+    "5_1024_5test", "5_1024_10test", "5_1024_20test"
+]
 
 [scripts.hpcomp_training_run]
 n_training_steps = 1000

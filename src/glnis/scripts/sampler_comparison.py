@@ -6,7 +6,7 @@ from pathlib import Path
 from madnis.integrator import TrainingStatus
 
 from glnis.utils.helpers import shell_print, verify_path
-from glnis.core.accumulator import GraphProperties, Observables
+from glnis.core.accumulator import GraphProperties, Observables, DefaultAccumulator
 
 
 class SamplerCompData:
@@ -19,9 +19,11 @@ class SamplerCompData:
                  madnis_info: Dict[str, Any] = dict(),
                  integrand_kwargs: Dict[str, Any] = dict(),
                  param_kwargs: Dict[str, Any] = dict(),) -> None:
-        self.observables: Dict[str, Observables] = dict()
+        self.result: Dict[str, Observables] = dict()
+        self.observables: Dict[str, Dict[str, Any]]
         for name in integrator_identifiers:
-            self.observables[name] = Observables()
+            self.result[name] = Observables()
+            self.observables[name] = dict()
         self.graph_properties = graph_properties
         self.target = target
         self.settings: Dict[str, Any] = settings
@@ -96,7 +98,7 @@ def run_sampler_comp(
         if cleanup_done:
             return
         for integrator in integrators.values():
-            integrator.end()
+            integrator.free()
         # Force prompt cleanup of cycles (e.g. mp queues/process wrappers)
         # in repeated run_sampler_comp calls.
         gc.collect()
@@ -210,8 +212,9 @@ def run_sampler_comp(
             if export_states:
                 Data.integrator_states[identifier] = integrator.export_state()
             shell_print(f"Integrating using {identifier}:")
-            acc = integrator.integrate(n_samples_after_training)
-            Data.observables[identifier] = acc.statistics.result
+            acc: DefaultAccumulator = integrator.integrate(n_samples_after_training)
+            Data.result[identifier] = acc.statistics.result
+            Data.observables[identifier].update(acc.get_observables())
 
         # IMPORTANT: close the worker functions, or your script will hang
         end_all_integrators()
@@ -219,9 +222,9 @@ def run_sampler_comp(
         if no_output:
             return Data
 
-        run_name = Data.settings['run_name'].replace(' ', '_')
+        run_name: str = Data.settings['run_name'].replace(' ', '_')
         filename = run_name + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
-        file = Path(directory, filename)
+        file: Path = Path(directory, filename)
         with file.open("wb") as f:
             save(Data, f)
 

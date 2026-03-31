@@ -202,7 +202,7 @@ fermi_exponent = 1.0
 
 [layered_integrand]
 integrand_type = "kaapo"
-path_to_example = "/home/nfink/thermal_integrand_examples/examples/bugblatterPQ"
+path_to_example = "thermal_integrand_examples/bugblatterPQ"
 # chem potential [6.283185307179586, 3.141592653589793, 1.0]
 # no chem potential [6.283185307179586, 0.0, 1.0] 
 params = [6.283185307179586, 3.141592653589793, 1.0]

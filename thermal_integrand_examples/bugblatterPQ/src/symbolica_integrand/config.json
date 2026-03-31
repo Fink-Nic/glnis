@@ -1,0 +1,63 @@
+{
+	"n_params":3,
+	"n_edges":9,
+	"n_loops":4,
+	"dim":3,
+	"n_sps":24,
+	"edge_tags":[
+		"e1",
+		"e2",
+		"e3",
+		"e4",
+		"e5",
+		"e6",
+		"e7",
+		"e8",
+		"e9"
+	],
+	"loop_momentum_components":[
+		"ke1x",
+		"ke1y",
+		"ke1z",
+		"ke2x",
+		"ke2y",
+		"ke2z",
+		"ke3x",
+		"ke3y",
+		"ke3z",
+		"ke4x",
+		"ke4y",
+		"ke4z"
+	],
+	"parameters":[
+		"param1",
+		"param2",
+		"param3"
+	],
+	"dot_products":{
+		"sp1":"ke1x^2 + ke1y^2 + ke1z^2",
+		"sp2":"ke2x^2 + ke2y^2 + ke2z^2",
+		"sp3":"-(ke1x*ke2x) + ke2x^2 - ke1y*ke2y + ke2y^2 - ke1z*ke2z + ke2z^2",
+		"sp4":"ke2x*ke3x + ke2y*ke3y + ke2z*ke3z",
+		"sp5":"-(ke1x*ke2x) - ke1y*ke2y - ke1z*ke2z + ke2x*ke3x + ke2y*ke3y + ke2z*ke3z",
+		"sp6":"ke2x^2 + ke2y^2 + ke2z^2 - ke2x*ke4x - ke2y*ke4y - ke2z*ke4z",
+		"sp7":"ke2x*ke3x + ke2y*ke3y + ke2z*ke3z - ke2x*ke4x - ke2y*ke4y - ke2z*ke4z",
+		"sp8":"ke1x^2 + ke1y^2 + ke1z^2 + ke2x^2 + ke2y^2 + ke2z^2 - 2*(ke1x*ke2x + ke1y*ke2y + ke1z*ke2z)",
+		"sp9":"-(ke1x*ke3x) + ke2x*ke3x - ke1y*ke3y + ke2y*ke3y - ke1z*ke3z + ke2z*ke3z",
+		"sp10":"ke1x^2 + ke1y^2 + ke1z^2 - ke1x*ke2x - ke1y*ke2y - ke1z*ke2z - ke1x*ke3x + ke2x*ke3x - ke1y*ke3y + ke2y*ke3y - ke1z*ke3z + ke2z*ke3z",
+		"sp11":"-(ke1x*ke2x) + ke2x^2 - ke1y*ke2y + ke2y^2 - ke1z*ke2z + ke2z^2 + ke1x*ke4x - ke2x*ke4x + ke1y*ke4y - ke2y*ke4y + ke1z*ke4z - ke2z*ke4z",
+		"sp12":"-(ke1x*ke3x) + ke2x*ke3x - ke1y*ke3y + ke2y*ke3y - ke1z*ke3z + ke2z*ke3z + ke1x*ke4x - ke2x*ke4x + ke1y*ke4y - ke2y*ke4y + ke1z*ke4z - ke2z*ke4z",
+		"sp13":"ke3x^2 + ke3y^2 + ke3z^2",
+		"sp14":"-(ke1x*ke3x) + ke3x^2 - ke1y*ke3y + ke3y^2 - ke1z*ke3z + ke3z^2",
+		"sp15":"ke2x*ke3x + ke2y*ke3y + ke2z*ke3z - ke3x*ke4x - ke3y*ke4y - ke3z*ke4z",
+		"sp16":"ke3x^2 + ke3y^2 + ke3z^2 - ke3x*ke4x - ke3y*ke4y - ke3z*ke4z",
+		"sp17":"ke1x^2 + ke1y^2 + ke1z^2 + ke3x^2 + ke3y^2 + ke3z^2 - 2*(ke1x*ke3x + ke1y*ke3y + ke1z*ke3z)",
+		"sp18":"-(ke1x*ke2x) - ke1y*ke2y - ke1z*ke2z + ke2x*ke3x + ke2y*ke3y + ke2z*ke3z + ke1x*ke4x - ke3x*ke4x + ke1y*ke4y - ke3y*ke4y + ke1z*ke4z - ke3z*ke4z",
+		"sp19":"-(ke1x*ke3x) + ke3x^2 - ke1y*ke3y + ke3y^2 - ke1z*ke3z + ke3z^2 + ke1x*ke4x - ke3x*ke4x + ke1y*ke4y - ke3y*ke4y + ke1z*ke4z - ke3z*ke4z",
+		"sp20":"ke2x*ke3x + ke2y*ke3y + ke2z*ke3z - ke2x*ke4x - ke3x*ke4x + ke4x^2 - ke2y*ke4y - ke3y*ke4y + ke4y^2 - ke2z*ke4z - ke3z*ke4z + ke4z^2",
+		"sp21":"ke4x^2 + ke4y^2 + ke4z^2",
+		"sp22":"ke1x^2 + ke1y^2 + ke1z^2 + ke4x^2 + ke4y^2 + ke4z^2 - 2*(ke1x*ke4x + ke1y*ke4y + ke1z*ke4z)",
+		"sp23":"ke2x^2 + ke2y^2 + ke2z^2 + ke4x^2 + ke4y^2 + ke4z^2 - 2*(ke2x*ke4x + ke2y*ke4y + ke2z*ke4z)",
+		"sp24":"ke3x^2 + ke3y^2 + ke3z^2 + ke4x^2 + ke4y^2 + ke4z^2 - 2*(ke3x*ke4x + ke3y*ke4y + ke3z*ke4z)"
+	}
+}

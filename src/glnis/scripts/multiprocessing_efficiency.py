@@ -121,12 +121,12 @@ def run_multiprocessing_efficiency(
 
     except KeyboardInterrupt:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
-        madnis_integrator.end()
+        madnis_integrator.free()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
-        madnis_integrator.end()
+        madnis_integrator.free()
     finally:
-        madnis_integrator.end()
+        madnis_integrator.free()
 
 
 def plot_multiprocessing_efficiency(file: str, comment: str = "") -> None:
