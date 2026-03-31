@@ -29,17 +29,6 @@ def run_state_test(file: str) -> None:
         nitn = 1
         batch_size = 100_000
 
-        # Parse GammaLoop results
-        gl_res = Settings.get_gammaloop_integration_result()
-        if gl_res is not None:
-            RE_OR_IM = 're' if integrator.integrand.training_phase == 'real' else 'im'
-            gl_int = gl_res['result'][RE_OR_IM]
-            gl_err = gl_res['error'][RE_OR_IM]
-            gl_rsd = abs(gl_err / gl_int) * math.sqrt(gl_res['neval'])
-
-            shell_print(f"""Gammaloop Result:    {
-                gl_int:.8g} +- {gl_err:.8g}, RSD = {gl_rsd:.2f}""")
-
         shell_print("Attempting training step.")
         integrator.train(nitn, batch_size)
 
@@ -56,9 +45,9 @@ def run_state_test(file: str) -> None:
 
     except KeyboardInterrupt:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
-        integrator.integrand.free()
+        integrator.free()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
-        integrator.integrand.free()
+        integrator.free()
     finally:
-        integrator.integrand.free()
+        integrator.free()

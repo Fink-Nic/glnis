@@ -2,7 +2,7 @@ run_name = "gg_hhh_1L"
 
 [gammaloop_state]
 state_dir = "/home/nfink/gammaloop"
-state_name = "examples/cli/gg_hhh/1L/state"
+state_name = "GL_OUTPUT/gg_hhh/1L/state/state"
 integration_state_name = "GL_OUTPUT/gg_hhh/1L/state/integration_workspace"
 integration_result_file = "integration_result.json"
 
@@ -19,7 +19,7 @@ transformer_layers = 2
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "spherical"
-conformal_scale = 1000.0
+conformal_scale = 0.0
 
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"
@@ -29,7 +29,7 @@ ose_exponent = 1.0
 [layered_integrand]
 integrand_type = "gammaloop"
 training_phase = "imag"
-n_cores = 64
+n_cores = 8
 
 [scripts.sampler_comp]
 n_training_steps = 500

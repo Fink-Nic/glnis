@@ -136,8 +136,7 @@ class GammaLoopIntegrand(Integrand):
         try:
             from gammaloop import GammaLoopAPI
         except:
-            raise ImportError(
-                "CRITICAL FAILURE: Failed to import gammaloop module.")
+            raise ImportError("Failed to import gammaloop module.")
         super().__init__(**kwargs)
         self.gammaloop_state = GammaLoopAPI(gammaloop_state_path)
         state_info = self.gammaloop_state.get_integrand_info()
@@ -154,6 +153,7 @@ class GammaLoopIntegrand(Integrand):
             (len(continuous), 1), dtype=np.uint64)
         if discrete.shape[1] > 0:
             discrete_dims = np.hstack([discrete_dims, discrete])
+        print("we got here with discrete dims=", discrete_dims)
         res = self.gammaloop_state.evaluate_samples(
             points=continuous.astype(np.float64), discrete_dims=discrete_dims,
             momentum_space=self.momentum_space,
@@ -390,10 +390,12 @@ class MPIntegrand(ParameterisedIntegrand):
                           param_kwargs: List[Dict[str, Any]],
                           integrand_kwargs: Dict[str, Any],
                           condition_integrand_first: bool,) -> None:
-        integrand = ParameterisedIntegrand(graph_properties,
-                                           param_kwargs,
-                                           integrand_kwargs,
-                                           condition_integrand_first,)
+        integrand = ParameterisedIntegrand(
+            graph_properties,
+            param_kwargs,
+            integrand_kwargs,
+            condition_integrand_first,
+        )
         q_in, q_out = queues
         q_out.put('STARTED')
         while not stop_event.is_set():

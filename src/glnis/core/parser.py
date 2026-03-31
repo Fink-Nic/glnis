@@ -7,7 +7,7 @@ import momtrop
 import pydot
 import json
 import tomllib
-from glnis.utils.helpers import overwrite_settings, verify_path
+from glnis.utils.helpers import overwrite_settings, verify_path, shell_print
 from glnis.core.accumulator import GraphProperties, Observables
 
 
@@ -119,9 +119,9 @@ class DotParser:
                 test_mom_cons[2] += sig*momentum[2]
                 test_mom_cons[3] += sig*momentum[3]
 
-            print("------------ INFERED EXTERNAL MOMENTUM --------------")
-            print(f"{dependent_momentum=}")
-            print(f"{test_mom_cons=} SHOULD BE ZERO")
+            shell_print("------------ INFERED EXTERNAL MOMENTUM --------------")
+            shell_print(f"{dependent_momentum=}")
+            shell_print(f"{test_mom_cons=} SHOULD BE ZERO")
 
         return ext_momenta
 
@@ -242,29 +242,29 @@ class DotParser:
                     momentum_shift[i] += coeff*ext_mom[i+1]
 
             if self.verbose:
-                print(f"{edge_external_sig=}")
-                print(f"{momentum_shift=}")
+                shell_print(f"{edge_external_sig=}")
+                shell_print(f"{momentum_shift=}")
 
             edge_momentum_shifts.append(momentum_shift)
             edge_external_sigs.append(edge_external_sig)
 
         if self.verbose:
-            print("-------------- PARSED MOMTROP SAMPLER ---------------")
-            print(f"{ext_momenta=}")
-            print(f"{edge_masses=}")
-            print(f"{graph_signature=}")
-            print(f"{graph_externals=}")
-            print(f"{edge_momentum_shifts=}")
-            print(f"{edge_external_sigs=}")
-            print(f"------------------ INTERNAL EDGES ------------------")
+            shell_print("-------------- PARSED MOMTROP SAMPLER ---------------")
+            shell_print(f"{ext_momenta=}")
+            shell_print(f"{edge_masses=}")
+            shell_print(f"{graph_signature=}")
+            shell_print(f"{graph_externals=}")
+            shell_print(f"{edge_momentum_shifts=}")
+            shell_print(f"{edge_external_sigs=}")
+            shell_print(f"------------------ INTERNAL EDGES ------------------")
             for edge in INT_EDGES:
-                print(edge.to_string())
-            print(f"-------------------- LMB EDGES ---------------------")
+                shell_print(edge.to_string())
+            shell_print(f"-------------------- LMB EDGES ---------------------")
             for edge in LMB_EDGES:
-                print(edge.to_string())
-            print(f"----------------- EXTERNAL VERTICES ----------------")
+                shell_print(edge.to_string())
+            shell_print(f"----------------- EXTERNAL VERTICES ----------------")
             for vert in EXT_VERTICES:
-                print(vert.to_string())
+                shell_print(vert.to_string())
 
         return GraphProperties(
             edge_src_dst_vertices=edge_src_dst_vertices,
@@ -347,7 +347,7 @@ class SettingsParser:
         gammaloop_result = self.get_gammaloop_integration_result()
         if gammaloop_result is None:
             return Observables(**self.settings.get('integration_target', {}))
-        result = gammaloop_result['integral']
+        result = gammaloop_result['slots'][0]['integral']
 
         return Observables(
             n_points=result['neval'],
@@ -400,14 +400,12 @@ class SettingsParser:
         if self._graph_from_state:
             iinfo = self.gammaloop_state.get_integrand_info()
             process_id = iinfo.process_id
-            integrand_name = iinfo.integrand_name
             graph_group = iinfo.graph_groups[process_id]
             model_as_str = self.gammaloop_state.get_model()
             Model = ModelParser(model_as_str, from_string=True)
             dot_as_str_list = self.gammaloop_state.get_dot_files()
             Dot = DotParser(dot_as_str_list, Model,
                             self.verbose, dot_from_string=True)
-            graph_name = Dot.graph_file[process_id].get_name()
             kinematics = self.gammaloop_state.get_default_runtime_settings().kinematics
             e_cm = kinematics.e_cm
             ext_momenta = kinematics.externals.data.momenta.to_dict()
@@ -427,6 +425,7 @@ class SettingsParser:
         graph_properties.orientation_signatures = [o.signature for o in orientations]
         graph_properties.lmb_array = lmb_array
         graph_properties.generation_channel_id = generation_channel_id
+        graph_properties.e_cm = e_cm
         graph_properties.__post_init__()
 
         n_int_edges = graph_properties.n_edges
@@ -445,13 +444,14 @@ class SettingsParser:
                     3*graph_properties.n_loops + 3/2)/n_int_edges/2
                 edge_weight = n_int_edges*[default_weight]
                 if self.verbose:
-                    print(
+                    shell_print(
                         f"Setting momtrop edge weights to default: {default_weight:.5f}")
             case _:
                 raise ValueError("Momtrop edge weights must be one of: \n"
                                  + "Number, Sequence of Numbers or \"default\".")
 
         graph_properties.momtrop_edge_weight = edge_weight
+        print(graph_properties)
 
         return graph_properties
 
