@@ -129,8 +129,6 @@ class GammaLoopIntegrand(Integrand):
 
     def __init__(self,
                  gammaloop_state_path: str,
-                 process_id: int = 0,
-                 integrand_name: str = "default",
                  momentum_space: bool = True,
                  sample_orientations: bool = False,
                  use_arb_prec: bool = False,
@@ -142,10 +140,10 @@ class GammaLoopIntegrand(Integrand):
                 "CRITICAL FAILURE: Failed to import gammaloop module.")
         super().__init__(**kwargs)
         self.gammaloop_state = GammaLoopAPI(gammaloop_state_path)
-        self.process_id = process_id
-        if integrand_name == "default":
-            integrand_name = list(self.gammaloop_state.list_outputs()[process_id].keys())[0]
-        self.integrand_name = integrand_name
+        state_info = self.gammaloop_state.get_integrand_info()
+        self.process_id = state_info.process_id
+        self.integrand_name = state_info.integrand_name
+        self.process_name = state_info.process_name
         self.momentum_space = momentum_space
         if sample_orientations:
             self.discrete_dims = [self.graph_properties.n_orientations]
@@ -156,13 +154,16 @@ class GammaLoopIntegrand(Integrand):
             (len(continuous), 1), dtype=np.uint64)
         if discrete.shape[1] > 0:
             discrete_dims = np.hstack([discrete_dims, discrete])
-        res, _ = self.gammaloop_state.batched_inspect(
-            points=continuous.astype(np.float64), momentum_space=self.momentum_space,
+        res = self.gammaloop_state.evaluate_samples(
+            points=continuous.astype(np.float64), discrete_dims=discrete_dims,
+            momentum_space=self.momentum_space,
             process_id=self.process_id,
             integrand_name=self.integrand_name,
-            use_arb_prec=self.use_arb_prec,  discrete_dims=discrete_dims
+            use_arb_prec=self.use_arb_prec,
+            minimal_output=True,
         )
-        return res.reshape(-1, 1)
+        numpy_res = np.array([s.integrand_result for s in res.samples])
+        return numpy_res.reshape(-1, 1)
 
 
 class KaapoIntegrand(Integrand):

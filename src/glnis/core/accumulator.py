@@ -22,11 +22,16 @@ class GraphProperties:
     graph_signature: List[List[int]]
     momtrop_edge_weight: List[float] = field(default_factory=list)
     lmb_array: NDArray = field(default_factory=list)
-    orientations: List[Dict[str, int]] = field(default_factory=list)
     edge_external_sigs: List[List[float]] = field(default_factory=list)
     external_momenta: List[List[float]] = field(default_factory=list)
+    orientation_ids: List[int] = field(default_factory=list)
+    orientation_signatures: List[List[int]] = field(default_factory=list)
+    generation_channel_id: int = 0
+    e_cm: float = 0.0
 
     def __post_init__(self: 'GraphProperties'):
+        if len(self.orientation_ids) != len(self.orientation_signatures):
+            raise ValueError("Length of orientation_ids and orientation_signatures must match.")
         TOLERANCE = 1E-10
         self.n_loops: int = len(self.graph_signature[0])
         self.n_edges: int = len(self.edge_masses)
@@ -34,7 +39,7 @@ class GraphProperties:
             mass > TOLERANCE for mass in self.edge_masses]
         self.lmb_array = np.array(self.lmb_array, dtype=np.uint64)
         self.n_channels = self.lmb_array.shape[0]
-        self.n_orientations = len(self.orientations)
+        self.n_orientations = len(self.orientation_ids)
 
         # Calculate the inverse lmb transforms, ordered as the LMBs in graph properties
         self.channel_transforms = np.array(

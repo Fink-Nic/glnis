@@ -97,6 +97,8 @@ class DotParser:
         # Infering the dependent momentum from momentum conservation
         if len(ext_momenta) == 0:
             return []
+        if not len(ext_momenta) == len(ext_sigs):
+            raise ValueError("Length of external momenta and external signatures must match.")
         dmi = dependent_momentum_index
         dm_sig = ext_sigs[dmi]
         dependent_momentum = 4*[0.]
@@ -165,6 +167,7 @@ class DotParser:
             vert.set('v_id', v_id)
 
         # Filter edges and add additional attributes for momtrop
+        EXT_SIGNATURES = []
         for edge in edges:
             src_split = edge.get_source().split(':')
             dst_split = edge.get_destination().split(':')
@@ -177,9 +180,11 @@ class DotParser:
             if edge.get('source') is None:
                 # Incoming external momentum
                 EXT_VERTICES.add(graph.get_node(edge.get("dst"))[0])
+                EXT_SIGNATURES.append(1)
             elif edge.get('sink') is None:
                 # Outgoing external momentum
                 EXT_VERTICES.add(graph.get_node(edge.get("src"))[0])
+                EXT_SIGNATURES.append(-1)
             else:
                 INT_EDGES.append(edge)
                 particle_name = edge.get('particle')[1:-1]
@@ -189,6 +194,12 @@ class DotParser:
                 dst_vert = graph.get_node(edge.get('dst'))[0]
                 edge.set('src_id', src_vert.get('v_id'))
                 edge.set('dst_id', dst_vert.get('v_id'))
+
+        # Reconstruct the dependent external momentum from momentum conservation
+        if 'dependent' in ext_momenta:
+            dmi = ext_momenta.index('dependent')
+            ext_momenta = self.infer_dependent_momentum(
+                ext_momenta, EXT_SIGNATURES, dependent_momentum_index=dmi)
 
         # Symbolica setup for LMB representation parsing
         # P: External momenta
@@ -309,8 +320,7 @@ class SettingsParser:
             self.gammaloop_state = None
             self.dot_path = Path(self.settings['graph']['dot_path'])
         if self.settings['model']['from_state']:
-            self.model_path = Path(self.gammaloop_state_path,
-                                   self.settings['gammaloop_state']['model_name'])
+            self.model_path = "Loaded model from state."
         else:
             self.model_path = self.settings['model']['model_path']
 
@@ -337,13 +347,14 @@ class SettingsParser:
         gammaloop_result = self.get_gammaloop_integration_result()
         if gammaloop_result is None:
             return Observables(**self.settings.get('integration_target', {}))
+        result = gammaloop_result['integral']
 
         return Observables(
-            n_points=gammaloop_result['neval'],
-            real_central_value=gammaloop_result['result']['re'],
-            imag_central_value=gammaloop_result['result']['im'],
-            real_error=gammaloop_result['error']['re'],
-            imag_error=gammaloop_result['error']['im'],
+            n_points=result['neval'],
+            real_central_value=result['result']['re'],
+            imag_central_value=result['result']['im'],
+            real_error=result['error']['re'],
+            imag_error=result['error']['im'],
         )
 
     def get_model(self) -> ModelParser:
@@ -381,30 +392,41 @@ class SettingsParser:
             return GraphProperties(**self.settings['graph']['graph_properties'])
 
         process_id = self.settings['gammaloop_state']['process_id']
-        lmbs = []
+        lmb_array = []
         orientations = []
+        generation_channel_id = 0
+        e_cm = 0.0
+
         if self._graph_from_state:
-            integrand_name = self.settings['gammaloop_state']['integrand_name']
-            if integrand_name == "default":
-                integrand_name = list(self.gammaloop_state.list_outputs()[process_id].keys())[0]
+            iinfo = self.gammaloop_state.get_integrand_info()
+            process_id = iinfo.process_id
+            integrand_name = iinfo.integrand_name
+            graph_group = iinfo.graph_groups[process_id]
             model_as_str = self.gammaloop_state.get_model()
             Model = ModelParser(model_as_str, from_string=True)
             dot_as_str_list = self.gammaloop_state.get_dot_files()
             Dot = DotParser(dot_as_str_list, Model,
                             self.verbose, dot_from_string=True)
             graph_name = Dot.graph_file[process_id].get_name()
-            ext_momenta = self.gammaloop_state.get_external_momenta(graph_name, process_id, integrand_name)
-            lmbs = self.gammaloop_state.get_lmbs(dot_as_str_list, "string")[process_id]
+            kinematics = self.gammaloop_state.get_default_runtime_settings().kinematics
+            e_cm = kinematics.e_cm
+            ext_momenta = kinematics.externals.data.momenta.to_dict()
+            lmbs = graph_group.loop_momentum_bases
+            active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]
+            generation_basis_id = [lmb.matches_generation_basis for lmb in lmbs].index(True)
+            generation_channel_id = lmbs[generation_basis_id].channel_id
             # Gammaloop indexes the externals aswell
             n_externals = len(ext_momenta)
-            lmbs = [[e_id-n_externals for e_id in lmb[0]] for lmb in lmbs]
-            orientations = self.gammaloop_state.get_orientations(graph_name, process_id, integrand_name)
+            lmb_array = [[e_id-n_externals for e_id in lmb.edge_ids] for lmb in active_lmbs]
+            orientations = graph_group.orientations
         else:
             Dot = DotParser(self.dot_path, self.model_path, self.verbose)
             ext_momenta = self.settings['graph']['external_momenta']
         graph_properties = Dot.get_graph_properties(process_id, ext_momenta)
-        graph_properties.orientations = orientations
-        graph_properties.lmb_array = lmbs
+        graph_properties.orientation_ids = [o.orientation_id for o in orientations]
+        graph_properties.orientation_signatures = [o.signature for o in orientations]
+        graph_properties.lmb_array = lmb_array
+        graph_properties.generation_channel_id = generation_channel_id
         graph_properties.__post_init__()
 
         n_int_edges = graph_properties.n_edges

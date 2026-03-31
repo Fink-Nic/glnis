@@ -187,7 +187,7 @@ class Parameterisation(ABC):
         disc_dim = self.layer_discrete_dims[num_disc_input]
         return np.ones((len(indices), disc_dim), dtype=np.float64) / disc_dim
 
-    def _to_lmb(self, momenta: NDArray, discrete: NDArray) -> NDArray:
+    def _to_generation_lmb(self, momenta: NDArray, discrete: NDArray) -> NDArray:
         """
         Transforms the loop momenta to the edge momentum basis of the graph, using the
         discrete channel information to determine the correct transformation.
@@ -202,7 +202,8 @@ class Parameterisation(ABC):
         shifts = np.array(self.graph_properties.edge_momentum_shifts)
         sample_shifts = shifts[edges].reshape(-1, 3*self.graph_properties.n_loops)
         momenta -= sample_shifts
-        forward = self.graph_properties.channel_transforms[0]
+        forward = self.graph_properties.channel_transforms[
+            self.graph_properties.generation_channel_id]
         transform = forward @ self.graph_properties.channel_inv_transforms
         sample_transform = transform[discrete.ravel()]
         result = sample_transform @ momenta.reshape(-1, self.graph_properties.n_loops, 3)
@@ -417,7 +418,7 @@ class SphericalParameterisation(Parameterisation):
                                          ] | List[float] | None = None,
                  **kwargs):
         super().__init__(**kwargs)
-        self.conformal_scale = conformal_scale
+        self.conformal_scale = conformal_scale if conformal_scale else self.graph_properties.e_cm
         self.n_loops = self.graph_properties.n_loops
         if origins is None or origins == 0.:
             self.origins = self.n_loops * [None]
@@ -466,7 +467,7 @@ class SphericalParameterisation(Parameterisation):
             jac *= x**2 / (1 - x)**4
 
         # Transform the loop momenta back to the LMB of the graph
-        momentum = self._to_lmb(momentum, discrete)
+        momentum = self._to_generation_lmb(momentum, discrete)
 
         return jac, momentum.reshape(n_points, -1), None
 
@@ -480,7 +481,7 @@ class InverseSphericalParameterisation(Parameterisation):
                                          ] | List[float] | None = None,
                  **kwargs):
         super().__init__(**kwargs)
-        self.conformal_scale = conformal_scale
+        self.conformal_scale = conformal_scale if conformal_scale else self.graph_properties.e_cm
         self.n_loops = self.graph_properties.n_loops
         if origins is None or origins == 0.:
             self.origins = self.n_loops * [None]
@@ -537,7 +538,7 @@ class KaapoParameterisation(Parameterisation):
                  a_min: float = 0.2,
                  **kwargs):
         self.a = a
-        self.b = b
+        self.b = b if b else self.graph_properties.e_cm
         self.vary_a = vary_a
         self.a_min = a_min
 
@@ -599,7 +600,7 @@ class KaapoParameterisation(Parameterisation):
             jac *= (np.sign(peak_F)*np.abs(peak_F) + p_F**a + b**a)**2
 
         # Transform the loop momenta back to the LMB of the graph
-        momentum = self._to_lmb(momentum, discrete)
+        momentum = self._to_generation_lmb(momentum, discrete)
 
         return jac, momentum.reshape(n_points, -1), None
 
@@ -620,7 +621,7 @@ class RKaapoParameterisation(Parameterisation):
                  a_min: float = 0.2,
                  **kwargs):
         self.a = a
-        self.b = b
+        self.b = b if b else self.graph_properties.e_cm
         self.vary_a = vary_a
         self.a_min = a_min
 
@@ -696,7 +697,7 @@ class RKaapoParameterisation(Parameterisation):
             jac *= (np.sign(peak_F)*np.abs(peak_F) + p_F**a + b**a)**2
 
         # Transform the loop momenta back to the LMB of the graph
-        momentum = self._to_lmb(momentum, discrete)
+        momentum = self._to_generation_lmb(momentum, discrete)
 
         return jac, momentum.reshape(n_points, -1), None
 
@@ -728,6 +729,11 @@ class MCLayer(Parameterisation, ABC):
         self.channel_shifts = self.shifts[self.lmbs]
         self.channel_masses = np.array(
             self.graph_properties.edge_masses)[self.lmbs]
+        # Transform to the edge momentum basis
+        # shape: (n_samples, n_channels, n_loops)
+        backward = self.graph_properties.channel_inv_transforms[
+            self.graph_properties.generation_channel_id]
+        self.transforms = backward @ self.graph_properties.channel_transforms
 
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray) -> ParamOutput:
         jac, momentum, _ = self.param._layer_parameterise(
@@ -759,21 +765,16 @@ class OSEMCLayer(MCLayer):
     def _mc_weight(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         momentum = continuous.reshape(-1, self.n_loops, 3)
         # Need to calculate the e-surface term for all lmbs
-        # Transform to the edge momentum basis
-        # shape: (n_samples, n_channels, n_loops)
-        backward = self.graph_properties.channel_inv_transforms[0]
-        transforms = backward @ self.graph_properties.channel_transforms
-
         mc_weight = np.prod(  # Multiply for each loop
             np.sum(  # Dot product
-                (transforms[discrete.ravel()] @ momentum.reshape(-1, self.n_loops, 3)
+                (self.transforms[discrete.ravel()] @ momentum.reshape(-1, self.n_loops, 3)
                     + self.channel_shifts[discrete.ravel()])**2, axis=2
             ) + self.channel_masses[discrete.ravel()]**2, axis=1
         )
         mc_weight = np.power(mc_weight, -self.ose_exponent/2., where=mc_weight != 0, out=np.zeros_like(mc_weight))
         norm_factor = np.zeros_like(mc_weight)
         for ch in range(self.n_channels):
-            transform = transforms[ch]
+            transform = self.transforms[ch]
             shift = self.channel_shifts[ch]
             mass = self.channel_masses[ch]
             weight = np.prod(  # Multiply for each loop
@@ -807,13 +808,8 @@ class FermiMCLayer(MCLayer):
         momentum = continuous.reshape(-1, self.n_loops, 3)
         self.param: KaapoParameterisation
         # Need to calculate the fermi surface term for all lmbs
-        # Transform to the edge momentum basis
-        # shape: (n_samples, n_channels, n_loops)
-        backward = self.graph_properties.channel_inv_transforms[0]
-        transforms = backward @ self.graph_properties.channel_transforms
-
         e_surface_terms = np.sqrt(np.sum(
-            (transforms[discrete.ravel()] @ momentum.reshape(-1, self.n_loops, 3)
+            (self.transforms[discrete.ravel()] @ momentum.reshape(-1, self.n_loops, 3)
                 + self.channel_shifts[discrete.ravel()])**2, axis=2) + self.channel_masses[discrete.ravel()]**2)
         fermi_weights = np.abs(e_surface_terms - self.channel_mu[discrete.ravel()])
         if self.set_bosonic_edge_to_one:
@@ -827,7 +823,7 @@ class FermiMCLayer(MCLayer):
 
         norm_factor = np.zeros_like(mc_weight)
         for ch in range(self.n_channels):
-            transform = transforms[ch]
+            transform = self.transforms[ch]
             shift = self.channel_shifts[ch]
             mass = self.channel_masses[ch]
             mu = self.channel_mu[ch]

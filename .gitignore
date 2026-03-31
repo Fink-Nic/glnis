@@ -5,3 +5,4 @@ outputs/*
 .venv
 .env
 thermal_integrand_examples/*/build/
+flake.lock

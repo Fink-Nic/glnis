@@ -1,12 +1,10 @@
 run_name = "gg_hhh_1L"
 
-[graph]
-momtrop_edge_weight = 0.555555555555
-
 [gammaloop_state]
 state_dir = "/home/nfink/gammaloop"
-state_name = "GL_OUTPUT/gg_hhh/1L/state"
-integration_state_name = "GL_OUTPUT/gg_hhh/1L/integration_workspace"
+state_name = "examples/cli/gg_hhh/1L/state"
+integration_state_name = "GL_OUTPUT/gg_hhh/1L/state/integration_workspace"
+integration_result_file = "integration_result.json"
 
 [integrator.madnis]
 batch_size = 2000

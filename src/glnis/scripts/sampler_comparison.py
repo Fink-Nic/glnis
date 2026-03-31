@@ -20,7 +20,7 @@ class SamplerCompData:
                  integrand_kwargs: Dict[str, Any] = dict(),
                  param_kwargs: Dict[str, Any] = dict(),) -> None:
         self.result: Dict[str, Observables] = dict()
-        self.observables: Dict[str, Dict[str, Any]]
+        self.observables: Dict[str, Dict[str, Any]] = dict()
         for name in integrator_identifiers:
             self.result[name] = Observables()
             self.observables[name] = dict()

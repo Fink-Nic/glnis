@@ -506,6 +506,7 @@ class MadnisIntegrator(Integrator):
                  ),
                  callback: Callable[[object], None] | None = None,
                  max_batch_size: int = 100_000,
+                 use_gpu: bool = True,
                  **kwargs,):
         super().__init__(integrand, **kwargs)
         import torch
@@ -514,7 +515,7 @@ class MadnisIntegrator(Integrator):
 
         self.device = torch.device('cpu')  # default
 
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and use_gpu:
             for i in range(torch.cuda.device_count()):
                 major, minor = torch.cuda.get_device_capability(i)
                 if (7, 0) <= (major, minor) < (12, 0):
