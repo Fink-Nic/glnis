@@ -307,6 +307,11 @@ class VegasIntegrator(Integrator):
             return layer_input, r
         return layer_input
 
+    def _probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
+        discrete = discrete / np.tile(np.array(self.discrete_dims), (len(discrete), 1))
+        x_all = np.hstack((continuous, discrete))
+        return 1.0 / self.adaptive_map.jac(x_all)
+
     def _export_state(self) -> 'VegasIntegrator.VegasState':
         return VegasIntegrator.VegasState(grid=deepcopy(self.adaptive_map.extract_grid()),
                                           rng_state=deepcopy(self.rng.bit_generator.state))
@@ -426,12 +431,7 @@ class HavanaIntegrator(Integrator):
         else:
             sample_weights = np.array([s.weights for s in samples])
             sample_weights = sample_weights[:, -1]
-            # sample_disc_weights = sample_weights[:, :-1].prod(axis=1)
-            # print(f"{sample_disc_weights.sum():.3e} (sum of discrete part of current sample weights)")
-            # print(f"{sample_disc_weights.mean():.3e} +- {sample_disc_weights.std():.3e} (mean weight and stddev of discrete part of current samples)")
-            # print(f"{sample_weights.mean():.3e} +- {sample_weights.std():.3e} (mean weight and stddev of current samples)")
-            # print(f"{total_wgt.mean():.3e} +- {total_wgt.std():.3e} (mean weight and stddev of current total weights before sample weights)")
-            total_wgt *= sample_weights  # * sample_disc_weights
+            total_wgt *= sample_weights
 
         layer_input.wgt = total_wgt
         layer_input.update(self.IDENTIFIER)
@@ -440,6 +440,20 @@ class HavanaIntegrator(Integrator):
             return samples, layer_input
 
         return layer_input
+
+    def _probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
+        from symbolica import Probe
+        prob = np.empty((len(continuous),), dtype=np.float64)
+        if self.num_discrete_dims > 0:
+            for i in range(len(continuous)):
+                probe_sample = Probe.discrete(discrete[i], continuous[i].tolist())
+                prob[i] = 1 / self.havana.probe(probe_sample)
+        else:
+            for i in range(len(continuous)):
+                probe_sample = Probe.continuous(continuous[i].tolist())
+                prob[i] = 1 / self.havana.probe(probe_sample)
+
+        return prob
 
     def _export_state(self) -> 'HavanaIntegrator.HavanaState':
         return HavanaIntegrator.HavanaState(grid=deepcopy(self.havana.export_grid(export_samples=False)),
@@ -452,7 +466,7 @@ class HavanaIntegrator(Integrator):
         if not isinstance(state, HavanaIntegrator.HavanaState):
             raise ValueError("State for HavanaIntegrator must be of type HavanaState.")
         super()._import_state(state)
-        self.havana.merge(NumericalIntegrator.import_grid(state.grid))
+        self.havana = NumericalIntegrator.import_grid(state.grid)
         self.seed = state.seed
         self.stream_id = state.stream_id
         self.symbolica_rng = RandomNumberGenerator(self.seed, self.stream_id)

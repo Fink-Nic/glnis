@@ -17,8 +17,8 @@ class SlicePlotData:
                  madnis_kwargs: Dict[str, Any] = dict(),
                  integrand_kwargs: Dict[str, Any] = dict(),
                  param_kwargs: Dict[str, Any] = dict(),
-                 slices1d=dict(),
-                 slices2d=dict(),
+                 slices1d=[],
+                 slices2d=[],
                  EPS: float = 1e-6
                  ) -> None:
         self.graph_properties = graph_properties
@@ -62,6 +62,7 @@ def run_slice_plots(
     from glnis.core.parser import SettingsParser
     from madnis.integrator import Integrator as MadNIS
     from glnis.core.integrand import MPIntegrand
+    import traceback
 
     if isinstance(file, SamplerCompData):
         SData = file
@@ -97,7 +98,6 @@ def run_slice_plots(
         EPS = params.get("EPS", 1e-6)
         seed = params.get("seed", 42)
         rng = np.random.default_rng(seed)
-        max_batch_size = 10_000  # To avoid memory issues when evaluating the flow.
 
         if force_directory is not None:
             directory = Path(force_directory)
@@ -177,6 +177,7 @@ def run_slice_plots(
             if res:
                 func_val /= res
             func_vals1d.append(func_val)
+        shell_print(f"Generated 1D grids and populated func_vals.")
 
         grids2d = []
         func_vals2d = []
@@ -206,6 +207,7 @@ def run_slice_plots(
             if res:
                 func_val /= res
             func_vals2d.append(func_val)
+        shell_print(f"Generated 2D grids and populated func_vals.")
         # Initialize the integrators
 
         integrators: Dict[str, Integrator] = dict()
@@ -218,23 +220,22 @@ def run_slice_plots(
             itype = integrator_type.lower()
             match itype:
                 case "madnis":
-                    if not isinstance(state, MadnisIntegrator.MadnisState):
-                        shell_print(
-                            f"Expected MadnisIntegrator state for 'MadNIS' integrator, but got {type(state)}. Skipping...")
                     Settings.settings['layered_integrator']['integrator_type'] = "madnis"
                     integrators['madnis'] = MadnisIntegrator(integrand, **Settings.get_integrator_kwargs())
+                    integrators['madnis'].import_state(state)
+                    shell_print(f"Imported MadNIS state.")
                 case "vegas":
-                    if not isinstance(state, VegasIntegrator.VegasState):
-                        shell_print(
-                            f"Expected VegasIntegrator state for 'Vegas' integrator, but got {type(state)}. Skipping...")
                     Settings.settings['layered_integrator']['integrator_type'] = "vegas"
                     integrators['vegas'] = VegasIntegrator(integrand, **Settings.get_integrator_kwargs())
+                    integrators['vegas'].import_state(state)
+                    shell_print(f"Imported Vegas state.")
+
                 case "havana":
-                    if not isinstance(state, HavanaIntegrator.HavanaState):
-                        shell_print(
-                            f"Expected HavanaIntegrator state for 'Havana' integrator, but got {type(state)}. Skipping...")
                     Settings.settings['layered_integrator']['integrator_type'] = "havana"
                     integrators['havana'] = HavanaIntegrator(integrand, **Settings.get_integrator_kwargs())
+                    integrators['havana'].import_state(state)
+                    shell_print(f"Imported Havana state.")
+                    # integrators['havana'].train(10, 100000)
                 case "naive":
                     shell_print(f"No point in plotting slices for 'Naive' integrator. Skipping...")
                 case _:
@@ -247,6 +248,7 @@ def run_slice_plots(
                 prob = integrator.probe_prob(discrete, continuous)
                 integrator_probs[itype] = prob.reshape(n_samples_1d)
             Data.slices1d.append(Slice(func_val=func_vals, prob=integrator_probs))
+        shell_print(f"Populated probs for 1D slices.")
 
         for grid2d, func_vals in zip(grids2d, func_vals2d):
             discrete, continuous = grid2d
@@ -255,6 +257,7 @@ def run_slice_plots(
                 prob = integrator.probe_prob(discrete, continuous)
                 integrator_probs[itype] = prob.reshape(n_samples_2d, n_samples_2d)
             Data.slices2d.append(Slice(func_val=func_vals, prob=integrator_probs))
+        shell_print(f"Populated probs for 2D slices.")
         # IMPORTANT: close the worker functions, or your script will hang
         free_integrators()
 
@@ -281,6 +284,7 @@ def run_slice_plots(
         integrand.free()
         free_integrators()
     except Exception as e:
+        e.with_traceback(traceback.format_exc())
         shell_print(f"\nCaught Exception — stopping workers: {e}")
         integrand.free()
         free_integrators()
@@ -314,22 +318,25 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
 
     for i, slice in enumerate(Data.slices1d):
         slice: Slice
+        t = np.linspace(EPS, 1 - EPS, len(slice.func_val))
         for itype, prob in slice.prob.items():
             fig, axs = plt.subplots(3, 1, sharex=True, layout="constrained",
                                     height_ratios=[1, 0.3, 0.3], figsize=(6, 8))
             axs: List[plt.Axes]
-            axs[0].plot(slice.t, np.abs(slice.func_val), label="|I / <I>|")
-            axs[0].plot(slice.t, prob, label="Probability")
+            axs[0].plot(t, np.abs(slice.func_val), label="|I / <I>|")
+            axs[0].plot(t, prob, label="Probability")
             axs[0].legend()
-            axs[1].plot(slice.t, np.abs(slice.func_val) / prob)
-            axs[2].plot(slice.t, np.sign(slice.func_val))
+            axs[1].plot(t, np.abs(slice.func_val) / prob)
+            axs[2].plot(t, np.sign(slice.func_val))
             axs[1].set_ylabel("|Ratio|")
             axs[2].set_ylabel("sgn(I)")
             axs[0].set_yscale("log")
             axs[1].set_yscale("log")
             axs[2].set_yticks([-1, 0, 1])
             axs[2].set_yticklabels(['-', '0', '+'])
-            fig.suptitle(f"1D Slices #{i} for {Data.settings['run_name']}")
+            axs[2].set_xlabel("t")
+            axs[2].set_xlim(0, 1)
+            fig.suptitle(f"1D Slices #{i} for {Data.settings['run_name']} using {itype}")
             plt.savefig(
                 Path(directory, filename + f"_slice1d_{itype}_{i}.png"), dpi=300, bbox_inches="tight"
             )
@@ -456,7 +463,7 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
             axh2.set_title("Weighted Log Ratio")
             axh2.set_xticks(ticks=[-high_threshold, 0, high_threshold],
                             labels=[f"e{-high_threshold:+.0f}", "1", f"e{high_threshold:+.0f}"])
-            fig.suptitle(f"2D Slices #{i} for {Data.settings['run_name']}")
+            fig.suptitle(f"2D Slices #{i} for {Data.settings['run_name']} using {itype}")
 
             plt.savefig(
                 Path(directory, filename + f"_slice2d_{itype}_{i}.png"), dpi=300, bbox_inches="tight"

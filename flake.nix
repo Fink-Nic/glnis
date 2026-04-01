@@ -27,7 +27,12 @@
             gcc
             uv
             maturin
-            # ... your other tools
+            # --- Rust Toolchain ---
+            rustc
+            cargo
+            rust-analyzer
+            clippy
+            rustfmt
           ];
 
           buildInputs = libs;
@@ -36,6 +41,7 @@
             # Dynamically build the path from the 'libs' list
             export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath libs}:/run/opengl-driver/lib:$LD_LIBRARY_PATH"
             
+            echo "Rust $(rustc --version) and Cargo loaded."
             echo "Libraries loaded. libstdc++.so.6 is now visible to your .venv."
           '';
         };
