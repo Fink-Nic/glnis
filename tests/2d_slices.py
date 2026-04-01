@@ -74,11 +74,22 @@ def run_slice_plots() -> SlicePlotData | None:
         # origin + dir1 + dir2
         # is completely outside the hypercube for each coordinate component
         # We now want to shrink the square until it touches the hypercube
-        t1_max = np.inf
-        t1_min = -np.inf
-        t2_max = np.inf
-        t2_min = -np.inf
+        t1_max = -np.inf
+        t1_min = np.inf
+        t2_max = -np.inf
+        t2_min = np.inf
         # TODO: find the smallest t1_max, t2_max, and largest t1_min, t2_min such that for all t and all components:
+        # Can we calculate the distance d of a point p to the hypercube along a direction v?
+        # Along just a single component k:
+        # dk = (pk - 1) / vk, pk > 1 ~ t_max
+        # dk = pk / vk, pk < 0 ~ t_min
+        # And for the entire square? We need to find dk_max along all edges.
+        # Along edge specified by ok + t1*dir1k:
+        # in the interval t1 e [0, 1], we should have
+        # dk_min|t1 = (ok + dir1k) / dir2k, dir1k > 0
+        # dk_min|t1 = ok / dir2k, dir1k < 0
+        # dk_max|t1 = ok / dir2k, dir1k > 0
+        # dk_max|t1 = (ok + dir1k) / dir2k, dir1k < 0
         # origin + t1_max*dir1 + t*dir2 >= 1
         # origin + t*dir1 + t2_max*dir2 >= 1
         # origin + t1_min*dir1 + t*dir2 <= 0
@@ -87,28 +98,43 @@ def run_slice_plots() -> SlicePlotData | None:
             ok = origin[k]
             d1, d2 = dir1[k], dir2[k]
             # Update t1_max and t2_max
-            if d1 != 0 and d2 != 0:
-                t1_closest_lower = - ok / d1
-                t1_closest_upper = - (ok + d2) / d1
-                t2_closest_lower = - ok / d2
-                t2_closest_upper = - (ok + d1) / d2
-                d1_closest_lower = ok + t1_closest_lower * d1
-                d1_closest_upper = ok + t1_closest_upper * d1
-                d2_closest_lower = ok + t2_closest_lower * d2
-                d2_closest_upper = ok + t2_closest_upper * d2
+            t1_max_prospective = -np.inf
+            t2_max_prospective = -np.inf
+            t1_min_prospective = np.inf
+            t2_min_prospective = np.inf
+            if d1 != 0:
+                t1_min_prospective = max(-ok / d1, (1 - ok) / d1) if d1 < 0 else min(-ok / d1, (1 - ok) / d1)
+                t1_max_prospective = min(-ok / d1, (1 - ok) / d1) if d1 < 0 else max(-ok / d1, (1 - ok) / d1)
+            if d2 != 0:
+                t2_min_prospective = max(-ok / d2, (1 - ok) / d2) if d2 < 0 else min(-ok / d2, (1 - ok) / d2)
+                t2_max_prospective = min(-ok / d2, (1 - ok) / d2) if d2 < 0 else max(-ok / d2, (1 - ok) / d2)
 
-                t1_max_prospective = max((1 - d2_closest_lower) / d1, (1 - d2_closest_upper) / d1)
-                t1_max = min(t1_max, t1_max_prospective)
-                t1_min_prospective = min(- d2_closest_lower / d1, - d2_closest_upper / d1)
-                t1_min = max(t1_min, t1_min_prospective)
-                t2_max_prospective = max((1 - d1_closest_lower) / d2, (1 - d1_closest_upper) / d2)
-                t2_max = min(t2_max, t2_max_prospective)
-                t2_min_prospective = min(- d1_closest_lower / d2, - d1_closest_upper / d2)
-                t2_min = max(t2_min, t2_min_prospective)
-                print(f"Component {k}: t1_max_prospective={t1_max_prospective:.4f}, t1_min_prospective={t1_min_prospective:.4f}, t2_max_prospective={t2_max_prospective:.4f}, t2_min_prospective={t2_min_prospective:.4f}")
+            # if t1_max_prospective > t1_min_prospective:
+            if t1_max_prospective < 1:
+                t1_max = max(t1_max, t1_max_prospective)
+            if t1_min_prospective > 0:
+                t1_min = min(t1_min, t1_min_prospective)
+            # if t2_max_prospective > t2_min_prospective:
+            if t2_max_prospective < 1:
+                t2_max = max(t2_max, t2_max_prospective)
+            if t2_min_prospective > 0:
+                t2_min = min(t2_min, t2_min_prospective)
+            print(f"Component {k}: t1_max_prospective={t1_max_prospective:.4f}, t1_min_prospective={t1_min_prospective:.4f}, t2_max_prospective={t2_max_prospective:.4f}, t2_min_prospective={t2_min_prospective:.4f}")
+        t_min = min(t1_min, t2_min)
+        t_max = max(t1_max, t2_max)
 
-        t_min = max(t1_min, t2_min)
-        t_max = min(t1_max, t2_max)
+        s1max = (-origin.dot(dir1) + np.sum(dir1[dir1 > 0]))/dir1.dot(dir1)
+        s1min = (-origin.dot(dir1) + np.sum(dir1[dir1 < 0]))/dir1.dot(dir1)
+        s2max = (-origin.dot(dir2) + np.sum(dir2[dir2 > 0]))/dir2.dot(dir2)
+        s2min = (-origin.dot(dir2) + np.sum(dir2[dir2 < 0]))/dir2.dot(dir2)
+        try_something_new = True
+        if try_something_new:
+            s1max = np.max((-origin*dir1 + np.clip(dir1, 0, np.inf)) / dir1.dot(dir1))
+            s1min = np.min((-origin*dir1 + np.clip(dir1, -np.inf, 0)) / dir1.dot(dir1))
+            s2max = np.max((-origin*dir2 + np.clip(dir2, 0, np.inf)) / dir2.dot(dir2))
+            s2min = np.min((-origin*dir2 + np.clip(dir2, -np.inf, 0)) / dir2.dot(dir2))
+            t_min = min(s1min, s2min)
+            t_max = max(s1max, s2max)
         print(f"Final t_min={t_min:.4f}, t_max={t_max:.4f}")
         origin = origin + t_min * dir1 + t_min * dir2
         dir1 = dir1 * (t_max - t_min)

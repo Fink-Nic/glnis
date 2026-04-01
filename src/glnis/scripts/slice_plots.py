@@ -459,7 +459,7 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
             ))
             axh2.hist(data3.ravel(), bins=axh2_bins, label="|I / <I>| / Probability",
                       density=True, histtype='step', alpha=0.75, linewidth=1.5, color='purple')
-            axh2.legend()
+            # axh2.legend()
             axh2.set_title("Weighted Log Ratio")
             axh2.set_xticks(ticks=[-high_threshold, 0, high_threshold],
                             labels=[f"e{-high_threshold:+.0f}", "1", f"e{high_threshold:+.0f}"])
