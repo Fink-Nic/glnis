@@ -147,6 +147,14 @@ class Integrator(ABC):
             dtype=self.dtype,
         )
 
+    @_block_if_ended
+    def probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
+        """Returns the probability of sampling the given discrete and continuous points under the current sampling distribution."""
+        return self._probe_prob(discrete, continuous)
+
+    def _probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
+        return np.ones((len(continuous),), dtype=self.dtype)
+
     @staticmethod
     def from_dicts(
             graph_properties: GraphProperties,
@@ -655,6 +663,29 @@ class MadnisIntegrator(Integrator):
         torch_output = torch.from_numpy(
             weighted_func_val.astype(np.float64)).to(self.device)
         return torch_output
+
+    def _probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
+        n_samples = len(continuous)
+        if self.madnis.integrand.discrete_dims_position == "first":
+            x_all = torch.as_tensor(
+                np.hstack([discrete, continuous]),
+                device=self.madnis.dummy.device,
+                dtype=self.madnis.dummy.dtype)
+        elif self.madnis.integrand.discrete_dims_position == "last":
+            x_all = torch.as_tensor(
+                np.hstack([continuous, discrete]),
+                device=self.madnis.dummy.device,
+                dtype=self.madnis.dummy.dtype)
+        prob = np.empty((n_samples,), dtype=np.float64)
+
+        n_eval = 0
+        while n_eval < n_samples:
+            n = min(self.max_batch_size, n_samples - n_eval)
+            with torch.no_grad():
+                prob[n_eval:n_eval+n] = self.madnis.flow.prob(
+                    x_all[n_eval:n_eval+n, :]).numpy(force=True).reshape(-1)
+            n_eval += n
+        return prob
 
     def _madnis_discrete_prior_prob_function(self, indices: Tensor, dim: int = 0) -> Tensor:
         numpy_output = self.integrand.discrete_prior_prob_function(

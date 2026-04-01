@@ -130,23 +130,36 @@ class GammaLoopIntegrand(Integrand):
     def __init__(self,
                  gammaloop_state_path: str,
                  momentum_space: bool = True,
-                 sample_orientations: bool = False,
                  use_arb_prec: bool = False,
+                 minimal_output: bool = True,
                  **kwargs):
         try:
             from gammaloop import GammaLoopAPI
         except:
             raise ImportError("Failed to import gammaloop module.")
         super().__init__(**kwargs)
+        self.momentum_space = momentum_space
+        self.use_arb_prec = use_arb_prec
+        self.minimal_output = minimal_output
+
         self.gammaloop_state = GammaLoopAPI(gammaloop_state_path)
         state_info = self.gammaloop_state.get_integrand_info()
         self.process_id = state_info.process_id
         self.integrand_name = state_info.integrand_name
         self.process_name = state_info.process_name
-        self.momentum_space = momentum_space
+        # TODO: validate the approaches to getting info about discrete sampling from gl integrand, also which comes first
+        # Check whether we need to provide discrete input to gammaloop
+        rs = self.gammaloop_state.get_default_runtime_settings()
+        sample_lmbs = rs.sampling.lmb_multichanneling
+        sample_orientations = not rs.sampling.orientations == "summed"
+        self.discrete_dims = []
+        if sample_lmbs:
+            # Need to make sure the LMB heuristics are not overwritten
+            graph_group = state_info.graph_groups[process_id]
+            n_channels = len([lmb for lmb in graph_group.loop_momentum_bases if lmb.channel_id is not None])
+            self.discrete_dims.append(n_channels)
         if sample_orientations:
-            self.discrete_dims = [self.graph_properties.n_orientations]
-        self.use_arb_prec = use_arb_prec
+            self.discrete_dims.append(self.graph_properties.n_orientations)
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         discrete_dims = np.zeros(
@@ -159,7 +172,7 @@ class GammaLoopIntegrand(Integrand):
             process_id=self.process_id,
             integrand_name=self.integrand_name,
             use_arb_prec=self.use_arb_prec,
-            minimal_output=True,
+            minimal_output=self.minimal_output,
         )
         numpy_res = np.array([s.integrand_result for s in res.samples])
         return numpy_res.reshape(-1, 1)

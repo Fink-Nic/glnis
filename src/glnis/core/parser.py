@@ -410,10 +410,13 @@ class SettingsParser:
             e_cm = kinematics.e_cm
             ext_momenta = kinematics.externals.data.momenta.to_dict()
             lmbs = graph_group.loop_momentum_bases
-            active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]
+            if self.settings['graph'].get('overwrite_lmb_heuristics', False):
+                active_lmbs = lmbs
+            else:
+                active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]
             generation_basis_id = [lmb.matches_generation_basis for lmb in lmbs].index(True)
-            generation_channel_id = lmbs[generation_basis_id].channel_id
-            # Gammaloop indexes the externals aswell
+            generation_channel_id = active_lmbs.index(lmbs[generation_basis_id])
+            # Gammaloop indexes the externals before the internals
             n_externals = len(ext_momenta)
             lmb_array = [[e_id-n_externals for e_id in lmb.edge_ids] for lmb in active_lmbs]
             orientations = graph_group.orientations

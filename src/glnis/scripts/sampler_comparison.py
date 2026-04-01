@@ -286,7 +286,7 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
             if Data.target.imag_error:
                 f.write(f" +- {Data.target.imag_error:.8e}, RSD = {Data.target.imag_rsd:.3f}")
 
-        for identifier, obs in Data.observables.items():
+        for identifier, obs in Data.result.items():
             f.write(f"\n\n{line}")
             f.write(f"{f' {identifier} Results ':{'#'}^{width}}\n")
             if obs.real_error:
@@ -372,7 +372,7 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
         if tgt.abs_imag_tvar:
             axs[3, 1].hlines(tgt.abs_imag_tvar, 0, tgt_line_len, color='red')
 
-        for i, obs in enumerate(Data.observables.values()):
+        for i, obs in enumerate(Data.result.values()):
             if obs.real_error > 0:
                 axs[0, 0].errorbar(i, obs.real_central_value, yerr=obs.real_error,
                                    marker='o', markersize=5, capsize=5, color='black')
