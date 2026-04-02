@@ -121,21 +121,20 @@ class Integrator(ABC):
             raise ValueError(
                 "Shape of sampler output does not match discrete dims of stack.")
 
-        indices = np.zeros((n, 0), dtype=np.uint64)
-        prob = np.ones((n,))
+        indices = np.zeros((n, self.num_discrete_dims), dtype=np.uint64)
+        prob = np.ones((n, 1))
         for i in range(self.num_discrete_dims):
             unnorm_probs = self.integrand.discrete_prior_prob_function(
                 indices[:, :i], i)
             cdf = np.cumsum(unnorm_probs, axis=1)
-            norm = cdf[:, -1]
-            cdf = cdf / norm[:, None]
-            r = self.rng.random((n, 1))
-            samples = np.sum(cdf < r, axis=1, dtype=np.uint64).reshape(-1, 1)
-            indices = np.hstack((indices, samples))
+            norm = cdf[:, [-1]]
+            cdf = cdf / norm
+            r = continuous[:, [i]]  # self.rng.random((n, 1))
+            indices[:, i] = np.sum(cdf < r, axis=1, dtype=np.uint64)
             prob = prob * \
-                np.take_along_axis(unnorm_probs, samples, axis=1)[:, 0] / norm
+                np.take_along_axis(unnorm_probs, indices[:, [i]], axis=1) / norm
 
-        return indices, (1/prob).reshape(-1, 1)
+        return indices, (1/prob)
 
     @_block_if_ended
     def init_layer_data(self, n_points: int) -> LayerData:
@@ -308,9 +307,28 @@ class VegasIntegrator(Integrator):
         return layer_input
 
     def _probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
-        discrete = discrete / np.tile(np.array(self.discrete_dims), (len(discrete), 1))
-        x_all = np.hstack((continuous, discrete))
-        return 1.0 / self.adaptive_map.jac(x_all)
+        x_all = np.hstack([continuous, discrete])
+        jac_no_disc = np.prod(self.adaptive_map.jac1d(x_all)[:, :self.continuous_dim], axis=1)
+        jac_disc = np.ones((continuous.shape[0],), dtype=jac_no_disc.dtype)
+        # Basically invert _cont_to_disc
+        for i in range(self.num_discrete_dims):
+            disc_dim = self.discrete_dims[i]
+            unnorm_probs = self.integrand.discrete_prior_prob_function(
+                discrete[:, :i], i)
+            cdf = np.cumsum(unnorm_probs, axis=1)
+            norm = cdf[:, -1]
+            cdf = cdf / norm[:, None]
+            # Need to find all intersections of the discrete cdf with the vegas linear interpolation
+            g_disc = np.array(self.adaptive_map.grid[self.continuous_dim - 1 + i])
+            disc_bins = np.zeros((continuous.shape[0], disc_dim+1), dtype=unnorm_probs.dtype)
+            for j in range(disc_dim):
+                y_intersection = cdf[:, j]
+                x_intersection = np.interp(y_intersection, np.linspace(0, 1, len(g_disc)), g_disc)
+                disc_bins[:, j+1] = x_intersection
+            disc_jacs = np.diff(disc_bins, axis=1)
+            jac_disc *= np.take_along_axis(disc_jacs, discrete[:, [i]]).ravel()
+
+        return 1.0 / jac_no_disc / jac_disc
 
     def _export_state(self) -> 'VegasIntegrator.VegasState':
         return VegasIntegrator.VegasState(grid=deepcopy(self.adaptive_map.extract_grid()),

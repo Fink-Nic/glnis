@@ -1,4 +1,5 @@
 # type: ignore
+import numpy as np
 from typing import Dict, List, Tuple, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -58,7 +59,7 @@ class OLDHParamCompData:
             self.sorted_by_comp_and_name[comp_name] = dict()
         self.sorted_by_comp_and_name[comp_name][block_name] = run_data
 
-        all_obs_dict = asdict(run_data.observables)
+        all_obs_dict = asdict(run_data.result)
         all_obs_dict['run_time'] = run_data.run_time
         all_obs_dict['discrete_params'] = run_data.madnis_info.get('discrete flow total parameters', 0)
         all_obs_dict['continuous_params'] = run_data.madnis_info.get('continuous flow total parameters', 0)
@@ -123,13 +124,17 @@ class HParamCompData:
             self.sorted_by_comp_and_name[comp_name] = dict()
         self.sorted_by_comp_and_name[comp_name][block_name] = run_data
 
-        all_obs_dict = asdict(run_data.observables)
+        all_obs_dict = dict(run_data.observables)
         all_obs_dict['run_time'] = run_data.run_time
         all_obs_dict['discrete_params'] = run_data.madnis_info.get('discrete flow total parameters', 0)
         all_obs_dict['continuous_params'] = run_data.madnis_info.get('continuous flow total parameters', 0)
         all_obs_dict['total_params'] = run_data.madnis_info.get('flow total parameters', 0)
 
         for obs_name, value in all_obs_dict.items():
+            try:
+                value = float(value)
+            except (ValueError, TypeError):
+                continue
             if value != 0:
                 if obs_name not in self.sorted_by_obs:
                     self.sorted_by_obs[obs_name] = [(comp_name, block_name, value)]
@@ -296,6 +301,15 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
     import numpy as np
     from numpy.typing import NDArray
 
+    def _finite_float(value: Any) -> float | None:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        if np.isfinite(parsed):
+            return parsed
+        return None
+
     file: Path = verify_path(file, suffix=".pkl")
     with file.open('rb') as f:
         Data: HParamCompData = load(f)
@@ -353,6 +367,13 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
         tgt_line_len = n_blocks - 1
         if target.real_central_value:
             axs2[0, 0].hlines(target.real_central_value, 0, tgt_line_len, color='red')
+            if target.real_error:
+                axs2[0, 0].fill_between(
+                    [0, tgt_line_len],
+                    target.real_central_value - target.real_error,
+                    target.real_central_value + target.real_error,
+                    color='red', alpha=0.3
+                )
         if target.real_rsd:
             axs2[1, 0].hlines(target.real_rsd, 0, tgt_line_len, color='red')
         if target.real_tvar:
@@ -362,6 +383,13 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
 
         if target.imag_central_value:
             axs2[0, 1].hlines(target.imag_central_value, 0, tgt_line_len, color='red')
+            if target.imag_error:
+                axs2[0, 1].fill_between(
+                    [0, tgt_line_len],
+                    target.imag_central_value - target.imag_error,
+                    target.imag_central_value + target.imag_error,
+                    color='red', alpha=0.3
+                )
         if target.imag_rsd:
             axs2[1, 1].hlines(target.imag_rsd, 0, tgt_line_len, color='red')
         if target.imag_tvar:
@@ -390,18 +418,18 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
 
             # Final integration results
             obs = run_data.observables
-            if obs.real_error > 0:
-                axs2[0, 0].errorbar(i, obs.real_central_value, yerr=obs.real_error,
+            if obs['real_error'] > 0:
+                axs2[0, 0].errorbar(i, obs['real_central_value'], yerr=obs['real_error'],
                                     marker='o', markersize=5, capsize=5, color='black')
-                axs2[1, 0].scatter(i, obs.real_rsd, color='black')
-                axs2[2, 0].scatter(i, obs.real_tvar, color='black')
-                axs2[3, 0].scatter(i, obs.abs_real_tvar, color='black')
-            if obs.imag_error > 0:
-                axs2[0, 1].errorbar(i, obs.imag_central_value, yerr=obs.imag_error,
+                axs2[1, 0].scatter(i, obs['real_rsd'], color='black')
+                axs2[2, 0].scatter(i, obs['real_tvar'], color='black')
+                axs2[3, 0].scatter(i, obs['abs_real_tvar'], color='black')
+            if obs['imag_error'] > 0:
+                axs2[0, 1].errorbar(i, obs['imag_central_value'], yerr=obs['imag_error'],
                                     marker='o', markersize=5, capsize=5, color='black')
-                axs2[1, 1].scatter(i, obs.imag_rsd, color='black')
-                axs2[2, 1].scatter(i, obs.imag_tvar, color='black')
-                axs2[3, 1].scatter(i, obs.abs_imag_tvar, color='black')
+                axs2[1, 1].scatter(i, obs['imag_rsd'], color='black')
+                axs2[2, 1].scatter(i, obs['imag_tvar'], color='black')
+                axs2[3, 1].scatter(i, obs['abs_imag_tvar'], color='black')
 
             # Additional observables
             num_param_discrete = run_data.madnis_info.get('discrete flow total parameters', 0)

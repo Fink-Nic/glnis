@@ -63,6 +63,9 @@ class Integrand(ABC):
         return layer_input
 
     def discrete_prior_prob_function(self, indices: NDArray, _: int = 0) -> NDArray:
+        """
+        Implements a default flat prior.
+        """
         num_disc_input = indices.shape[1]
         if num_disc_input == len(self.discrete_dims):
             return np.zeros_like(indices, dtype=np.float64)

@@ -29,7 +29,7 @@ ose_exponent = 1.0
 [layered_integrand]
 integrand_type = "gammaloop"
 training_phase = "imag"
-n_cores = 16
+n_cores = 32
 
 [scripts.sampler_comp]
 n_training_steps = 1000
