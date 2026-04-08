@@ -8,7 +8,7 @@ import pydot
 import json
 import tomllib
 from glnis.utils.helpers import overwrite_settings, verify_path, shell_print
-from glnis.core.accumulator import GraphProperties, Observables
+from glnis.core.accumulator import GraphProperties, IntegrationResult
 
 
 class ModelParser:
@@ -343,13 +343,13 @@ class SettingsParser:
 
         return gammaloop_result
 
-    def get_integration_target(self) -> Observables:
+    def get_integration_target(self) -> IntegrationResult:
         gammaloop_result = self.get_gammaloop_integration_result()
         if gammaloop_result is None:
-            return Observables(**self.settings.get('integration_target', {}))
+            return IntegrationResult(**self.settings.get('integration_target', {}))
         result = gammaloop_result['slots'][0]['integral']
 
-        return Observables(
+        return IntegrationResult(
             n_points=result['neval'],
             real_central_value=result['result']['re'],
             imag_central_value=result['result']['im'],

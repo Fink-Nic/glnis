@@ -161,8 +161,9 @@ class Integrator(ABC):
             integrand_kwargs: Dict[str, Any],
             integrator_kwargs: Dict[str, Any],) -> 'Integrator':
 
-        n_cores = integrand_kwargs.pop('n_cores')
-        verbose = integrand_kwargs.pop('verbose')
+        n_cores = integrand_kwargs.pop('n_cores', 1)
+        n_shards = integrand_kwargs.pop('n_shards', 32)
+        verbose = integrand_kwargs.pop('verbose', False)
         integrator_type = integrator_kwargs.pop('integrator_type')
 
         integrand = MPIntegrand(
@@ -170,6 +171,7 @@ class Integrator(ABC):
             param_kwargs=parameterisation_kwargs,
             integrand_kwargs=integrand_kwargs,
             n_cores=n_cores,
+            n_shards=n_shards,
             verbose=verbose,
         )
 
@@ -474,26 +476,23 @@ class HavanaIntegrator(Integrator):
         return prob
 
     def _export_state(self) -> 'HavanaIntegrator.HavanaState':
-        return HavanaIntegrator.HavanaState(grid=deepcopy(self.havana.export_grid(export_samples=False)),
-                                            seed=self.seed,
-                                            stream_id=self.stream_id,
-                                            rng_state=deepcopy(self.rng.bit_generator.state)
-                                            )
+        return HavanaIntegrator.HavanaState(
+            rng_state=deepcopy(self.rng.bit_generator.state),
+            grid=self.havana.export_grid(export_samples=False),
+            symbolica_rng_state=self.symbolica_rng.save(),
+        )
 
     def _import_state(self, state: 'HavanaIntegrator.HavanaState'):
         if not isinstance(state, HavanaIntegrator.HavanaState):
             raise ValueError("State for HavanaIntegrator must be of type HavanaState.")
         super()._import_state(state)
         self.havana = NumericalIntegrator.import_grid(state.grid)
-        self.seed = state.seed
-        self.stream_id = state.stream_id
-        self.symbolica_rng = RandomNumberGenerator(self.seed, self.stream_id)
+        self.symbolica_rng = RandomNumberGenerator.load(state.symbolica_rng_state)
 
     @dataclass(kw_only=True)
     class HavanaState(Integrator.IntegratorState):
         grid: bytes
-        seed: int
-        stream_id: int
+        symbolica_rng_state: bytes
 
     def _get_info(self) -> Dict[str, Any]:
         info = super()._get_info()
@@ -550,7 +549,6 @@ class MadnisIntegrator(Integrator):
                  use_gpu: bool = True,
                  **kwargs,):
         super().__init__(integrand, **kwargs)
-        import torch
         torch.set_default_dtype(torch.float64)
         torch.manual_seed(self.seed)
 

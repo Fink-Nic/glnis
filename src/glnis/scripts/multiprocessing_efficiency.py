@@ -32,6 +32,17 @@ def run_multiprocessing_efficiency(
     no_plot: bool = False,
     subroutine: str = "multiprocessing_efficiency",
 ) -> MPEfficiencyData | None:
+    import os
+    import signal
+    import torch
+
+    from glnis.core.integrator import (
+        Integrator,
+        MadnisIntegrator,
+    )
+    from glnis.core.parser import SettingsParser
+
+    signal.signal(signal.SIGINT, signal.default_int_handler)
 
     file = verify_path(file)
     with file.open('rb') as f:
@@ -44,16 +55,6 @@ def run_multiprocessing_efficiency(
     else:
         raise ValueError(
             f"Expected pickled object at '{file}' to contain either a SamplerCompData or MPEfficiencyData object, but found {type(SData)}.")
-
-    import os
-    import signal
-    import torch
-
-    from glnis.core.integrator import (
-        Integrator,
-        MadnisIntegrator,
-    )
-    from glnis.core.parser import SettingsParser
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:

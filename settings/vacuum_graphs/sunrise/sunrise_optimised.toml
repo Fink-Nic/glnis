@@ -20,3 +20,12 @@ n_log = 20
 n_plot_rsd = 100
 # Training steps between plotting the loss
 n_plot_loss = 2
+
+[[slice_plots.slice]]
+origin = [0.44341431, 0.22723927, 0.55458468]
+discrete = [1]
+dirs = [0, 1]
+grid = [
+    {start = 0, end = 1, num = 1000},
+    {start = 0, end = 1, num = 1000},
+]

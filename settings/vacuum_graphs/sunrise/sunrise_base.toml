@@ -85,7 +85,7 @@ path_to_example = "thermal_integrand_examples/sunset"
 # no chem potential [6.283185307179586, 0.0, 1.0] 
 params = [6.283185307179586, 3.141592653589793, 1.0]
 use_prec = true
-use_f128 = false
+use_f128 = true
 n_cores = 128
 
 [integrand.kaapo.symbolica_integrand_kwargs]
@@ -102,7 +102,7 @@ sum_orientations = true
 runtime_summation = false
 
 [integrand.kaapo.symbolica_integrand_prec_kwargs]
-prec = 100
+prec = 200
 n_shots = 1
 escalate_large_weight_multiplier = -1.0
 escalate_small_momentum_multiplier = -1.0

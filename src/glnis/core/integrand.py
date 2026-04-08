@@ -1,4 +1,5 @@
 # type: ignore
+import os
 import math
 import numpy as np
 import multiprocessing as mp
@@ -10,7 +11,7 @@ from copy import deepcopy
 
 from glnis.core.parameterisation import LayeredParameterisation
 from glnis.core.accumulator import (
-    Accumulator, TrainingAccumulator, TrainingData, GraphProperties, LayerData, Observables
+    Accumulator, TrainingAccumulator, TrainingData, GraphProperties, LayerData, IntegrationResult
 )
 from glnis.utils.helpers import chunks, shell_print, verify_path
 
@@ -29,7 +30,7 @@ class Integrand(ABC):
                  continuous_dim: int = 0,
                  discrete_dims: List[int] = [],
                  use_f128: bool = False,
-                 target: Observables | None = None,
+                 target: IntegrationResult | None = None,
                  training_phase: Literal['real', 'imag', 'abs'] = 'real',
                  **uncaught_kwargs):
         self.graph_properties = graph_properties
@@ -39,7 +40,7 @@ class Integrand(ABC):
         self.dtype = np.dtype(
             np.float128) if self.use_f128 else np.dtype(np.float64)
         self.training_phase = training_phase
-        self.target = target if target is not None else Observables()
+        self.target = target if target is not None else IntegrationResult()
 
     @abstractmethod
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
@@ -53,7 +54,8 @@ class Integrand(ABC):
                 f"Evaluating {self.IDENTIFIER.upper()} with {layer_input.n_points - n_failed} successfull points.")
             f = np.zeros(layer_input.n_points, dtype=np.complex128)
             f[layer_input.success.ravel()] = self._evaluate_batch(
-                layer_input.momenta[layer_input.success], layer_input.discrete[layer_input.success]).ravel()
+                layer_input.momenta[layer_input.success.ravel()],
+                layer_input.discrete[layer_input.success.ravel()]).ravel()
             layer_input.func_val = f
         else:
             layer_input.func_val = self._evaluate_batch(
@@ -110,7 +112,7 @@ class TestIntegrand(Integrand):
         self.sigma = sigma
         self.const_f = const_f
         if not self.const_f:
-            self.target = Observables(real_central_value=1)
+            self.target = IntegrationResult(real_central_value=1)
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         if self.const_f:
@@ -293,6 +295,7 @@ class ParameterisedIntegrand:
 
     def eval_integrand(self, layer_input: LayerData,
                        acc_type: Literal['default', 'training'] = 'default') -> Accumulator:
+        untouched_discrete = layer_input.discrete
         pass_disc_to_integrand = np.zeros(
             (layer_input.n_points, 0), dtype=np.uint64)
         if self.condition_integrand_first:
@@ -309,6 +312,8 @@ class ParameterisedIntegrand:
         acc_kwargs = dict(
             target=self.integrand.target,
             training_phase=self.integrand.training_phase,)
+        integration_result.discrete = untouched_discrete
+        integration_result.update('processing')
         accumulator = integration_result.accumulate(acc_type, **acc_kwargs)
 
         if self.verbose:
@@ -351,6 +356,7 @@ class ParameterisedIntegrand:
 
 
 class MPIntegrand(ParameterisedIntegrand):
+    N_UNUSED = 2
     MAX_CHUNK_SIZE = 100_000
     MIN_CHUNK_SIZE = 10
     IDENTIFIER = "multiprocessing integrand"
@@ -361,14 +367,16 @@ class MPIntegrand(ParameterisedIntegrand):
                  integrand_kwargs: Dict[str, Any],
                  condition_integrand_first: bool = False,
                  n_cores: int = 1,
+                 n_shards: int = 32,
                  verbose: bool = False,
                  **kwargs):
-        self.n_cores = n_cores
+        self.n_cores = min(n_cores, mp.cpu_count() - self.N_UNUSED) if n_cores > 0 else 1
+        n_shards = min(n_shards, self.n_cores)
         self._ended = False
 
         ctx = mp.get_context()
-        self.q_in = [ctx.Queue() for _ in range(self.n_cores)]
-        self.q_out = [ctx.Queue() for _ in range(self.n_cores)]
+        self.q_in = [ctx.Queue() for _ in range(n_shards)]
+        self.q_out = [ctx.Queue() for _ in range(n_shards)]
         self.stop_event = ctx.Event()
         worker_args = (
             self.stop_event,
@@ -378,9 +386,10 @@ class MPIntegrand(ParameterisedIntegrand):
             condition_integrand_first,
         )
         self.workers = [
-            ctx.Process(target=self._integrand_worker,
-                        args=((self.q_in[w_id], self.q_out[w_id]), *worker_args),
-                        daemon=True) for w_id in range(self.n_cores)
+            ctx.Process(
+                target=self._integrand_worker,
+                args=((self.q_in[w_id % n_shards], self.q_out[w_id % n_shards]), *worker_args),
+                daemon=True) for w_id in range(self.n_cores),
         ]
         for w in self.workers:
             w.start()
@@ -455,7 +464,7 @@ class MPIntegrand(ParameterisedIntegrand):
         data_chunks = layer_input.as_chunks(n_chunks, n_cores)
 
         for chunk_id, data_chunk in enumerate(data_chunks):
-            self.q_in[chunk_id % n_cores].put(
+            self.q_in[chunk_id % len(self.q_in)].put(
                 (job_type, chunk_id, (data_chunk, acc_type)), block=False)
 
         chunk_id_return_order = []
@@ -512,7 +521,7 @@ class MPIntegrand(ParameterisedIntegrand):
 
         for chunk_id, ind in enumerate(ind_chunks):
             args = (ind, dim)
-            self.q_in[chunk_id % n_cores].put((job_type, chunk_id, args))
+            self.q_in[chunk_id % len(self.q_in)].put((job_type, chunk_id, args))
 
         result_sorted = [None]*n_chunks
         readers = [q._reader for q in self.q_out]

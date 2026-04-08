@@ -49,7 +49,7 @@ class GraphProperties:
 
 
 @dataclass
-class Observables:
+class IntegrationResult:
     n_points: int = 0
     real_central_value: float = 0
     real_error: float = 0
@@ -61,7 +61,7 @@ class Observables:
     abs_imag_error: float = 0
     total_time: float = 0
 
-    def __post_init__(self: 'Observables'):
+    def __post_init__(self: 'IntegrationResult'):
         """Calculates derived observables such as RSD and time per sample."""
         time_per_sample = 0
         self.real_rsd = 0
@@ -84,7 +84,7 @@ class Observables:
         self.abs_real_tvar = self.abs_real_rsd**2 * time_per_sample
         self.abs_imag_tvar = self.abs_imag_rsd**2 * time_per_sample
 
-    def combine_with(self: 'Observables', other: 'Observables') -> None:
+    def combine_with(self: 'IntegrationResult', other: 'IntegrationResult') -> None:
         def cc(s_c: float, o_c: float) -> float:
             return self._combine_central_value(self.n_points, other.n_points, s_c, o_c)
 
@@ -103,12 +103,12 @@ class Observables:
         self.n_points += other.n_points
         self.__post_init__()  # Recalculate derived observables
 
-    def str_report(self: 'Observables') -> str:
-        return f"Real: {
+    def str_report(self: 'IntegrationResult') -> str:
+        return f"""Real: {
             self.real_central_value: .5f}  ± {
             self.real_error: .5f}, Imag: {
             self.imag_central_value: .5f}  ± {
-            self.imag_error: .5f} "
+            self.imag_error: .5f} """
 
     @staticmethod
     def _rsd(mean: float, err: float, n_points: int) -> float:
@@ -272,7 +272,7 @@ class LayerData:
         if new_failures_mask.any():
             caused_failures = self._data[new_failures_mask]
             if identifier in self.failures:
-                self.failures[identifier+"_1"] = caused_failures
+                self.failures[identifier+"_"] = caused_failures
             else:
                 self.failures[identifier] = caused_failures
 
@@ -475,7 +475,7 @@ class Accumulator:
 class DefaultAccumulator(Accumulator):
     def __init__(self,
                  data: LayerData | None = None,
-                 target: Observables | None = None,
+                 target: IntegrationResult | None = None,
                  **kwargs):
         self.statistics = IntegrationStatistics(data, target=target)
         self.max_weight = MaxWeight(data)
@@ -510,13 +510,13 @@ class IntegrationStatistics(AccumulatorModule):
 
     def __init__(self,
                  data: LayerData | None = None,
-                 target: Observables | None = None,
+                 target: IntegrationResult | None = None,
                  precision: int = 2,):
         self.dtype = np.dtype(np.float64)
-        self.target = target if target is not None else Observables()
+        self.target = target if target is not None else IntegrationResult()
         self.precision = precision
         if data is None:
-            self.result = Observables()
+            self.result = IntegrationResult()
         else:
             self.dtype = data.dtype
             m = data.success
@@ -524,7 +524,7 @@ class IntegrationStatistics(AccumulatorModule):
             abs_real_total_wgt = np.abs(total_wgt.real)
             abs_imag_total_wgt = np.abs(total_wgt.imag)
             total_time = data.get_processing_times().get('total_time', 0)
-            self.result = Observables(
+            self.result = IntegrationResult(
                 n_points=data.n_points,
                 real_central_value=total_wgt.real.mean(),
                 real_error=total_wgt.real.std() / np.sqrt(data.n_points),
@@ -545,8 +545,8 @@ class IntegrationStatistics(AccumulatorModule):
         report.append(
             f"Integration Result after {Colour.GREEN}{self.result.n_points}{Colour.END} evaluations:")
         if self.result.real_error > 0:
-            report.append(f"    {Colour.DARKCYAN}RE{Colour.END} : {
-                error_fmter(self.result.real_central_value, self.result.real_error, self.precision)}")
+            report.append(f"""    {Colour.DARKCYAN}RE{Colour.END} : {
+                error_fmter(self.result.real_central_value, self.result.real_error, self.precision)}""")
             err_rel = abs(self.result.real_error / self.result.real_central_value)
             err_col = Colour.GREEN if err_rel < 0.01 else Colour.RED
             rsd = self.result.real_rsd
@@ -642,19 +642,20 @@ class MaxWeight(AccumulatorModule):
             self.dtype = data.dtype
             m = data.success
             total_wgt = data.jac[m]*data.wgt[m]*data.func_val[m]
-            momenta = data.momenta[m]
+            cont = data.continuous[m]
+            disc = data.discrete[m]
             real_pos_idx = total_wgt.real.argmax(axis=0)
             self.real_pos_max_wgt = total_wgt.real[real_pos_idx][0]
-            self.real_pos_max_wgt_point = momenta[real_pos_idx][0]
+            self.real_pos_max_wgt_point = (disc[real_pos_idx][0], cont[real_pos_idx][0])
             real_neg_idx = total_wgt.real.argmin(axis=0)
             self.real_neg_max_wgt = total_wgt.real[real_neg_idx][0]
-            self.real_neg_max_wgt_point = momenta[real_neg_idx][0]
+            self.real_neg_max_wgt_point = (disc[real_neg_idx][0], cont[real_neg_idx][0])
             imag_pos_idx = total_wgt.imag.argmax(axis=0)
             self.imag_pos_max_wgt = total_wgt.imag[imag_pos_idx][0]
-            self.imag_pos_max_wgt_point = momenta[imag_pos_idx][0]
+            self.imag_pos_max_wgt_point = (disc[imag_pos_idx][0], cont[imag_pos_idx][0])
             imag_neg_idx = total_wgt.imag.argmin(axis=0)
             self.imag_neg_max_wgt = total_wgt.imag[imag_neg_idx][0]
-            self.imag_neg_max_wgt_point = momenta[imag_neg_idx][0]
+            self.imag_neg_max_wgt_point = (disc[imag_neg_idx][0], cont[imag_neg_idx][0])
 
     def combine_with(self: 'MaxWeight', other: 'MaxWeight') -> None:
         if other.real_pos_max_wgt_point is not None:
@@ -676,18 +677,31 @@ class MaxWeight(AccumulatorModule):
 
     def str_report(self) -> str:
         report = ["Max weights and their location in momentum-space:"]
+
+        def mwp_to_discstr_cont(mwp):
+            disc, cont = mwp
+            if disc.size > 0:
+                disc_str = f"ch=[{' '.join(f"{d:.0f}" for d in disc)}] "
+            else:
+                disc_str = ""
+            return disc_str, cont
+
         if self.real_pos_max_wgt > 0.:
+            disc_str, cont = mwp_to_discstr_cont(self.real_pos_max_wgt_point)
             report.append(
-                f"    {Colour.DARKCYAN}RE[+]{Colour.END} : {self.real_pos_max_wgt[0]:<15.12e} at {self.real_pos_max_wgt_point}")
+                f"    {Colour.DARKCYAN}RE[+]{Colour.END} : {self.real_pos_max_wgt[0]:<15.12e} at {disc_str}x={cont}")
         if self.real_neg_max_wgt < 0.:
+            disc_str, cont = mwp_to_discstr_cont(self.real_neg_max_wgt_point)
             report.append(
-                f"    {Colour.DARKCYAN}RE[-]{Colour.END} : {self.real_neg_max_wgt[0]:<15.12e} at {self.real_neg_max_wgt_point}")
+                f"    {Colour.DARKCYAN}RE[-]{Colour.END} : {self.real_neg_max_wgt[0]:<15.12e} at {disc_str}x={cont}")
         if self.imag_pos_max_wgt > 0.:
+            disc_str, cont = mwp_to_discstr_cont(self.imag_pos_max_wgt_point)
             report.append(
-                f"    {Colour.DARKCYAN}IM[+]{Colour.END} : {self.imag_pos_max_wgt[0]:<15.12e} at {self.imag_pos_max_wgt_point}")
+                f"    {Colour.DARKCYAN}IM[+]{Colour.END} : {self.imag_pos_max_wgt[0]:<15.12e} at {disc_str}x={cont}")
         if self.imag_neg_max_wgt < 0.:
+            disc_str, cont = mwp_to_discstr_cont(self.imag_neg_max_wgt_point)
             report.append(
-                f"    {Colour.DARKCYAN}IM[-]{Colour.END} : {self.imag_neg_max_wgt[0]:<15.12e} at {self.imag_neg_max_wgt_point}")
+                f"    {Colour.DARKCYAN}IM[-]{Colour.END} : {self.imag_neg_max_wgt[0]:<15.12e} at {disc_str}x={cont}")
         return "\n".join(line for line in report)
 
     def get_observables(self) -> Dict[str, Any]:

@@ -6,23 +6,23 @@ from pathlib import Path
 from madnis.integrator import TrainingStatus
 
 from glnis.utils.helpers import shell_print, verify_path
-from glnis.core.accumulator import GraphProperties, Observables, DefaultAccumulator
+from glnis.core.accumulator import GraphProperties, IntegrationResult, DefaultAccumulator
 
 
 class SamplerCompData:
     def __init__(self,
                  integrator_identifiers: List[str],
                  graph_properties: GraphProperties,
-                 target: Observables,
+                 target: IntegrationResult,
                  settings: Dict[str, Any] = dict(),
                  madnis_kwargs: Dict[str, Any] = dict(),
                  madnis_info: Dict[str, Any] = dict(),
                  integrand_kwargs: Dict[str, Any] = dict(),
                  param_kwargs: Dict[str, Any] = dict(),) -> None:
-        self.result: Dict[str, Observables] = dict()
+        self.result: Dict[str, IntegrationResult] = dict()
         self.observables: Dict[str, Dict[str, Any]] = dict()
         for name in integrator_identifiers:
-            self.result[name] = Observables()
+            self.result[name] = IntegrationResult()
             self.observables[name] = dict()
         self.graph_properties = graph_properties
         self.target = target

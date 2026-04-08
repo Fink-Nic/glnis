@@ -7,7 +7,7 @@ from pathlib import Path
 from pickle import dump, load
 
 from glnis.utils.helpers import shell_print, verify_path
-from glnis.core.accumulator import Observables
+from glnis.core.accumulator import IntegrationResult
 from glnis.scripts.sampler_comparison import run_sampler_comp, SamplerCompData
 
 
@@ -18,8 +18,8 @@ class OLDRunData:
     settings: Dict[str, Any]
     madnis_info: Dict[str, Any]
     plottables: SamplerCompData.Plottables
-    target: Observables
-    observables: Observables
+    target: IntegrationResult
+    observables: IntegrationResult
     run_time: float
 
 
@@ -30,7 +30,7 @@ class RunData:
     settings: Dict[str, Any]
     madnis_info: Dict[str, Any]
     plottables: SamplerCompData.Plottables
-    target: Observables
+    target: IntegrationResult
     observables: Dict[str, Any]
     run_time: float
 
@@ -80,7 +80,7 @@ class OLDHParamCompData:
     def to_run_data(
             self, comp_name: str, block_name: str, additional_params: Dict[str, Any],
             result: SamplerCompData) -> RunData:
-        madnis_observables = list(result.observables.values())[0] if result.observables else Observables()
+        madnis_observables = list(result.observables.values())[0] if result.observables else IntegrationResult()
         return RunData(
             comp_name=comp_name,
             block_name=block_name,
@@ -149,7 +149,7 @@ class HParamCompData:
     def to_run_data(
             self, comp_name: str, block_name: str, additional_params: Dict[str, Any],
             result: SamplerCompData) -> RunData:
-        madnis_observables = list(result.observables.values())[0] if result.observables else Observables()
+        madnis_observables = list(result.observables.values())[0] if result.observables else IntegrationResult()
         return RunData(
             comp_name=comp_name,
             block_name=block_name,
