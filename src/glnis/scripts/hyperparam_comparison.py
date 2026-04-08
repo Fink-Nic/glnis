@@ -200,6 +200,7 @@ def run_hyperparam_comparison(
             Data: HParamCompData = load(f)
             if not isinstance(Data, HParamCompData):
                 raise ValueError(f"Expected a HParamCompData object in the recovery file, but got {type(Data)}")
+        directory = recovery_file.parent
         shell_print(f"Recovered data from '{recovery_file}' with {Data._total_comparisons} comparisons.")
     else:
         PROJECT_ROOT = Path(__file__).parents[3]
@@ -260,22 +261,27 @@ def run_hyperparam_comparison(
                 no_naive=True,
                 no_vegas=True,
                 no_havana=True,
-                export_states=False,
                 no_output=True,
+                export_states=plot_slices,
                 subroutine='hpcomp_training_run')
             run_time = perf_counter() - before
             fd_after_run = _open_fd_count()
 
             if plot_slices:
+                before_slices = perf_counter()
                 slice_dir = Path(directory, comp_name, block_name)
                 if not slice_dir.exists():
                     slice_dir.mkdir(parents=True)
                 run_slice_plots(
                     file=run_result,
+                    settings_file=NewSettings.settings,
                     only_plot=True,
                     force_directory=slice_dir,
                     subroutine='hpcomp_slice_plots',
                 )
+                slice_time = perf_counter() - before_slices
+                shell_print(
+                    f"Finished slice plots for comparison '{comp_name}' and block '{block_name}' in {slice_time:.2f} seconds.")
 
             Data.add_result(
                 comp_name, block_name,

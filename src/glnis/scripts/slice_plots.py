@@ -34,8 +34,8 @@ class SlicePlotData:
                  madnis_kwargs: Dict[str, Any] = dict(),
                  integrand_kwargs: Dict[str, Any] = dict(),
                  param_kwargs: Dict[str, Any] = dict(),
-                 slices1d=[],
-                 slices2d=[],
+                 slices1d=None,
+                 slices2d=None,
                  itg: float | None = None,
                  EPS: float = 1e-6
                  ) -> None:
@@ -44,8 +44,8 @@ class SlicePlotData:
         self.madnis_kwargs: Dict[str, Any] = madnis_kwargs
         self.integrand_kwargs: Dict[str, Any] = integrand_kwargs
         self.param_kwargs: Dict[str, Any] = param_kwargs
-        self.slices1d: List[Slice] = slices1d
-        self.slices2d: List[Slice] = slices2d
+        self.slices1d: List[Slice] = slices1d or []
+        self.slices2d: List[Slice] = slices2d or []
         self.EPS: float = EPS
         self.itg: float | None = itg
 
@@ -99,7 +99,8 @@ def run_slice_plots(
 
     Settings = SettingsParser(SData.settings)
     if settings_file:
-        shell_print(f"Overriding slice_plots script settings with '{settings_file}'")
+        if isinstance(settings_file, str):
+            shell_print(f"Overwriting settings with '{settings_file}'.")
         NewSettings = SettingsParser(settings_file)
         Settings.settings["scripts"]["slice_plots"] = NewSettings.settings.get(
             "scripts", dict()).get("slice_plots", dict())
@@ -158,10 +159,11 @@ def run_slice_plots(
                 elif madnis_obs is not None:
                     itg = madnis_obs.imag_central_value
 
-        if itg is not None:
+        if itg is not None and not only_plot:
             shell_print(f"Using integral estimate {itg:.4e} to normalize function values.")
         else:
-            shell_print(f"No integral estimate found. Function values will not be normalized.")
+            if not only_plot:
+                shell_print(f"No integral estimate found. Function values will not be normalized.")
 
         # Initialize the integrators
         integrators: Dict[str, Integrator] = dict()
@@ -403,8 +405,8 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
     precision = 3  # For table printout of numpy arrays
     cmap_name = 'plasma'
     use_blue_green_red = True  # Whether to use a custom blue-green-red colormap for the ratio plot
-    fraction = 0.046  # Default fraction for colorbar size
-    padding = 0.04  # Default padding between plot and colorbar
+    fraction = 0.062  # Default fraction for colorbar size
+    padding = -0.02  # Default padding between plot and colorbar
     high_threshold = 1
     center = -2
     low_threshold = -10
@@ -491,8 +493,9 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
             true_scale = np.nanmean(np.abs(slice.func_val) / prob)
             data_discrete = np.sign(slice.func_val).astype(np.float64)
 
-            fig = plt.figure(figsize=(10, 9.3), constrained_layout=True)
-            gs = fig.add_gridspec(3, 3, height_ratios=[1, 1, 0.45])
+            fig = plt.figure(figsize=(11.5, 7.5), constrained_layout=True)
+            fig.set_constrained_layout_pads(w_pad=0.01, h_pad=0.01, wspace=0.02, hspace=0.02)
+            gs = fig.add_gridspec(3, 3, height_ratios=[1, 1, 0.30], wspace=0.02, hspace=0.03)
             ax1 = fig.add_subplot(gs[0, 0])
             ax2 = fig.add_subplot(gs[0, 1])
             axh1 = fig.add_subplot(gs[0, 2])
@@ -584,7 +587,7 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
                     [r"$v$", f"{slice.dirs[1]}"],
                 ]
             table = ax_table.table(cellText=table_data,
-                                   cellLoc='center', loc='center', bbox=[0.3, 0.0, 0.4, 1.0])
+                                   cellLoc='center', loc='center', bbox=[0.0, 0.0, 1.0, 1.0])
             table.auto_set_font_size(False)
             table.set_fontsize(9)
             fig.suptitle(f"2D Slices #{i} for {Data.settings['run_name']} using {itype}")

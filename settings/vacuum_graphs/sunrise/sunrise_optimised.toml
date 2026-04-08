@@ -61,3 +61,10 @@ grid = [
     {start = 0, stop = 1, num = 1000},
     {start = 0, stop = 1, num = 1000},
 ]
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965]
+discrete = [1]
+dirs = [1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+]
