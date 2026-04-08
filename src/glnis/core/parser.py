@@ -296,9 +296,16 @@ class SettingsParser:
                 default_settings = tomllib.load(f)
 
         for t in settings.get("templates", []):
-            template = verify_path(t, suffix=".toml")
-            with template.open("rb") as f:
-                template = tomllib.load(f)
+            try:
+                template = verify_path(t, suffix=".toml")
+                with template.open("rb") as f:
+                    template = tomllib.load(f)
+            except (FileNotFoundError, OSError, TypeError):
+                try:
+                    template = tomllib.loads(t)
+                except tomllib.TOMLDecodeError:
+                    raise ValueError(
+                        f"Template '{t}' is neither a valid path to a .toml file nor a valid TOML string.")
             default_settings = overwrite_settings(
                 default_settings, template)
         # if _from_existing, default_settings = settings and hence this overwrite does nothing
@@ -325,6 +332,10 @@ class SettingsParser:
             self.model_path = self.settings['model']['model_path']
 
     def settings_with_additional_templates(self, template_list: List[str | Path]) -> 'SettingsParser':
+        """
+        Returns a new SettingsParser with the provided template(s) added to the list of templates in the settings.
+        Templates can be provided as paths to .toml files or as valid TOML strings.
+        """
         new_settings = deepcopy(self.settings)
         if not isinstance(template_list, list):
             template_list = [template_list]

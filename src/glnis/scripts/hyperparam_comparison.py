@@ -9,6 +9,7 @@ from pickle import dump, load
 from glnis.utils.helpers import shell_print, verify_path
 from glnis.core.accumulator import IntegrationResult
 from glnis.scripts.sampler_comparison import run_sampler_comp, SamplerCompData
+from glnis.scripts.slice_plots import run_slice_plots
 
 
 @dataclass
@@ -222,6 +223,7 @@ def run_hyperparam_comparison(
         blocks = params.get('blocks', None)
         block_names = params.get('block_names', [])
         comp_name = params.get('comparison_name', 'no_name_set')
+        plot_slices = params.get('plot_slices', False)
         if blocks is None:
             shell_print(f"No blocks to run in comparison '{comp_name}', skipping...")
             continue
@@ -263,6 +265,17 @@ def run_hyperparam_comparison(
                 subroutine='hpcomp_training_run')
             run_time = perf_counter() - before
             fd_after_run = _open_fd_count()
+
+            if plot_slices:
+                slice_dir = Path(directory, comp_name, block_name)
+                if not slice_dir.exists():
+                    slice_dir.mkdir(parents=True)
+                run_slice_plots(
+                    file=run_result,
+                    only_plot=True,
+                    force_directory=slice_dir,
+                    subroutine='hpcomp_slice_plots',
+                )
 
             Data.add_result(
                 comp_name, block_name,

@@ -45,6 +45,8 @@ def main() -> None:
     slice_plots = subparsers.add_parser("splots")
     slice_plots.add_argument('--file', '-f', type=str,
                              help="File containing either SamplerCompData or SlicePlotsData.")
+    slice_plots.add_argument('--settings_file', '-s', type=str, default="",
+                             help="The file containing the slice plot settings.")
     slice_plots.add_argument('--state', '-t', type=str, default="no_state_file",
                              help="The file containing the madnis state data.")
     slice_plots.add_argument('--comment', '-c', type=str, default='No comment.',
@@ -98,6 +100,7 @@ def main() -> None:
                              no_plot=args.no_plot,)
         case "splots":
             run_slice_plots(file=args.file,
+                            settings_file=args.settings_file,
                             comment=args.comment,
                             no_output=args.no_output,
                             no_plot=args.no_plot,)

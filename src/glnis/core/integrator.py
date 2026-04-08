@@ -154,8 +154,9 @@ class Integrator(ABC):
     def _probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
         return np.ones((len(continuous),), dtype=self.dtype)
 
-    @staticmethod
+    @classmethod
     def from_dicts(
+            cls,
             graph_properties: GraphProperties,
             parameterisation_kwargs: List[Dict[str, Any]],
             integrand_kwargs: Dict[str, Any],
@@ -164,7 +165,7 @@ class Integrator(ABC):
         n_cores = integrand_kwargs.pop('n_cores', 1)
         n_shards = integrand_kwargs.pop('n_shards', 32)
         verbose = integrand_kwargs.pop('verbose', False)
-        integrator_type = integrator_kwargs.pop('integrator_type')
+        integrator_type: str | None = integrator_kwargs.pop('integrator_type', None)
 
         integrand = MPIntegrand(
             graph_properties=graph_properties,
@@ -174,8 +175,10 @@ class Integrator(ABC):
             n_shards=n_shards,
             verbose=verbose,
         )
+        if type(cls) is not Integrator:
+            return cls(integrand=integrand, **integrator_kwargs)
 
-        match integrator_type.lower():
+        match integrator_type.lower() if integrator_type is not None else None:
             case 'naive':
                 return NaiveIntegrator(integrand, **integrator_kwargs)
             case 'vegas':
@@ -187,15 +190,15 @@ class Integrator(ABC):
             case _:
                 return NaiveIntegrator(integrand, **integrator_kwargs)
 
-    @staticmethod
-    def from_settings(settings: str | Dict) -> 'Integrator':
+    @classmethod
+    def from_settings(cls, settings: str | Dict) -> 'Integrator':
         Parser = SettingsParser(settings)
         graph_properties = Parser.get_graph_properties()
         parameterisation_kwargs = Parser.get_parameterisation_kwargs()
         integrand_kwargs = Parser.get_integrand_kwargs()
         integrator_kwargs = Parser.get_integrator_kwargs()
 
-        return Integrator.from_dicts(
+        return cls.from_dicts(
             graph_properties=graph_properties,
             parameterisation_kwargs=parameterisation_kwargs,
             integrand_kwargs=integrand_kwargs,

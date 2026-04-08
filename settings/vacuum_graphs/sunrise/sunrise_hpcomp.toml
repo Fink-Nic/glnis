@@ -1,13 +1,14 @@
 run_name = "sunrise_hpcomp"
 templates = [
     "settings/vacuum_graphs/sunrise/sunrise_base",
-    "settings/templates/flow/size2",
-    "settings/templates/madnis_bins/size2",
+    "settings/templates/flow/size3",
+    "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size2",
 ]
 
 [[scripts.hyperparam_comparison]]
 comparison_name = "bins"
+plot_slices = true
 blocks = [
         ["settings/templates/madnis_bins/size0"],
         ["settings/templates/madnis_bins/size1"],
@@ -20,6 +21,7 @@ block_names = [5, 10, 20, 50, 100, 200]
 
 [[scripts.hyperparam_comparison]]
 comparison_name = "flow network"
+plot_slices = true
 blocks = [
         ["settings/templates/flow/size0"],
         ["settings/templates/flow/size1"],
@@ -36,6 +38,7 @@ block_names = ["1_16", "1_64", "2_64", "2_128", "3_128", "3_256", "4_256", "4_51
 
 [[scripts.hyperparam_comparison]]
 comparison_name = "transformer network"
+plot_slices = true
 blocks = [
         ["settings/templates/transformer/size0"],
         ["settings/templates/transformer/size1"],
@@ -48,6 +51,7 @@ block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64", "8_3_
 
 [[scripts.hyperparam_comparison]]
 comparison_name = "made network"
+plot_slices = true
 blocks = [
         ["settings/templates/made/size0"],
         ["settings/templates/made/size1"],
@@ -60,6 +64,7 @@ block_names = ["1_4", "1_8", "2_8", "2_16", "3_16", "3_32"]
 
 [[scripts.hyperparam_comparison]]
 comparison_name = "big flow bins"
+plot_slices = true
 blocks = [
         [
             "settings/templates/flow/size9",
@@ -100,9 +105,34 @@ block_names = [
 ]
 
 [scripts.hpcomp_training_run]
-n_training_steps = 1000
+n_training_steps = 500
 n_samples = 1000000
 n_samples_after_training = 10000000
-n_log = 20
-n_plot_rsd = 100
+n_log = 100
+n_plot_rsd = 50
 n_plot_loss = 2
+
+[[scripts.hpcomp_slice_plots.slice]]
+origin = [0.44341431, 0.22723927, 0.55458468]
+discrete = [1]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.hpcomp_slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965]
+discrete = [1]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.hpcomp_slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965]
+discrete = [1]
+dirs = [0, 2]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]

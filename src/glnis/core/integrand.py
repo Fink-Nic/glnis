@@ -389,7 +389,7 @@ class MPIntegrand(ParameterisedIntegrand):
             ctx.Process(
                 target=self._integrand_worker,
                 args=((self.q_in[w_id % n_shards], self.q_out[w_id % n_shards]), *worker_args),
-                daemon=True) for w_id in range(self.n_cores),
+                daemon=True) for w_id in range(self.n_cores)
         ]
         for w in self.workers:
             w.start()
@@ -399,7 +399,7 @@ class MPIntegrand(ParameterisedIntegrand):
                          condition_integrand_first,
                          verbose, **kwargs)
         for w_id in range(self.n_cores):
-            output = self.q_out[w_id].get()
+            output = self.q_out[w_id % n_shards].get()
             if output == 'STARTED':
                 if self.verbose:
                     shell_print(f"Core {w_id} has been initialized.")
@@ -562,7 +562,8 @@ class MPIntegrand(ParameterisedIntegrand):
         if self._ended:
             return
 
-        shell_print("Attempting to close queues.")
+        if self.verbose:
+            shell_print("Attempting to close queues.")
         self.stop_event.set()
 
         for w in self.workers:
@@ -604,4 +605,5 @@ class MPIntegrand(ParameterisedIntegrand):
         self.workers = None
 
         self._ended = True
-        shell_print(f"{self.IDENTIFIER.upper()} has successfully terminated.")
+        if self.verbose:
+            shell_print(f"{self.IDENTIFIER.upper()} has successfully terminated.")

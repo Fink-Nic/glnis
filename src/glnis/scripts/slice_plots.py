@@ -13,7 +13,7 @@ from glnis.scripts.sampler_comparison import SamplerCompData
 @dataclass
 class LinSpace:
     start: float = 0.0
-    end: float = 1.0
+    stop: float = 1.0
     num: int = 1000
 
 
@@ -52,6 +52,7 @@ class SlicePlotData:
 
 def run_slice_plots(
     file: str | SamplerCompData,
+    settings_file: str = "",
     comment: str = "",
     no_output: bool = False,
     no_plot: bool = False,
@@ -90,17 +91,22 @@ def run_slice_plots(
         else:
             raise ValueError(
                 f"Unrecognized data type in file '{file}'. Expected either SamplerCompData or SlicePlotData, but got {type(SData)}.")
+        shell_print(f"Working on {file}")
 
     if len(SData.integrator_states) == 0:
-        shell_print(f"No integrator states found in `SamplerCompData` object at '{file}', exiting...")
+        shell_print(f"No integrator states found in `SamplerCompData` object, exiting...")
         quit()
 
-    shell_print(f"Working on {file}")
     Settings = SettingsParser(SData.settings)
+    if settings_file:
+        shell_print(f"Overriding slice_plots script settings with '{settings_file}'")
+        NewSettings = SettingsParser(settings_file)
+        Settings.settings["scripts"]["slice_plots"] = NewSettings.settings.get(
+            "scripts", dict()).get("slice_plots", dict())
 
     # Slice parameters
     scripts: Dict[str, Any] = Settings.settings.get("scripts", dict())
-    params: Dict[str, Any] = scripts.get("slice_plots", dict())
+    params: Dict[str, Any] = scripts.get(subroutine, dict())
     slices: List[Dict[str, float | Dict[str, float]]] = params.get("slice", [])
     if not isinstance(slices, list):
         slices = [slices]
@@ -171,21 +177,25 @@ def run_slice_plots(
                     Settings.settings['layered_integrator']['integrator_type'] = "madnis"
                     integrators['madnis'] = MadnisIntegrator(integrand, **Settings.get_integrator_kwargs())
                     integrators['madnis'].import_state(state)
-                    shell_print(f"Imported MadNIS state.")
+                    if not only_plot:
+                        shell_print(f"Imported MadNIS state.")
                 case "vegas":
                     Settings.settings['layered_integrator']['integrator_type'] = "vegas"
                     integrators['vegas'] = VegasIntegrator(integrand, **Settings.get_integrator_kwargs())
                     integrators['vegas'].import_state(state)
-                    shell_print(f"Imported Vegas state.")
+                    if not only_plot:
+                        shell_print(f"Imported Vegas state.")
 
                 case "havana":
                     Settings.settings['layered_integrator']['integrator_type'] = "havana"
                     integrators['havana'] = HavanaIntegrator(integrand, **Settings.get_integrator_kwargs())
                     integrators['havana'].import_state(state)
-                    shell_print(f"Imported Havana state.")
+                    if not only_plot:
+                        shell_print(f"Imported Havana state.")
                     # integrators['havana'].train(10, 100000)
                 case "naive":
-                    shell_print(f"No point in plotting slices for 'Naive' integrator. Skipping...")
+                    if not only_plot:
+                        shell_print(f"No point in plotting slices for 'Naive' integrator. Skipping...")
                 case _:
                     shell_print(f"Unrecognized integrator type '{integrator_type}' in file. Skipping...")
 
@@ -222,6 +232,9 @@ def run_slice_plots(
             if len(grid) < len(dirs):
                 grid += [LinSpace()] * (len(dirs) - len(grid))
             grid = grid[:len(dirs)]
+            for d in dirs:
+                if isinstance(d, int):
+                    origin[d] = 0.0
             dirs = [[1 if i == d else 0 for i in range(integrand.continuous_dim)]
                     if isinstance(d, int) else d for d in dirs]
             for d in dirs:
@@ -277,38 +290,41 @@ def run_slice_plots(
             if itg:
                 func_val /= itg
             s1d.func_val = func_val
-        shell_print(f"Generated 1D grids and populated func_vals.")
+        if len(slices1d) > 0 and not only_plot:
+            shell_print(f"Generated 1D grids and populated func_vals.")
 
         slices2d: List[Tuple[Slice, Tuple[NDArray, NDArray]]] = []
         for s2d in Data.slices2d:
+            n_samples_2d = s2d.grid[0].num * s2d.grid[1].num
             # Sample a random discrete point
-            if integrand.discrete_dims:
-                discrete = [rng.integers(0, ddim) for ddim in integrand.discrete_dims]
-                discrete = np.tile(np.array(discrete, dtype=np.uint64), (n_samples_2d**2, 1))
+            if s2d.discrete:
+                discrete = np.tile(np.array(s2d.discrete, dtype=np.uint64), (n_samples_2d, 1))
             else:
-                discrete = np.empty((n_samples_2d**2, 0), dtype=np.uint64)
+                discrete = np.empty((n_samples_2d, 0), dtype=np.uint64)
             # Sample a random point and create a grid in the 2 selected dimensions
             origin = s2d.origin
             grid_2d = np.stack(arrays=np.meshgrid(
                 np.linspace(**asdict(s2d.grid[0])),
                 np.linspace(**asdict(s2d.grid[1]))),
                 axis=-1).reshape(-1, 2)
-            continuous = origin + grid_2d[:, 0] * s2d.dirs[0][None, :] + grid_2d[:, 1] * s2d.dirs[1][None, :]
-            slices2d.append((s2d, (discrete, continuous)))
+            continuous = origin + grid_2d[:, [0]] * s2d.dirs[0] + grid_2d[:, [1]] * s2d.dirs[1]
+            inside_hcube_mask = np.all((continuous >= Data.EPS) & (continuous <= 1.0 - Data.EPS), axis=-1)
             layer_input = LayerData(
-                n_samples_2d**2,
+                int(np.sum(inside_hcube_mask)),
                 n_mom=3*graph_properties.n_loops,
                 n_cont=integrand.continuous_dim,
                 n_disc=len(integrand.discrete_dims),)
-            layer_input.continuous = continuous
-            layer_input.discrete = discrete
+            layer_input.continuous = continuous[inside_hcube_mask]
+            layer_input.discrete = discrete[inside_hcube_mask]
             acc: TrainingAccumulator = integrand.eval_integrand(layer_input, "training")
-            func_val = acc.training_data.training_result[0].reshape(n_samples_2d, n_samples_2d)
+            func_val = np.zeros(n_samples_2d)
+            func_val[inside_hcube_mask] = acc.training_data.training_result[0].ravel()
             if itg:
                 func_val /= itg
-            s2d.func_val = func_val
+            s2d.func_val = func_val.reshape(s2d.grid[0].num, s2d.grid[1].num)
             slices2d.append((s2d, (discrete, continuous)))
-        shell_print(f"Generated 2D grids and populated func_vals.")
+        if len(slices2d) > 0 and not only_plot:
+            shell_print(f"Generated 2D grids and populated func_vals.")
 
         for s1d, (discrete, continuous) in slices1d:
             integrator_probs = dict()
@@ -316,7 +332,8 @@ def run_slice_plots(
                 prob: NDArray = integrator.probe_prob(discrete, continuous)
                 integrator_probs[itype] = prob.ravel()
             s1d.prob = integrator_probs
-        shell_print(f"Populated probs for 1D slices.")
+        if len(slices1d) > 0 and not only_plot:
+            shell_print(f"Populated probs for 1D slices.")
 
         for s2d, (discrete, continuous) in slices2d:
             integrator_probs = dict()
@@ -324,7 +341,8 @@ def run_slice_plots(
                 prob: NDArray = integrator.probe_prob(discrete, continuous)
                 integrator_probs[itype] = prob.reshape(s2d.func_val.shape)
             s2d.prob = integrator_probs
-        shell_print(f"Populated probs for 2D slices.")
+        if len(slices2d) > 0 and not only_plot:
+            shell_print(f"Populated probs for 2D slices.")
         # IMPORTANT: close the worker functions, or your script will hang
         free_integrators()
 
@@ -333,7 +351,7 @@ def run_slice_plots(
 
         if only_plot:
             plot_slices(file=Data, comment=comment, force_directory=force_directory)
-            quit()
+            return Data
 
         run_name = Data.settings['run_name'].replace(' ', '_')
         filename = run_name + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
@@ -342,19 +360,19 @@ def run_slice_plots(
             torch.save(Data, f)
 
         if not no_plot:
-            plot_slices(file=Data, comment=comment, force_directory=force_directory)
+            plot_slices(file=file, comment=comment, force_directory=force_directory)
 
         return Data
 
     except KeyboardInterrupt:
-        shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
+        shell_print(f"\nCaught KeyboardInterrupt — stopping workers...")
         integrand.free()
         free_integrators()
     except Exception as e:
-        e.with_traceback(traceback.format_exc())
-        shell_print(f"\nCaught Exception — stopping workers: {e}")
+        shell_print(f"\nCaught Exception {e} — stopping workers...")
         integrand.free()
         free_integrators()
+        print(traceback.format_exc())
     finally:
         integrand.free()
         free_integrators()
@@ -368,7 +386,6 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
 
     if isinstance(file, SlicePlotData):
         Data = file
-        shell_print(f"Plottin SlicePlotData from argument")
         directory = verify_path("outputs")
         filename = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     else:
@@ -398,8 +415,8 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
         slice: Slice
         grid1d = np.linspace(**asdict(slice.grid[0]))
         for itype, prob in slice.prob.items():
-            fig = plt.figure(layout="constrained", figsize=(6, 9))
-            gs = fig.add_gridspec(4, 1, height_ratios=[1, 0.3, 0.3, 0.28])
+            fig = plt.figure(layout="constrained", figsize=(6, 10))
+            gs = fig.add_gridspec(4, 1, height_ratios=[1, 0.3, 0.3, 0.3])
             axs = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[2, 0])]
             ax_table = fig.add_subplot(gs[3, 0])
             axs[1].sharex(axs[0])
@@ -465,7 +482,7 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
 
     for i, slice in enumerate(Data.slices2d):
         slice: Slice
-        extent = [slice.grid[0].start, slice.grid[0].end, slice.grid[1].start, slice.grid[1].end]
+        extent = [slice.grid[0].start, slice.grid[0].stop, slice.grid[1].start, slice.grid[1].stop]
         for itype, prob in slice.prob.items():
             data_log = [np.abs(slice.func_val), prob]
             data_log = [d / np.nanmean(d) for d in data_log]  # Normalize by mean for better color scaling
@@ -474,7 +491,7 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
             true_scale = np.nanmean(np.abs(slice.func_val) / prob)
             data_discrete = np.sign(slice.func_val).astype(np.float64)
 
-            fig = plt.figure(figsize=(10, 7.6), constrained_layout=True)
+            fig = plt.figure(figsize=(10, 9.3), constrained_layout=True)
             gs = fig.add_gridspec(3, 3, height_ratios=[1, 1, 0.45])
             ax1 = fig.add_subplot(gs[0, 0])
             ax2 = fig.add_subplot(gs[0, 1])
