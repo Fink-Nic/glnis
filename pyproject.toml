@@ -19,7 +19,7 @@ dependencies = [
     "vegas>=6.2",
     "pydot>=3.0",
     "matplotlib>=3.6",
-    "symbolica @ git+https://github.com/symbolica-dev/symbolica.git@f7c3fc1508b93e03cb78b06124a9fdada6c7f6c0",
+    "symbolica==1.5.0",
     "madnis @ git+https://github.com/madgraph-ml/madnis.git@main",
     "momtrop @ git+https://github.com/Fink-Nic/momtrop.git@main",
     "kaapos @ git+https://github.com/Fink-Nic/thermal_integrand_examples.git@main",

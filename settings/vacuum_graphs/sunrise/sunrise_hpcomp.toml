@@ -63,6 +63,142 @@ blocks = [
 block_names = ["1_4", "1_8", "2_8", "2_16", "3_16", "3_32"]
 
 [[scripts.hyperparam_comparison]]
+comparison_name = "fermi_mc"
+plot_slices = true
+blocks = [
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 1.0
+        [layered_parameterisation.layer_1]
+        fermi_exponent = 1.0
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 0.5
+        [layered_parameterisation.layer_1]
+        fermi_exponent = 1.0
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 1.0
+        [layered_parameterisation.layer_1]
+        fermi_exponent = 0.7
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 0.5
+        [layered_parameterisation.layer_1]
+        fermi_exponent = 0.7
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 1.0
+        [layered_parameterisation.layer_1]
+        fermi_exponent = 0.3
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 0.5
+        [layered_parameterisation.layer_1]
+        fermi_exponent = 0.3
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 1.0
+        [layered_parameterisation.layer_1]
+        fermi_exponent = 0.0
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 0.5
+        [layered_parameterisation.layer_1]
+        fermi_exponent = 0.0
+        """],
+    ]
+block_names = [
+    "1.0_1.0", "0.5_1.0", "1.0_0.7", "0.5_0.7", 
+    "1.0_0.3", "0.5_0.3", "1.0_0.0", "0.5_0.0",
+]
+
+[[scripts.hyperparam_comparison]]
+comparison_name = "ose_mc"
+plot_slices = true
+blocks = [
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 1.0
+        [layered_parameterisation.layer_1]
+        subtype = "ose"
+        ose_exponent = 1.0
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 0.5
+        [layered_parameterisation.layer_1]
+        ose_exponent = 1.0
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 1.0
+        [layered_parameterisation.layer_1]
+        subtype = "ose"
+        ose_exponent = 2.0
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 0.5
+        [layered_parameterisation.layer_1]
+        ose_exponent = 2.0
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 1.0
+        [layered_parameterisation.layer_1]
+        subtype = "ose"
+        ose_exponent = 4.0
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 0.5
+        [layered_parameterisation.layer_1]
+        ose_exponent = 4.0
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 1.0
+        [layered_parameterisation.layer_1]
+        subtype = "ose"
+        ose_exponent = 8.0
+        """],
+        ["settings/templates/flow/size7",
+        """
+        [layered_parameterisation.layer_0]
+        a = 0.5
+        [layered_parameterisation.layer_1]
+        ose_exponent = 8.0
+        """],
+    ]
+block_names = [
+    "1.0_1.0", "0.5_1.0", "1.0_2.0", "0.5_2.0", 
+    "1.0_4.0", "0.5_4.0", "1.0_8.0", "0.5_8.0",
+]
+
+[[scripts.hyperparam_comparison]]
 comparison_name = "big flow bins"
 plot_slices = true
 blocks = [

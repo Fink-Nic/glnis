@@ -508,46 +508,49 @@ class HavanaIntegrator(Integrator):
 class MadnisIntegrator(Integrator):
     IDENTIFIER = 'madnis sampler'
 
-    def __init__(self,
-                 integrand: MPIntegrand,
-                 batch_size: int = 1024,
-                 learning_rate: float = 1e-3,
-                 use_scheduler: bool = True,
-                 scheduler_type: Literal["cosineannealing"] | List[str] | None = None,
-                 warmup_steps: List[int] = [],
-                 scheduler_kwargs: Dict[str, Any] = dict(),
-                 loss_type: Literal["test", "variance", "variance_softclip",
-                                    "kl_divergence", "kl_divergence_softclip"] = "kl_divergence",
-                 discrete_dims_position: Literal["first", "last"] = "first",
-                 discrete_model: Literal["transformer",
-                                         "made"] = "transformer",
-                 transformer: Dict[str, Any] = dict(
-                     embedding_dim=64,
-                     feedforward_dim=64,
-                     heads=4,
-                     mlp_units=64,
-                     transformer_layers=1,),
-                 made: Dict[str, Any] = dict(),
-                 flow_kwargs: Dict[str, Any] = dict(
-                     uniform_latent=True,
-                     permutations="log",
-                     layers=3,
-                     units=32,
-                     bins=10,
-                     min_bin_width=1e-3,
-                     min_bin_height=1e-3,
-                     min_bin_derivative=1e-3,),
-                 pretrain_c_flow: bool = False,
-                 pretraining_kwargs: Dict[str, Any] = dict(
-                     nitn=10,
-                     neval=10000,
-                     bins_mult=4,
-                     alpha=0.7,
-                 ),
-                 callback: Callable[[object], None] | None = None,
-                 max_batch_size: int = 100_000,
-                 use_gpu: bool = True,
-                 **kwargs,):
+    def __init__(
+            self,
+        integrand: MPIntegrand,
+        batch_size: int = 1024,
+        learning_rate: float = 1e-3,
+        use_scheduler: bool = True,
+        scheduler_type: Literal["cosineannealing"] | List[str] | None = None,
+        # warmup_steps: List[int] = [],
+        scheduler_kwargs: Dict[str, Any] = dict(),
+        loss_type: Literal["test", "variance", "variance_softclip",
+                           "kl_divergence", "kl_divergence_softclip"] = "kl_divergence",
+        loss_kwargs: Dict[str, Any],
+        discrete_dims_position: Literal["first", "last"] = "first",
+        discrete_model: Literal["transformer",
+                                "made"] = "transformer",
+        transformer: Dict[str, Any] = dict(
+            embedding_dim=64,
+            feedforward_dim=64,
+            heads=4,
+            mlp_units=64,
+            transformer_layers=1,),
+        made: Dict[str, Any] = dict(),
+        flow_kwargs: Dict[str, Any] = dict(
+            uniform_latent=True,
+            permutations="log",
+            layers=3,
+            units=32,
+            bins=10,
+            min_bin_width=1e-3,
+            min_bin_height=1e-3,
+            min_bin_derivative=1e-3,),
+        pretrain_c_flow: bool = False,
+        pretraining_kwargs: Dict[str, Any] = dict(
+            nitn=10,
+            neval=10000,
+            bins_mult=4,
+            alpha=0.7,
+        ),
+        callback: Callable[[object], None] | None = None,
+        max_batch_size: int = 100_000,
+        use_gpu: bool = True,
+        **kwargs,
+    ):
         super().__init__(integrand, **kwargs)
         torch.set_default_dtype(torch.float64)
         torch.manual_seed(self.seed)
@@ -573,19 +576,23 @@ class MadnisIntegrator(Integrator):
         self.batch_size = batch_size
         self.discrete_dims_position = discrete_dims_position
 
+        from glnis.core import losses
         match loss_type.lower():
             case "variance":
                 loss = madnis_integrator.losses.stratified_variance
             case "variance_softclip":
-                loss = MadnisIntegrator.stratified_variance_softclip
+                loss = losses.stratified_variance_softclip
             case "kl_divergence":
                 loss = madnis_integrator.losses.kl_divergence
             case "kl_divergence_softclip":
-                loss = MadnisIntegrator.kl_divergence_softclip
+                loss = losses.kl_divergence_softclip
             case "test":
-                loss = MadnisIntegrator.test
+                loss = losses.test()
             case _:
                 loss = None
+
+        def loss_with_kwargs(*args, **kwargs):
+            return loss(*args, **kwargs, **loss_kwargs)
 
         madnis_integrand = madnis_integrator.Integrand(
             function=self._madnis_eval,
@@ -600,7 +607,7 @@ class MadnisIntegrator(Integrator):
             madnis_integrand,
             device=self.device,
             discrete_flow_kwargs=discrete_flow_kwargs,
-            loss=loss,
+            loss=loss_with_kwargs,
             batch_size=self.batch_size,
             discrete_model=discrete_model,
             learning_rate=learning_rate,
@@ -642,7 +649,7 @@ class MadnisIntegrator(Integrator):
     def train(self, nitn: int = 10, _=None):
         if self.use_scheduler:
             self.madnis.scheduler = self._get_scheduler(
-                nitn, self.scheduler_type)
+                self.madnis.step + nitn, self.scheduler_type)
         self.madnis.train(nitn, self.callback, True)
 
     def _get_samples(self, n_points: int) -> LayerData:
@@ -682,13 +689,13 @@ class MadnisIntegrator(Integrator):
             layer_input, 'training')
         weighted_func_val = accumulated_result.training_data.training_result[0].flatten()
 
-        # start = 0.3
-        # max_step = 1500
-        # flatten_early = False
-        # if flatten_early:
-        #     exponent = start + self.madnis.step * (1.0 - start) / max_step
-        #     exponent = min(exponent, 1.0)
-        #     np.power(np.abs(weighted_func_val), exponent, out=weighted_func_val)
+        start = 2.0
+        max_step = 1500
+        highlight_peaks = False
+        if highlight_peaks:
+            exponent = start + self.madnis.step * (1.0 - start) / max_step
+            exponent = max(exponent, 1.0)
+            np.power(np.abs(weighted_func_val), exponent, out=weighted_func_val)
 
         torch_output = torch.from_numpy(
             weighted_func_val.astype(np.float64)).to(self.device)
@@ -770,120 +777,6 @@ class MadnisIntegrator(Integrator):
     def _default_callback(status: madnis_integrator.TrainingStatus) -> None:
         if (status.step + 1) % 10 == 0:
             shell_print(f"Step {status.step+1}: Loss={status.loss} ")
-
-    @staticmethod
-    def softclip(x: torch.Tensor, threshold: torch.Tensor = 30.0):
-        return threshold * torch.arcsinh(x / threshold)
-
-    @staticmethod
-    def test(
-        f_true: torch.Tensor,
-        q_test: torch.Tensor,
-        q_sample: torch.Tensor | None = None,
-        channels: torch.Tensor | None = None,
-        threshold: torch.Tensor = 30.0,
-        sv_kl_ratio: torch.Tensor = 0.5,
-    ):
-        """
-        Args:
-            f_true: normalized integrand values
-            q_test: estimated function/probability
-            q_sample: sampling probability
-            channels: channel indices or None in the single-channel case
-            threshold: approximate point of transition between linear and logarithmic behavior
-        Returns:
-            computed stratified variance
-        """
-
-        return sv_kl_ratio*MadnisIntegrator.stratified_variance_softclip(
-            f_true=f_true,
-            q_test=q_test,
-            q_sample=q_sample,
-            channels=channels,
-            threshold=threshold,
-        ) + MadnisIntegrator.kl_divergence_softclip(
-            f_true=f_true,
-            q_test=q_test,
-            q_sample=q_sample,
-            channels=channels,
-            threshold=threshold,
-        )
-
-    @staticmethod
-    def stratified_variance_softclip(
-        f_true: torch.Tensor,
-        q_test: torch.Tensor,
-        q_sample: torch.Tensor | None = None,
-        channels: torch.Tensor | None = None,
-        threshold: torch.Tensor = 30.0,
-    ):
-        """
-        Computes the stratified variance as introduced in [2311.01548] for two given sets of
-        probabilities, ``f_true`` and ``q_test``. It uses importance sampling with a sampling
-        probability specified by ``q_sample``. A soft clipping function is applied to the
-        sample weights.
-
-        Args:
-            f_true: normalized integrand values
-            q_test: estimated function/probability
-            q_sample: sampling probability
-            channels: channel indices or None in the single-channel case
-            threshold: approximate point of transition between linear and logarithmic behavior
-        Returns:
-            computed stratified variance
-        """
-        if q_sample is None:
-            q_sample = q_test
-        if channels is None:
-            norm = torch.mean(f_true.detach().abs() / q_sample)
-            f_true = MadnisIntegrator.softclip(
-                f_true / q_sample / norm, threshold) * q_sample * norm
-            abs_integral = torch.mean(f_true.detach().abs() / q_sample)
-            return madnis_integrator.losses._variance(f_true, q_test, q_sample) / abs_integral.square()
-
-        stddev_sum = 0
-        abs_integral = 0
-        for i in channels.unique():
-            mask = channels == i
-            fi, qti, qsi = f_true[mask], q_test[mask], q_sample[mask]
-            norm = torch.mean(fi.detach().abs() / qsi)
-            fi = MadnisIntegrator.softclip(
-                fi / qsi / norm, threshold) * qsi * norm
-            stddev_sum += torch.sqrt(madnis_integrator.losses._variance(fi, qti,
-                                     qsi) + madnis_integrator.losses.dtype_epsilon(f_true))
-            abs_integral += torch.mean(fi.detach().abs() / qsi)
-        return (stddev_sum / abs_integral) ** 2
-
-    @staticmethod
-    @madnis_integrator.losses.multi_channel_loss
-    def kl_divergence_softclip(
-        f_true: torch.Tensor,
-        q_test: torch.Tensor,
-        q_sample: torch.Tensor,
-        threshold: torch.Tensor = 30.0,
-    ) -> torch.Tensor:
-        """
-        Computes the Kullback-Leibler divergence for two given sets of probabilities, ``f_true`` and
-        ``q_test``. It uses importance sampling, i.e. the estimator is divided by an additional factor
-        of ``q_sample``. A soft clipping function is applied to the sample weights.
-
-        Args:
-            f_true: normalized integrand values
-            q_test: estimated function/probability
-            q_sample: sampling probability
-            channels: channel indices or None in the single-channel case
-            threshold: approximate point of transition between linear and logarithmic behavior
-        Returns:
-            computed KL divergence
-        """
-        f_true = f_true.detach().abs()
-        weight = f_true / q_sample
-        weight /= weight.abs().mean()
-        clipped_weight = MadnisIntegrator.softclip(weight, threshold)
-        log_q = torch.log(q_test)
-        log_f = torch.log(clipped_weight * q_sample +
-                          madnis_integrator.losses.dtype_epsilon(f_true))
-        return torch.mean(clipped_weight * (log_f - log_q))
 
     def _export_state(self) -> 'MadnisIntegrator.MadnisState':
         flow_state = self.madnis.flow.state_dict()

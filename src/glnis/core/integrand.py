@@ -28,14 +28,14 @@ class Integrand(ABC):
     def __init__(self,
                  graph_properties: GraphProperties,
                  continuous_dim: int = 0,
-                 discrete_dims: List[int] = [],
+                 discrete_dims: List[int] = None,
                  use_f128: bool = False,
                  target: IntegrationResult | None = None,
                  training_phase: Literal['real', 'imag', 'abs'] = 'real',
                  **uncaught_kwargs):
         self.graph_properties = graph_properties
         self.continuous_dim = continuous_dim
-        self.discrete_dims = discrete_dims
+        self.discrete_dims = discrete_dims or []
         self.use_f128 = use_f128
         self.dtype = np.dtype(
             np.float128) if self.use_f128 else np.dtype(np.float64)

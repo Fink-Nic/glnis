@@ -1,16 +1,22 @@
 run_name = "sunrise_optimised_v2"
 templates = [
     "settings/vacuum_graphs/sunrise/sunrise_base",
-    "settings/templates/transformer/size2",
-    "settings/templates/flow/size5",
+    "settings/templates/transformer/size3",
+    "settings/templates/flow/size7",
 ]
 
 [integrator.madnis]
 # loss_type = "variance"
-loss_type = "kl_divergence"
+loss_type = "test"
 # scheduler_type = "linear"
 batch_size = 10_000
 learning_rate = 2e-3
+
+[integrator.madnis.loss_kwargs]
+type = "kl_divergence"
+T_max = 1000
+threshold = 0.0
+exponent = 2.0
 
 [integrator.madnis.flow_kwargs]
 bins = 10
@@ -23,14 +29,14 @@ parameterisation_type = "rkaapo"
 # chem potential [3.141592653589793, 3.141592653589793, 0.0]
 # no chem potential [0.0, 0.0, 0.0]
 mu = [3.141592653589793, 3.141592653589793, 0.0]
-a = 0.45
+a = 0.5
 b = 1.0
 
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"
 subtype = "fermi"
-ose_exponent = 6.0
-fermi_exponent = 2.0
+ose_exponent = 4.0
+fermi_exponent = 1.0
 
 # Parameters used in the tprog subcommand
 [scripts.training_prog]

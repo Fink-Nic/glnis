@@ -269,7 +269,7 @@ def run_hyperparam_comparison(
 
             if plot_slices:
                 before_slices = perf_counter()
-                slice_dir = Path(directory, comp_name, block_name)
+                slice_dir = Path(directory, comp_name.replace(" ", "_"), block_name.replace(" ", "_"))
                 if not slice_dir.exists():
                     slice_dir.mkdir(parents=True)
                 run_slice_plots(
@@ -280,8 +280,6 @@ def run_hyperparam_comparison(
                     subroutine='hpcomp_slice_plots',
                 )
                 slice_time = perf_counter() - before_slices
-                shell_print(
-                    f"Finished slice plots for comparison '{comp_name}' and block '{block_name}' in {slice_time:.2f} seconds.")
 
             Data.add_result(
                 comp_name, block_name,
@@ -293,6 +291,9 @@ def run_hyperparam_comparison(
 
             shell_print(hline)
             shell_print(hline)
+            if plot_slices:
+                shell_print(
+                    f"Finished slice plots for comparison '{comp_name}' and block '{block_name}' in {slice_time:.2f} seconds.")
             shell_print(f"Finished comparison '{comp_name}' and block '{block_name}' in {run_time:.2f} seconds.")
             if fd_after_run is not None:
                 delta = fd_after_run - (fd_before if fd_before is not None else fd_after_run)

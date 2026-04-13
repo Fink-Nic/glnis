@@ -8,6 +8,7 @@ def main() -> None:
     from glnis.scripts.slice_plots import run_slice_plots
     from glnis.scripts.multiprocessing_efficiency import run_multiprocessing_efficiency
     from glnis.scripts.hyperparam_comparison import run_hyperparam_comparison
+    from glnis.scripts.generate_thermal_integrand_evaluators import run_generate_thermal_integrand_evaluators
 
     parser = argparse.ArgumentParser(prog="glnis")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -80,6 +81,10 @@ def main() -> None:
     hp_comp.add_argument('--no_plot', action='store_true', default=False,
                          help="Enable this flag to not output the plot file(s).")
 
+    gen_ti_examples = subparsers.add_parser("genti")
+    gen_ti_examples.add_argument('--force_rebuild', action='store_true', default=False,
+                                 help="Force rebuilding of the thermal integrand evaluators.")
+
     args = parser.parse_args()
 
     match args.command:
@@ -115,5 +120,7 @@ def main() -> None:
                                       comment=args.comment,
                                       no_output=args.no_output,
                                       no_plot=args.no_plot,)
+        case "genti":
+            run_generate_thermal_integrand_evaluators(force_rebuild=args.force_rebuild,)
         case _:
             raise ValueError(f"Unknown command {args.command}")

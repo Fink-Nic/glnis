@@ -14,11 +14,11 @@ class SamplerCompData:
                  integrator_identifiers: List[str],
                  graph_properties: GraphProperties,
                  target: IntegrationResult,
-                 settings: Dict[str, Any] = dict(),
-                 madnis_kwargs: Dict[str, Any] = dict(),
-                 madnis_info: Dict[str, Any] = dict(),
-                 integrand_kwargs: Dict[str, Any] = dict(),
-                 param_kwargs: Dict[str, Any] = dict(),) -> None:
+                 settings: Dict[str, Any] = None,
+                 madnis_kwargs: Dict[str, Any] = None,
+                 madnis_info: Dict[str, Any] = None,
+                 integrand_kwargs: Dict[str, Any] = None,
+                 param_kwargs: Dict[str, Any] = None,) -> None:
         self.result: Dict[str, IntegrationResult] = dict()
         self.observables: Dict[str, Dict[str, Any]] = dict()
         for name in integrator_identifiers:
@@ -26,11 +26,11 @@ class SamplerCompData:
             self.observables[name] = dict()
         self.graph_properties = graph_properties
         self.target = target
-        self.settings: Dict[str, Any] = settings
-        self.madnis_info: Dict[str, Any] = madnis_info
-        self.madnis_kwargs: Dict[str, Any] = madnis_kwargs
-        self.integrand_kwargs: Dict[str, Any] = integrand_kwargs
-        self.param_kwargs: Dict[str, Any] = param_kwargs
+        self.settings: Dict[str, Any] = settings or dict()
+        self.madnis_info: Dict[str, Any] = madnis_info or dict()
+        self.madnis_kwargs: Dict[str, Any] = madnis_kwargs or dict()
+        self.integrand_kwargs: Dict[str, Any] = integrand_kwargs or dict()
+        self.param_kwargs: Dict[str, Any] = param_kwargs or dict()
         self.plottables: SamplerCompData.Plottables = self.Plottables()
         self.integrator_states: Dict[str, Any] = dict()
         for name in integrator_identifiers:
@@ -74,7 +74,6 @@ def run_sampler_comp(
         plot_sampler_comp(file, comment)
         quit()
 
-    import os
     import signal
     import gc
     from time import time
@@ -124,8 +123,8 @@ def run_sampler_comp(
             PROJECT_ROOT = Path(__file__).parents[3]
             OUTPUT_DIR = "outputs"
             directory = Path(PROJECT_ROOT, OUTPUT_DIR, Settings.settings['run_name'].replace(" ", "_"), subroutine)
-            if not os.path.exists(str(directory)):
-                os.makedirs(str(directory))
+            if not directory.exists():
+                directory.mkdir(parents=True, exist_ok=True)
                 shell_print(f"Created output folder at {directory}")
             shell_print(f"Output will be at {directory}")
 

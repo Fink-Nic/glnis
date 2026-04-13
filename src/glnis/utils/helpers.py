@@ -89,11 +89,12 @@ def chunks(ary: Sequence, n_chunks: int) -> Iterable[Sequence]:
 
 
 def overwrite_settings(orig_dict: Dict[str, Any], new_dict: Dict[str, Any],
-                       always_overwrite: List[str] = [],
+                       always_overwrite: List[str] = None,
                        ) -> Dict[str, Any]:
     """
     Used to Overwrite the default settings with the specified settings file.
     """
+    always_overwrite = always_overwrite or []
     if "overwrite" in new_dict:
         orig_dict["overwrite"] = new_dict["overwrite"]
         overwrite = new_dict["overwrite"]
