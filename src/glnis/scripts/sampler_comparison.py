@@ -1,4 +1,6 @@
 # type: ignore
+import numpy as np
+from numpy.typing import NDArray
 from typing import Dict, List, Any
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -54,6 +56,9 @@ class SamplerCompData:
         steps_snapshot: List[int] = field(default_factory=list)
         means: List[float] = field(default_factory=list)
         errors: List[float] = field(default_factory=list)
+        steps_discrete: List[int] = field(default_factory=list)
+        all_channels: NDArray = field(default_factory=lambda: np.array([]))
+        discrete_probs: List[NDArray] = field(default_factory=list)
 
 
 def run_sampler_comp(
@@ -76,8 +81,8 @@ def run_sampler_comp(
 
     import signal
     import gc
+    import torch
     from time import time
-    from torch import save
 
     from glnis.core.integrator import (
         Integrator,
@@ -114,6 +119,8 @@ def run_sampler_comp(
         n_log = params.get("n_log", 10)
         n_plot_rsd = params.get("n_plot_rsd", 100)
         n_plot_loss = params.get("n_plot_loss", 2)
+        plot_disc = params.get("plot_disc", True)
+        n_plot_disc = params.get("n_plot_disc", 10)
         n_samples = params.get("n_samples", 10_000)
         n_samples_after_training = params.get("n_samples_after_training", 100_000)
         nitn = params.get('nitn', 10)  # number of vegas/havana training iterations
@@ -128,7 +135,58 @@ def run_sampler_comp(
                 shell_print(f"Created output folder at {directory}")
             shell_print(f"Output will be at {directory}")
 
+        time_last = time()
+        Settings.settings["layered_integrator"]["integrator_type"] = "madnis"
+        madnis_kwargs = Settings.get_integrator_kwargs()
+        integrand_kwargs = Settings.get_integrand_kwargs()
+        param_kwargs = Settings.get_parameterisation_kwargs()
+        madnis_integrator: MadnisIntegrator = Integrator.from_settings(
+            Settings.settings
+        )
+        integrators["MadNIS"] = madnis_integrator
+
+        # Will hold integration results to write to text file and plot
+        Data = SamplerCompData(integrator_identifiers=list(integrators.keys()),
+                               graph_properties=madnis_integrator.integrand.graph_properties,
+                               target=madnis_integrator.integrand.target,
+                               settings=Settings.settings,
+                               madnis_kwargs=madnis_kwargs,
+                               madnis_info=madnis_integrator.get_info(),
+                               integrand_kwargs=integrand_kwargs,
+                               param_kwargs=param_kwargs,)
+
         # Callback for the madnis integrator
+        if len(madnis_integrator.integrand.discrete_dims) > 0:
+            n_tot_ch = 1
+            for dim in madnis_integrator.integrand.discrete_dims:
+                n_tot_ch *= dim
+            plot_disc = n_tot_ch <= 10000 and plot_disc
+        if plot_disc:
+            Data.plottables.all_channels = np.array(
+                np.meshgrid(*[range(dim) for dim in madnis_integrator.integrand.discrete_dims])
+            ).T.reshape(-1, len(madnis_integrator.integrand.discrete_dims))
+
+        def add_snapshot(step: int) -> None:
+            acc: DefaultAccumulator = madnis_integrator.integrate(n_samples, progress_report=False)
+            obs = acc.get_observables()
+            phase = madnis_integrator.integrand.training_phase.lower()
+            Data.plottables.means.append(obs[f"{phase}_central_value"])
+            Data.plottables.errors.append(obs[f"{phase}_error"])
+            Data.plottables.rsds.append(obs[f"{phase}_rsd"])
+            Data.plottables.tvars.append(obs[f"{phase}_tvar"])
+            Data.plottables.abs_tvars.append(obs[f"abs_{phase}_tvar"])
+            Data.plottables.steps_snapshot.append(step)
+            shell_print(f"Trained Result after {step} steps of {madnis_integrator.batch_size}:")
+            shell_print(acc.str_report())
+
+        def add_disc_prob_snapshot(step: int) -> None:
+            Data.plottables.steps_discrete.append(step)
+            with torch.no_grad():
+                disc_prob = madnis_integrator.madnis.flow.discrete_flow.prob(
+                    torch.tensor(Data.plottables.all_channels, device=madnis_integrator.device)
+                )
+            Data.plottables.discrete_probs.append(disc_prob.numpy(force=True))
+
         def callback(status: TrainingStatus) -> None:
             step = status.step + 1
             if step % n_log == 0:
@@ -139,27 +197,10 @@ def run_sampler_comp(
                 Data.plottables.losses.append(status.loss)
                 Data.plottables.steps_losses.append(step)
             if step % n_plot_rsd == 0:
-                acc = madnis_integrator.integrate(n_samples, progress_report=False)
-                obs = acc.get_observables()
-                phase = madnis_integrator.integrand.training_phase.lower()
-                Data.plottables.means.append(obs[f"{phase}_central_value"])
-                Data.plottables.errors.append(obs[f"{phase}_error"])
-                Data.plottables.rsds.append(obs[f"{phase}_rsd"])
-                Data.plottables.tvars.append(obs[f"{phase}_tvar"])
-                Data.plottables.abs_tvars.append(obs[f"abs_{phase}_tvar"])
-                Data.plottables.steps_snapshot.append(step)
-                shell_print(f"Trained Result after {step} steps of {madnis_integrator.batch_size}:")
-                shell_print(acc.statistics.str_report())
+                add_snapshot(step)
+            if step % n_plot_disc == 0 and plot_disc:
+                add_disc_prob_snapshot(step)
 
-        time_last = time()
-        Settings.settings["layered_integrator"]["integrator_type"] = "madnis"
-        madnis_kwargs = Settings.get_integrator_kwargs()
-        integrand_kwargs = Settings.get_integrand_kwargs()
-        param_kwargs = Settings.get_parameterisation_kwargs()
-        madnis_integrator: MadnisIntegrator = Integrator.from_settings(
-            Settings.settings
-        )
-        integrators["MadNIS"] = madnis_integrator
         madnis_integrator.callback = callback
         n_total_training_samples = n_training_steps * madnis_kwargs["batch_size"]
         neval = int(n_total_training_samples / nitn)
@@ -174,21 +215,16 @@ def run_sampler_comp(
             Settings.settings["layered_integrator"]["integrator_type"] = "havana"
             integrators["Havana"] = HavanaIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
 
-        # Will hold integration results to write to text file and plot
-        Data = SamplerCompData(integrator_identifiers=list(integrators.keys()),
-                               graph_properties=madnis_integrator.integrand.graph_properties,
-                               target=madnis_integrator.integrand.target,
-                               settings=Settings.settings,
-                               madnis_kwargs=madnis_kwargs,
-                               madnis_info=madnis_integrator.get_info(),
-                               integrand_kwargs=integrand_kwargs,
-                               param_kwargs=param_kwargs,)
-
         shell_print(
             f"""Initializing the Integrand and Integrators took {
                 -time_last + (time_last := time()):.2f}s"""
         )
         madnis_integrator.display_info()
+
+        shell_print("Taking preliminary MadNIS snapshot...")
+        add_snapshot(0)
+        if plot_disc:
+            add_disc_prob_snapshot(0)
 
         # Training all the integrators
         if not no_vegas:
@@ -225,7 +261,7 @@ def run_sampler_comp(
         filename = run_name + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
         file: Path = Path(directory, filename)
         with file.open("wb") as f:
-            save(Data, f)
+            torch.save(Data, f)
 
         if not no_plot:
             plot_sampler_comp(file, comment)
@@ -244,13 +280,12 @@ def run_sampler_comp(
 
 def plot_sampler_comp(file: str, comment: str = "") -> None:
     import matplotlib.pyplot as plt
-    import numpy as np
-    from numpy.typing import NDArray
-    from torch import load
+    import matplotlib.colors as colors
+    from torch import load as torch_load
 
     file: Path = verify_path(file, suffix=".pkl")
     with file.open('rb') as f:
-        Data: SamplerCompData = load(f, weights_only=False)
+        Data: SamplerCompData = torch_load(f, weights_only=False)
         if not isinstance(Data, SamplerCompData):
             raise ValueError(f"Expected a SamplerCompData object in the file, but got {type(Data)}")
 
@@ -311,6 +346,8 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
     losses, steps_losses = np.array(Data.plottables.losses), np.array(Data.plottables.steps_losses)
     rsds, steps_snapshot = np.array(Data.plottables.rsds), np.array(Data.plottables.steps_snapshot)
     tvars, atvars = np.array(Data.plottables.tvars), np.array(Data.plottables.abs_tvars)
+    discrete_probs = np.array(Data.plottables.discrete_probs) if len(Data.plottables.discrete_probs) else None
+    steps_discrete = np.array(Data.plottables.steps_discrete)
 
     if len(steps_losses) and len(steps_snapshot):
         fig, axs = plt.subplots(4, 1, sharex=True, layout="constrained",
@@ -387,4 +424,35 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
         fig.suptitle(f"Integration results for {Data.settings['run_name']}")
         fig.savefig(
             Path(directory, filename + "_integration_result.png"), dpi=300, bbox_inches="tight"
+        )
+
+    if discrete_probs is not None:
+        n_show = 3
+        sorted_indices = np.argsort(discrete_probs[-1])[::-1]
+        if sorted_indices.size > 2*n_show:
+            show_indices = sorted_indices[np.r_[0:n_show, -n_show:0]]
+        else:
+            show_indices = sorted_indices
+        show_probs = discrete_probs.T[show_indices]
+        show_channels = Data.plottables.all_channels[show_indices]
+
+        channel_labels = [" ".join(str(digit) for digit in ch) for ch in show_channels]
+        cmap = colors.LinearSegmentedColormap.from_list(
+            "core_scaling",
+            ["#2b83ba", "#5ab4ac", "#abdda4", "#fdae61", "#d7191c"],
+        )
+        cols = [
+            colors.to_hex(cmap(t))
+            for t in np.linspace(0.0, 1.0, len(channel_labels), endpoint=True)
+        ]
+
+        fig, ax = plt.subplots(figsize=(6, 4), layout="constrained")
+        for label, probs, col in zip(channel_labels, show_probs, cols):
+            ax.plot(steps_discrete, probs, label=label, color=col)
+        ax.set_xlabel("Training steps")
+        ax.set_ylabel("p")
+        ax.set_title(f"Discrete channel prob progression for {Data.settings['run_name']}")
+        ax.legend()
+        plt.savefig(
+            Path(directory, filename + "_discrete_probs.png"), dpi=300, bbox_inches="tight"
         )

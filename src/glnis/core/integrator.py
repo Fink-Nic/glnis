@@ -519,7 +519,7 @@ class MadnisIntegrator(Integrator):
         scheduler_kwargs: Dict[str, Any] = dict(),
         loss_type: Literal["test", "variance", "variance_softclip",
                            "kl_divergence", "kl_divergence_softclip"] = "kl_divergence",
-        loss_kwargs: Dict[str, Any],
+        loss_kwargs: Dict[str, Any] = dict(),
         discrete_dims_position: Literal["first", "last"] = "first",
         discrete_model: Literal["transformer",
                                 "made"] = "transformer",

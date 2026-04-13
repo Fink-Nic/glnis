@@ -1,5 +1,5 @@
 # type:ignore
-from typing import Any
+from typing import Any, Literal
 
 import madnis.integrator as madnis_integrator
 import torch
@@ -31,15 +31,15 @@ class test:
             case "variance":
                 if threshold > 0.0:
                     return stratified_variance_softclip(
-                        f_true.exp(exp), q_test, q_sample, channels, threshold)
+                        f_true.abs()**exp, q_test, q_sample, channels, threshold)
                 return madnis_integrator.losses.stratified_variance(
-                    f_true.exp(exp), q_test, q_sample, channels)
+                    f_true.abs()**exp, q_test, q_sample, channels)
             case "kl_divergence":
                 if threshold > 0.0:
                     return kl_divergence_softclip(
-                        f_true.exp(exp), q_test, q_sample, channels, threshold)
+                        f_true.abs()**exp, q_test, q_sample, channels, threshold)
                 return madnis_integrator.losses.kl_divergence(
-                    f_true.exp(exp), q_test, q_sample, channels)
+                    f_true.abs()**exp, q_test, q_sample, channels)
             case _:
                 raise ValueError(f"Unknown type: {type}")
 

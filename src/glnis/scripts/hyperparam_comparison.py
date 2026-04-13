@@ -81,7 +81,7 @@ class OLDHParamCompData:
     def to_run_data(
             self, comp_name: str, block_name: str, additional_params: Dict[str, Any],
             result: SamplerCompData) -> RunData:
-        madnis_observables = list(result.observables.values())[0] if result.observables else IntegrationResult()
+        observables = list(result.observables.values())[0] if result.observables else IntegrationResult()
         return RunData(
             comp_name=comp_name,
             block_name=block_name,
@@ -89,7 +89,7 @@ class OLDHParamCompData:
             madnis_info=result.madnis_info,
             plottables=result.plottables,
             target=result.target,
-            observables=madnis_observables,
+            observables=observables,
             run_time=additional_params.get('run_time', 0.0)
         )
 
@@ -486,6 +486,47 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
         plt.close(fig1)
         plt.close(fig2)
         plt.close(fig3)
+        blocks_with_disc_evolution = [
+            block_name for block_name in blocks if len(blocks[block_name].plottables.discrete_probs) > 0
+        ]
+        n_d = len(blocks_with_disc_evolution)
+        if n_d > 0:
+            fig_disc, axs_disc = plt.subplots(
+                n_d, 1, sharex=True, layout="constrained", figsize=(8, 1.5*n_d+0.3))
+            axs_disc: List[plt.Axes]
+            for i in range(n_d):
+                n_show = 3
+                block_name = blocks_with_disc_evolution[i]
+                plottables = blocks[block_name].plottables
+                discrete_probs = np.array(plottables.discrete_probs)
+                steps_discrete = np.array(plottables.steps_discrete)
+                sorted_indices = np.argsort(discrete_probs[-1])[::-1]
+                if sorted_indices.size > 2*n_show:
+                    show_indices = sorted_indices[np.r_[0:n_show, -n_show:0]]
+                else:
+                    show_indices = sorted_indices
+                show_probs = discrete_probs.T[show_indices]
+                show_channels = plottables.all_channels[show_indices]
+
+                channel_labels = [" ".join(str(digit) for digit in ch) for ch in show_channels]
+                cmap = colors.LinearSegmentedColormap.from_list(
+                    "core_scaling",
+                    ["#2b83ba", "#5ab4ac", "#abdda4", "#fdae61", "#d7191c"],
+                )
+                cols = [
+                    colors.to_hex(cmap(t))
+                    for t in np.linspace(0.0, 1.0, len(channel_labels), endpoint=True)
+                ]
+
+                for label, probs, col in zip(channel_labels, show_probs, cols):
+                    axs_disc[i].plot(steps_discrete, probs, label=label, color=col)
+                axs_disc[i].set_ylabel(f"{block_name}")
+                axs_disc[i].legend()
+            axs_disc[-1].set_xlabel("Training steps")
+            fig_disc.suptitle(f"Discrete channel prob progression for {comp_name}")
+            fig_disc.savefig(
+                Path(subdirectory, filename + "_discrete_probs.png"), dpi=300, bbox_inches="tight"
+            )
         shell_print(f"Finished plotting comparison '{comp_name}'. Plots saved to '{subdirectory}'.")
 
     all_rsds = []

@@ -1,46 +1,50 @@
-run_name = "sunrise_optimised_v2"
+run_name = "sunrise_summed"
 templates = [
     "settings/vacuum_graphs/sunrise/sunrise_base",
     "settings/templates/transformer/size3",
-    "settings/templates/flow/size7",
+    "settings/templates/flow/size9",
+    "settings/templates/madnis_bins/size2",
 ]
+
+[layered_integrand]
+sum_channels = true
 
 [integrator.madnis]
 # loss_type = "variance"
-loss_type = "test"
+loss_type = "kl_divergence"
 # scheduler_type = "linear"
 batch_size = 10_000
-learning_rate = 2e-3
+learning_rate = 1e-3
 
-[integrator.madnis.loss_kwargs]
-type = "kl_divergence"
-T_max = 1000
-threshold = 0.0
-exponent = 2.0
+# [integrator.madnis.loss_kwargs]
+# type = "kl_divergence"
+# T_max = 1000
+# threshold = 0.0
+# exponent = 0.2
 
 [integrator.madnis.flow_kwargs]
 bins = 10
-min_bin_width = 5e-3
-min_bin_height = 1e-5
-min_bin_derivative = 1e-6
+min_bin_width = 2e-3
+min_bin_height = 1e-6
+min_bin_derivative = 1e-8
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "rkaapo"
 # chem potential [3.141592653589793, 3.141592653589793, 0.0]
 # no chem potential [0.0, 0.0, 0.0]
 mu = [3.141592653589793, 3.141592653589793, 0.0]
-a = 0.5
+a = 0.9
 b = 1.0
 
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"
 subtype = "fermi"
-ose_exponent = 4.0
-fermi_exponent = 1.0
+ose_exponent = 5.0
+fermi_exponent = 0.8
 
 # Parameters used in the tprog subcommand
-[scripts.training_prog]
-n_training_steps = 2000
+[scripts.sampler_comp]
+n_training_steps = 500
 n_samples = 1_000_000
 nitn = 10
 # Number of samples drawn after the training to compute the final result
@@ -52,3 +56,28 @@ n_log = 20
 n_plot_rsd = 100
 # Training steps between plotting the loss
 n_plot_loss = 2
+
+[[scripts.slice_plots.slice]]
+origin = [0.85857426, 0.84049926, 0.9980109]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.85857426, 0.84049926, 0.9980109]
+dirs = [0, 2]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.85857426, 0.84049926, 0.9980109]
+dirs = [1, 2]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.22636934, 0.85333083, 0.80928787]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+]

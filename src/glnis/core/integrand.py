@@ -1,5 +1,5 @@
 # type: ignore
-import os
+import warnings
 import math
 import numpy as np
 import multiprocessing as mp
@@ -49,9 +49,7 @@ class Integrand(ABC):
     def evaluate_batch(self, layer_input: LayerData) -> LayerData:
         n_failed = layer_input.n_points - layer_input.success.sum()
         if n_failed > 0:
-            shell_print(f"CRITICAL WARNING: {n_failed} failed points detected in integrand evaluation.")
-            shell_print(
-                f"Evaluating {self.IDENTIFIER.upper()} with {layer_input.n_points - n_failed} successfull points.")
+            warnings.warn(f"{n_failed} failed points detected in integrand evaluation.", RuntimeWarning)
             f = np.zeros(layer_input.n_points, dtype=np.complex128)
             f[layer_input.success.ravel()] = self._evaluate_batch(
                 layer_input.momenta[layer_input.success.ravel()],
@@ -274,18 +272,19 @@ class ParameterisedIntegrand:
                  graph_properties: GraphProperties,
                  param_kwargs: List[Dict[str, Any]],
                  integrand_kwargs: Dict[str, Any],
-                 condition_integrand_first: bool = False,
                  verbose: bool = False,
                  **kwargs):
         self.graph_properties = graph_properties
         self.param_kwargs = param_kwargs
         self.integrand_kwargs = integrand_kwargs
-        self.condition_integrand_first = condition_integrand_first
+        self.condition_integrand_first = integrand_kwargs.pop('condition_integrand_first', False)
+        self.sum_channels = integrand_kwargs.get('sum_channels', False)
         self.verbose = verbose
 
         self.param = LayeredParameterisation(
             self.graph_properties, self.param_kwargs)
         self.integrand = Integrand.get_integrand_instance(graph_properties, self.integrand_kwargs)
+        self.sum_channels = self.sum_channels and len(self.param.discrete_dims) == 1
         self.dtype = self.integrand.dtype
         self.continuous_dim = self._get_continuous_dims()
         self.discrete_dims = self._get_discrete_dims()
@@ -296,24 +295,41 @@ class ParameterisedIntegrand:
     def eval_integrand(self, layer_input: LayerData,
                        acc_type: Literal['default', 'training'] = 'default') -> Accumulator:
         untouched_discrete = layer_input.discrete
-        pass_disc_to_integrand = np.zeros(
-            (layer_input.n_points, 0), dtype=np.uint64)
-        if self.condition_integrand_first:
-            n_disc_integrand = len(self.integrand.discrete_dims)
-            pass_disc_to_integrand = layer_input.discrete[:, :n_disc_integrand]
-            layer_input.discrete = layer_input.discrete[:, n_disc_integrand:]
+        if self.sum_channels:
+            if len(self.param.discrete_dims) != 1:
+                raise ValueError(
+                    "sum_channels is only supported for a single discrete dimension in the parameterisation.")
+            func_val = np.zeros((layer_input.n_points, 1), dtype=np.complex128)
+            for ch in range(self.param.discrete_dims[0]):
+                channels = np.full((layer_input.n_points, 1), ch, dtype=np.uint64)
+                jac, mom, _ = self.param.param._layer_parameterise(layer_input.continuous, channels)
+                layer_input.jac, layer_input.momenta = jac, mom
+                layer_input.update(self.param.IDENTIFIER)
+                integration_result = self.integrand.evaluate_batch(layer_input)
+                func_val += integration_result.func_val * integration_result.jac
+            layer_input.func_val = func_val
+            layer_input.jac = np.ones_like(func_val, dtype=self.dtype)
             layer_input.update('processing')
-        parameterised = self.param.parameterise(layer_input)
-        if self.condition_integrand_first:
-            parameterised.discrete = np.hstack(
-                [parameterised.discrete, pass_disc_to_integrand])
-            parameterised.update('processing')
-        integration_result = self.integrand.evaluate_batch(parameterised)
+            integration_result = layer_input
+        else:
+            pass_disc_to_integrand = np.zeros(
+                (layer_input.n_points, 0), dtype=np.uint64)
+            if self.condition_integrand_first:
+                n_disc_integrand = len(self.integrand.discrete_dims)
+                pass_disc_to_integrand = layer_input.discrete[:, :n_disc_integrand]
+                layer_input.discrete = layer_input.discrete[:, n_disc_integrand:]
+                layer_input.update('processing')
+            parameterised = self.param.parameterise(layer_input)
+            if self.condition_integrand_first:
+                parameterised.discrete = np.hstack(
+                    [parameterised.discrete, pass_disc_to_integrand])
+                parameterised.update('processing')
+            integration_result = self.integrand.evaluate_batch(parameterised)
+            integration_result.discrete = untouched_discrete
+            integration_result.update('processing')
         acc_kwargs = dict(
             target=self.integrand.target,
             training_phase=self.integrand.training_phase,)
-        integration_result.discrete = untouched_discrete
-        integration_result.update('processing')
         accumulator = integration_result.accumulate(acc_type, **acc_kwargs)
 
         if self.verbose:
@@ -322,6 +338,9 @@ class ParameterisedIntegrand:
         return accumulator
 
     def discrete_prior_prob_function(self, indices: NDArray, dim: int = 0) -> NDArray:
+        if self.sum_channels:
+            return self.integrand.discrete_prior_prob_function(indices, dim)
+
         if self.condition_integrand_first:
             n_dim = len(self.integrand.discrete_dims)
             prior1: Callable = self.integrand.discrete_prior_prob_function
@@ -340,6 +359,9 @@ class ParameterisedIntegrand:
         return prior2(indices, dim)
 
     def _get_discrete_dims(self) -> List[int]:
+        if self.sum_channels:
+            return self.integrand.discrete_dims
+
         if self.condition_integrand_first:
             return self.integrand.discrete_dims + self.param.discrete_dims
 
@@ -365,7 +387,6 @@ class MPIntegrand(ParameterisedIntegrand):
                  graph_properties: GraphProperties,
                  param_kwargs: List[Dict[str, Any]],
                  integrand_kwargs: Dict[str, Any],
-                 condition_integrand_first: bool = False,
                  n_cores: int = 1,
                  n_shards: int = 32,
                  verbose: bool = False,
@@ -378,12 +399,15 @@ class MPIntegrand(ParameterisedIntegrand):
         self.q_in = [ctx.Queue() for _ in range(n_shards)]
         self.q_out = [ctx.Queue() for _ in range(n_shards)]
         self.stop_event = ctx.Event()
+        super().__init__(graph_properties,
+                         param_kwargs,
+                         integrand_kwargs,
+                         verbose, **kwargs)
         worker_args = (
             self.stop_event,
             graph_properties,
             param_kwargs,
             integrand_kwargs,
-            condition_integrand_first,
         )
         self.workers = [
             ctx.Process(
@@ -393,11 +417,6 @@ class MPIntegrand(ParameterisedIntegrand):
         ]
         for w in self.workers:
             w.start()
-        super().__init__(graph_properties,
-                         param_kwargs,
-                         integrand_kwargs,
-                         condition_integrand_first,
-                         verbose, **kwargs)
         for w_id in range(self.n_cores):
             output = self.q_out[w_id % n_shards].get()
             if output == 'STARTED':
@@ -412,13 +431,11 @@ class MPIntegrand(ParameterisedIntegrand):
                           stop_event,
                           graph_properties: GraphProperties,
                           param_kwargs: List[Dict[str, Any]],
-                          integrand_kwargs: Dict[str, Any],
-                          condition_integrand_first: bool,) -> None:
+                          integrand_kwargs: Dict[str, Any],) -> None:
         integrand = ParameterisedIntegrand(
             graph_properties,
             param_kwargs,
             integrand_kwargs,
-            condition_integrand_first,
         )
         q_in, q_out = queues
         q_out.put('STARTED')

@@ -1,16 +1,11 @@
 run_name = "mercedes_optimised"
 templates = [
     "settings/vacuum_graphs/mercedes/mercedes_base",
+    "settings/vacuum_graphs/mercedes/mercedes_optimised",
     "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size3",
 ]
 
-[scripts.sampler_comp]
-n_training_steps = 1000
-n_samples = 1000000
-n_samples_after_training = 10000000
-n_log = 20
-n_plot_rsd = 100
-n_plot_loss = 2
-n_itn = 10
+[layered_integrand]
+sum_channels = true

@@ -247,6 +247,8 @@ n_samples_after_training = 10000000
 n_log = 100
 n_plot_rsd = 50
 n_plot_loss = 2
+plot_disc = true
+n_plot_disc = 2
 
 [[scripts.hpcomp_slice_plots.slice]]
 origin = [0.44341431, 0.22723927, 0.55458468]
