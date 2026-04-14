@@ -114,11 +114,11 @@ min_bin_derivative = 1e-3
 [integrand.gammaloop]
 # Can set a state manually here, else will use settings from [gammaloop_state]
 gammaloop_state_path = "from_state"
-process_id = 0
-integrand_name = "default"
+run_commands = ""
 momentum_space = true
-sample_orientations = false
 use_arb_prec = false
+minimal_output = true
+read_only_state = true
 
 [integrand.test]
 sigma = 10.0
@@ -171,6 +171,7 @@ a = 0.5
 b = 1.0
 vary_a = false
 a_min = 0.2
+shift_angles = 0.0
 
 [parameterisation.rkaapo]
 mu = [3.141592653589793, 3.141592653589793, 0.0]
@@ -178,6 +179,7 @@ a = 0.5
 b = 1.0
 vary_a = false
 a_min = 0.2
+shift_angles = 0.0
 
 [parameterisation.mc_layer]
 # Choose from 'ose' and 'fermi', for euclidean-propagator-like terms and fermi surface terms, respectively
@@ -195,6 +197,12 @@ set_bosonic_edge_to_one = true
 overwrite_edge_weight = false
 # If false, the integrator will not attempt to learn the discrete inputs
 sample_discrete = true
+mask_redundant = true
+
+[parameterisation.s]
+exponent = 2.0
+
+[parameterisation.identity]
 
 [graph]
 # If true, will attempt to get the dot graph from the gammaloop state

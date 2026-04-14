@@ -1,4 +1,4 @@
-run_name = "mercedes_optimised"
+run_name = "mercedes_optimised_nos"
 templates = [
     "settings/vacuum_graphs/mercedes/mercedes_base",
     "settings/templates/flow/size9",
@@ -19,13 +19,6 @@ parameterisation_type = "mc_layer"
 subtype = "fermi"
 ose_exponent = 5.0
 fermi_exponent = 0.5
-
-[layered_parameterisation.layer_2]
-parameterisation_type = "s"
-exponent = 1.25
-
-[parameterisation.s]
-exponent = 2.0
 
 [layered_integrand]
 integrand_type = "kaapo"

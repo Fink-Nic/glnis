@@ -132,9 +132,11 @@ class GammaLoopIntegrand(Integrand):
 
     def __init__(self,
                  gammaloop_state_path: str,
+                 run_commands: str | List[str] = "",
                  momentum_space: bool = True,
                  use_arb_prec: bool = False,
                  minimal_output: bool = True,
+                 read_only_state: bool = True,
                  **kwargs):
         try:
             from gammaloop import GammaLoopAPI
@@ -145,7 +147,12 @@ class GammaLoopIntegrand(Integrand):
         self.use_arb_prec = use_arb_prec
         self.minimal_output = minimal_output
 
-        self.gammaloop_state = GammaLoopAPI(gammaloop_state_path, read_only_state=True)
+        self.gammaloop_state = GammaLoopAPI(gammaloop_state_path, read_only_state=read_only_state)
+        if run_commands:
+            if isinstance(run_commands, str):
+                run_commands = [run_commands]
+            for cmd in run_commands:
+                self.gammaloop_state.run(cmd)
         state_info = self.gammaloop_state.get_integrand_info()
         self.process_id = state_info.process_id
         self.integrand_name = state_info.integrand_name

@@ -377,7 +377,7 @@ class SettingsParser:
         kwargs_list = []
         for new_kwargs in nested_kwargs.values():
             param_type = new_kwargs['parameterisation_type']
-            old_kwargs = self.settings['parameterisation'][param_type]
+            old_kwargs = self.settings['parameterisation'].get(param_type, {})
             # old_kwargs['parameterisation_type'] = param_type
             kwargs_list.append(overwrite_settings(old_kwargs, new_kwargs))
 
@@ -386,15 +386,13 @@ class SettingsParser:
     def get_integrand_kwargs(self) -> Dict[str, Any]:
         new_kwargs = self.settings['layered_integrand']
         new_kwargs['target'] = self.get_integration_target()
-        old_kwargs = deepcopy(
-            self.settings['integrand'][new_kwargs['integrand_type']])
+        old_kwargs = deepcopy(self.settings['integrand'].get(new_kwargs['integrand_type'], {}))
 
         return overwrite_settings(old_kwargs, new_kwargs)
 
     def get_integrator_kwargs(self) -> Dict[str, Any]:
         new_kwargs = self.settings['layered_integrator']
-        old_kwargs = deepcopy(
-            self.settings['integrator'][new_kwargs['integrator_type']])
+        old_kwargs = deepcopy(self.settings['integrator'].get(new_kwargs['integrator_type'], {}))
 
         return overwrite_settings(old_kwargs, new_kwargs)
 

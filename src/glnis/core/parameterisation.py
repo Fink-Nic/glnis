@@ -276,6 +276,10 @@ class LayeredParameterisation:
                     p = KaapoParameterisation(**kwargs)
                 case "rkaapo":
                     p = RKaapoParameterisation(**kwargs)
+                case "s":
+                    p = SParameterisation(**kwargs)
+                case "identity":
+                    p = IdentityParameterisation(**kwargs)
                 case "mc_layer":
                     if next_param is None:
                         raise ValueError(
@@ -309,8 +313,10 @@ class MomtropParameterisation(Parameterisation):
 
     def __init__(self, overwrite_edge_weight: float | List[float] | bool = False,
                  sample_discrete: bool = True,
+                 mask_redundant: bool = True,
                  **kwargs: Dict[str, Any]):
         self.sample_discrete = sample_discrete
+        self.mask_redundant = mask_redundant and sample_discrete
         self.graph_properties: GraphProperties = kwargs["graph_properties"]
         match overwrite_edge_weight:
             case bool():
@@ -345,7 +351,11 @@ class MomtropParameterisation(Parameterisation):
 
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray,
                             ) -> ParamOutput:
-        dtype = continuous.dtype
+        if self.mask_redundant:
+            continuous = np.hstack([
+                continuous,
+                np.zeros((continuous.shape[0], self.graph_properties.n_edges - 1), dtype=continuous.dtype)
+            ])
         if discrete.size == 0:
             samples = self.momtrop_sampler.sample_batch(
                 continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings)
@@ -354,9 +364,9 @@ class MomtropParameterisation(Parameterisation):
                 continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings,
                 self._get_graph_from_edges_removed(discrete))
 
-        jac = np.array(samples.jacobians, dtype=dtype).reshape(-1, 1)
+        jac = np.array(samples.jacobians, dtype=continuous.dtype).reshape(-1, 1)
         momentum = np.array(
-            samples.loop_momenta, dtype=dtype).reshape(len(continuous), -1)
+            samples.loop_momenta, dtype=continuous.dtype).reshape(len(continuous), -1)
 
         return jac, momentum, None
 
@@ -400,6 +410,8 @@ class MomtropParameterisation(Parameterisation):
         return np.array(rust_result)
 
     def _layer_continuous_dim_in(self) -> int:
+        if self.mask_redundant:
+            return self.momtrop_sampler.get_dimension() - self.graph_properties.n_edges + 1
         return self.momtrop_sampler.get_dimension()
 
     def _layer_discrete_dims(self) -> List[int]:
@@ -709,6 +721,39 @@ class RKaapoParameterisation(Parameterisation):
         if self.vary_a:
             c_dim += 1
         return c_dim
+
+
+class SParameterisation(Parameterisation):
+    IDENTIFIER = "S param"
+
+    def __init__(self, exponent: float = 2.0,
+                 **kwargs):
+        """
+        Args:
+            exponent: Exponent of the S transformation. Higher values lead to stronger smoothing around the edges of the unit cube
+        """
+        super().__init__(**kwargs)
+        self.exponent = max(exponent, 1.0)
+
+    def _layer_parameterise(self, continuous: NDArray, discrete: NDArray) -> ParamOutput:
+        xn = np.power(continuous, self.exponent)
+        denom = xn + np.power(1 - continuous, self.exponent)
+        cont = xn / denom
+
+        num = continuous - continuous*continuous
+        jac = self.exponent*np.power(num, self.exponent - 1.0, where=num != 0,
+                                     out=np.zeros_like(continuous)) / denom / denom
+        jac = np.prod(jac, axis=1, keepdims=True)
+
+        return jac, cont, discrete
+
+
+class IdentityParameterisation(Parameterisation):
+    IDENTIFIER = "identity param"
+
+    def _layer_parameterise(self, continuous: NDArray, discrete: NDArray) -> ParamOutput:
+        jac = np.ones((continuous.shape[0], 1), dtype=continuous.dtype)
+        return jac, continuous, discrete
 
 
 class MCLayer(Parameterisation, ABC):
