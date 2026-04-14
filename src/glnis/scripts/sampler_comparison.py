@@ -5,6 +5,7 @@ from typing import Dict, List, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from traceback import print_exc
 from madnis.integrator import TrainingStatus
 
 from glnis.utils.helpers import shell_print, verify_path
@@ -77,7 +78,7 @@ def run_sampler_comp(
         pass
     elif Path(file).suffix == ".pkl":
         plot_sampler_comp(file, comment)
-        quit()
+        return
 
     import signal
     import gc
@@ -145,6 +146,16 @@ def run_sampler_comp(
         )
         integrators["MadNIS"] = madnis_integrator
 
+        if not no_naive:
+            Settings.settings["layered_integrator"]["integrator_type"] = "naive"
+            integrators["Naive"] = NaiveIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
+        if not no_vegas:
+            Settings.settings["layered_integrator"]["integrator_type"] = "vegas"
+            integrators["Vegas"] = VegasIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
+        if not no_havana:
+            Settings.settings["layered_integrator"]["integrator_type"] = "havana"
+            integrators["Havana"] = HavanaIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
+
         # Will hold integration results to write to text file and plot
         Data = SamplerCompData(integrator_identifiers=list(integrators.keys()),
                                graph_properties=madnis_integrator.integrand.graph_properties,
@@ -205,16 +216,6 @@ def run_sampler_comp(
         n_total_training_samples = n_training_steps * madnis_kwargs["batch_size"]
         neval = int(n_total_training_samples / nitn)
 
-        if not no_naive:
-            Settings.settings["layered_integrator"]["integrator_type"] = "naive"
-            integrators["Naive"] = NaiveIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
-        if not no_vegas:
-            Settings.settings["layered_integrator"]["integrator_type"] = "vegas"
-            integrators["Vegas"] = VegasIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
-        if not no_havana:
-            Settings.settings["layered_integrator"]["integrator_type"] = "havana"
-            integrators["Havana"] = HavanaIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
-
         shell_print(
             f"""Initializing the Integrand and Integrators took {
                 -time_last + (time_last := time()):.2f}s"""
@@ -271,9 +272,12 @@ def run_sampler_comp(
     except KeyboardInterrupt as e:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
         end_all_integrators()
+        raise
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
+        print_exc()
         end_all_integrators()
+        raise
     finally:
         end_all_integrators()
 

@@ -255,54 +255,61 @@ def run_hyperparam_comparison(
             shell_print(hline)
             shell_print(hline)
 
-            before = perf_counter()
-            run_result: SamplerCompData = run_sampler_comp(
-                file=NewSettings.settings,
-                no_naive=True,
-                no_vegas=True,
-                no_havana=True,
-                no_output=True,
-                export_states=plot_slices,
-                subroutine='hpcomp_training_run')
-            run_time = perf_counter() - before
-            fd_after_run = _open_fd_count()
+            try:
+                before = perf_counter()
+                run_result: SamplerCompData = run_sampler_comp(
+                    file=NewSettings.settings,
+                    no_naive=True,
+                    no_vegas=True,
+                    no_havana=True,
+                    no_output=True,
+                    export_states=plot_slices,
+                    subroutine='hpcomp_training_run')
+                run_time = perf_counter() - before
+                fd_after_run = _open_fd_count()
 
-            if plot_slices:
-                before_slices = perf_counter()
-                slice_dir = Path(directory, comp_name.replace(" ", "_"), block_name.replace(" ", "_"))
-                if not slice_dir.exists():
-                    slice_dir.mkdir(parents=True)
-                run_slice_plots(
-                    file=run_result,
-                    settings_file=NewSettings.settings,
-                    only_plot=True,
-                    force_directory=slice_dir,
-                    subroutine='hpcomp_slice_plots',
-                )
-                slice_time = perf_counter() - before_slices
+                if plot_slices:
+                    before_slices = perf_counter()
+                    slice_dir = Path(directory, comp_name.replace(" ", "_"), block_name.replace(" ", "_"))
+                    if not slice_dir.exists():
+                        slice_dir.mkdir(parents=True)
+                    run_slice_plots(
+                        file=run_result,
+                        settings_file=NewSettings.settings,
+                        only_plot=True,
+                        force_directory=slice_dir,
+                        subroutine='hpcomp_slice_plots',
+                    )
+                    slice_time = perf_counter() - before_slices
 
-            Data.add_result(
-                comp_name, block_name,
-                additional_params={'run_time': run_time},
-                result=run_result, save=not no_output)
+                Data.add_result(
+                    comp_name, block_name,
+                    additional_params={'run_time': run_time},
+                    result=run_result, save=not no_output)
 
-            gc.collect()
-            fd_after_gc = _open_fd_count()
+                gc.collect()
+                fd_after_gc = _open_fd_count()
 
-            shell_print(hline)
-            shell_print(hline)
-            if plot_slices:
-                shell_print(
-                    f"Finished slice plots for comparison '{comp_name}' and block '{block_name}' in {slice_time:.2f} seconds.")
-            shell_print(f"Finished comparison '{comp_name}' and block '{block_name}' in {run_time:.2f} seconds.")
-            if fd_after_run is not None:
-                delta = fd_after_run - (fd_before if fd_before is not None else fd_after_run)
-                limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
-                shell_print(f"FD diagnostic after run: {fd_after_run}{limit_msg} (delta={delta:+d})")
-            if fd_after_gc is not None:
-                delta = fd_after_gc - (fd_before if fd_before is not None else fd_after_gc)
-                limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
-                shell_print(f"FD diagnostic after gc.collect(): {fd_after_gc}{limit_msg} (delta={delta:+d})")
+                shell_print(hline)
+                shell_print(hline)
+                if plot_slices:
+                    shell_print(
+                        f"Finished slice plots for comparison '{comp_name}' and block '{block_name}' in {slice_time:.2f} seconds.")
+                shell_print(f"Finished comparison '{comp_name}' and block '{block_name}' in {run_time:.2f} seconds.")
+                if fd_after_run is not None:
+                    delta = fd_after_run - (fd_before if fd_before is not None else fd_after_run)
+                    limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
+                    shell_print(f"FD diagnostic after run: {fd_after_run}{limit_msg} (delta={delta:+d})")
+                if fd_after_gc is not None:
+                    delta = fd_after_gc - (fd_before if fd_before is not None else fd_after_gc)
+                    limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
+                    shell_print(f"FD diagnostic after gc.collect(): {fd_after_gc}{limit_msg} (delta={delta:+d})")
+
+            except Exception as e:
+                shell_print(f"Error during comparison '{comp_name}' and block '{block_name}': {e}")
+                from traceback import print_exc
+                print_exc()
+                continue
 
     if no_output:
         return Data

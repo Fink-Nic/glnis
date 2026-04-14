@@ -145,7 +145,7 @@ class GammaLoopIntegrand(Integrand):
         self.use_arb_prec = use_arb_prec
         self.minimal_output = minimal_output
 
-        self.gammaloop_state = GammaLoopAPI(gammaloop_state_path)
+        self.gammaloop_state = GammaLoopAPI(gammaloop_state_path, read_only_state=True)
         state_info = self.gammaloop_state.get_integrand_info()
         self.process_id = state_info.process_id
         self.integrand_name = state_info.integrand_name

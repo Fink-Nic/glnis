@@ -321,7 +321,7 @@ class SettingsParser:
         if self._graph_from_state:
             from gammaloop import GammaLoopAPI
 
-            self.gammaloop_state = GammaLoopAPI(self.gammaloop_state_path)
+            self.gammaloop_state = GammaLoopAPI(self.gammaloop_state_path, read_only_state=True)
             self.dot_path = "Loaded dot from state."
         else:
             self.gammaloop_state = None
