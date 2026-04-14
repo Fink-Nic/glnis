@@ -26,14 +26,14 @@ class Integrand(ABC):
     IDENTIFIER = "ABCIntegrand"
 
     def __init__(self,
-                 graph_properties: GraphProperties,
+                 graph_properties: GraphProperties | List[GraphProperties],
                  continuous_dim: int = 0,
                  discrete_dims: List[int] = None,
                  use_f128: bool = False,
                  target: IntegrationResult | None = None,
                  training_phase: Literal['real', 'imag', 'abs'] = 'real',
                  **uncaught_kwargs):
-        self.graph_properties = graph_properties
+        self.graph_properties = graph_properties if isinstance(graph_properties, list) else [graph_properties]
         self.continuous_dim = continuous_dim
         self.discrete_dims = discrete_dims or []
         self.use_f128 = use_f128
@@ -77,7 +77,8 @@ class Integrand(ABC):
         return self.evaluate_batch(layer_input)
 
     @staticmethod
-    def get_integrand_instance(graph_properties: GraphProperties, integrand_kwargs: Dict[str, Any]) -> 'Integrand':
+    def get_integrand_instance(graph_properties: GraphProperties | List[GraphProperties],
+                               integrand_kwargs: Dict[str, Any]) -> 'Integrand':
         integrand_kwargs = deepcopy(integrand_kwargs)
         integrand_kwargs.update(dict(graph_properties=graph_properties))
         integrand_type = integrand_kwargs.pop('integrand_type')
@@ -134,6 +135,8 @@ class GammaLoopIntegrand(Integrand):
                  gammaloop_state_path: str,
                  run_commands: str | List[str] = "",
                  momentum_space: bool = True,
+                 sample_lmbs: bool = False,
+                 sample_orientations: bool = False,
                  use_arb_prec: bool = False,
                  minimal_output: bool = True,
                  read_only_state: bool = True,
@@ -153,29 +156,37 @@ class GammaLoopIntegrand(Integrand):
                 run_commands = [run_commands]
             for cmd in run_commands:
                 self.gammaloop_state.run(cmd)
-        state_info = self.gammaloop_state.get_integrand_info()
-        self.process_id = state_info.process_id
-        self.integrand_name = state_info.integrand_name
-        self.process_name = state_info.process_name
+        outputs = [o for o in self.gammaloop_state.list_outputs() if len(0) > 0][0]
+        # Just select the first one, kek
+        self.integrand_name = list(outputs.keys())[0]
+        self.process_id = outputs[self.integrand_name]
+        state_info = self.gammaloop_state.get_integrand_info(self.process_id, self.integrand_name)
         # TODO: validate the approaches to getting info about discrete sampling from gl integrand, also which comes first
         # Check whether we need to provide discrete input to gammaloop
-        rs = self.gammaloop_state.get_default_runtime_settings()
-        sample_lmbs = rs.sampling.lmb_multichanneling
-        sample_orientations = not rs.sampling.orientations == "summed"
+        self.sample_graphs = len(state_info.graph_groups) > 1
         self.discrete_dims = []
-        if sample_lmbs:
-            # Need to make sure the LMB heuristics are not overwritten
-            graph_group = state_info.graph_groups[process_id]
-            n_channels = len([lmb for lmb in graph_group.loop_momentum_bases if lmb.channel_id is not None])
-            self.discrete_dims.append(n_channels)
+        if self.sample_graphs:
+            self.discrete_dims.append(len(state_info.graph_groups))
         if sample_orientations:
-            self.discrete_dims.append(self.graph_properties.n_orientations)
+            self.gammaloop_state.run("set default-runtime kv sampling.orientations 'monte_carlo'")
+            n_orientations = [gp.n_orientations for gp in self.graph_properties]
+            self.discrete_dims.append(max(n_orientations))
+        else:
+            self.gammaloop_state.run("set default-runtime kv sampling.orientations 'summed'")
+        if sample_lmbs:
+            self.gammaloop_state.run("set default-runtime kv sampling.lmb_multichanneling true")
+            # Need to make sure the LMB heuristics are not overwritten
+            n_channels = [gp.n_channels for gp in self.graph_properties]
+            self.discrete_dims.append(max(n_channels))
+        else:
+            self.gammaloop_state.run("set default-runtime kv sampling.lmb_multichanneling false")
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
-        discrete_dims = np.zeros(
-            (len(continuous), 1), dtype=np.uint64)
-        if discrete.shape[1] > 0:
-            discrete_dims = np.hstack([discrete_dims, discrete])
+        # When not sampling graphs, prepend graph_id=0 for gammaloop
+        discrete_dims = np.hstack([
+            np.zeros((len(continuous), int(not self.sample_graphs)), dtype=np.uint64),
+            discrete,
+        ])
         res = self.gammaloop_state.evaluate_samples(
             points=continuous.astype(np.float64), discrete_dims=discrete_dims,
             momentum_space=self.momentum_space,
@@ -186,6 +197,39 @@ class GammaLoopIntegrand(Integrand):
         )
         numpy_res = np.array([s.integrand_result for s in res.samples])
         return numpy_res.reshape(-1, 1)
+
+    def discrete_prior_prob_function(self, indices: NDArray, _: int = 0) -> NDArray:
+        """
+        Implements a default flat prior, varying the dim depending on sampled graph
+        """
+        if not self.sample_graphs:
+            return super().discrete_prior_prob_function(indices, _)
+
+        num_disc_input = indices.shape[1]
+        if num_disc_input == len(self.discrete_dims):
+            return np.zeros_like(indices, dtype=np.float64)
+
+        match num_disc_input:
+            case 0:
+                n_graphs = self.discrete_dims[0]
+                prior = np.ones((len(indices), n_graphs), dtype=np.float64)
+            case 1:
+                max_orientations = self.discrete_dims[1]
+                n_or_arr = np.array([gp.n_orientations for gp in self.graph_properties])
+                n_per_graph = n_or_arr[indices[:, 0]]
+                prior = (np.arange(max_orientations) < n_per_graph[:, None]).astype(np.float64)
+            case 2:
+                max_channels = self.discrete_dims[2]
+                n_ch_arr = np.array([gp.n_channels for gp in self.graph_properties])
+                n_per_graph = n_ch_arr[indices[:, 0]]
+                prior = (np.arange(max_channels) < n_per_graph[:, None]).astype(np.float64)
+            case len(self.discrete_dims):
+                return np.zeros_like(indices, dtype=np.float64)
+            case _:
+                raise ValueError(
+                    f"Invalid number of discrete input dimensions: {num_disc_input}. Expected at most {len(self.discrete_dims)}.")
+
+        return prior / np.prod(prior, axis=1, keepdims=True)
 
 
 class KaapoIntegrand(Integrand):
@@ -276,12 +320,12 @@ class KaapoIntegrand(Integrand):
 
 class ParameterisedIntegrand:
     def __init__(self,
-                 graph_properties: GraphProperties,
+                 graph_properties: GraphProperties | List[GraphProperties],
                  param_kwargs: List[Dict[str, Any]],
                  integrand_kwargs: Dict[str, Any],
                  verbose: bool = False,
                  **kwargs):
-        self.graph_properties = graph_properties
+        self.graph_properties = graph_properties if isinstance(graph_properties, list) else [graph_properties]
         self.param_kwargs = param_kwargs
         self.integrand_kwargs = integrand_kwargs
         self.condition_integrand_first = integrand_kwargs.pop('condition_integrand_first', False)
@@ -290,7 +334,7 @@ class ParameterisedIntegrand:
 
         self.param = LayeredParameterisation(
             self.graph_properties, self.param_kwargs)
-        self.integrand = Integrand.get_integrand_instance(graph_properties, self.integrand_kwargs)
+        self.integrand = Integrand.get_integrand_instance(self.graph_properties, self.integrand_kwargs)
         self.sum_channels = self.sum_channels and len(self.param.discrete_dims) == 1
         self.dtype = self.integrand.dtype
         self.continuous_dim = self._get_continuous_dims()
@@ -391,7 +435,7 @@ class MPIntegrand(ParameterisedIntegrand):
     IDENTIFIER = "multiprocessing integrand"
 
     def __init__(self,
-                 graph_properties: GraphProperties,
+                 graph_properties: GraphProperties | List[GraphProperties],
                  param_kwargs: List[Dict[str, Any]],
                  integrand_kwargs: Dict[str, Any],
                  n_cores: int = 1,

@@ -396,42 +396,77 @@ class SettingsParser:
 
         return overwrite_settings(old_kwargs, new_kwargs)
 
-    def get_graph_properties(self) -> GraphProperties:
+    def get_graph_properties(self) -> GraphProperties | List[GraphProperties]:
         if self.settings['graph']['overwrite_graph_properties']:
             return GraphProperties(**self.settings['graph']['graph_properties'])
+
+        if self._graph_from_state:
+            outputs = [o for o in self.gammaloop_state.list_outputs() if len(0) > 0][0]
+            # Just select the first one, kek
+            itg_name = list(outputs.keys())[0]
+            pid = outputs[itg_name]
+            iinfo = self.gammaloop_state.get_integrand_info(pid, itg_name)
+            model_as_str = self.gammaloop_state.get_model()
+            Model = ModelParser(model_as_str, from_string=True)
+            dot_as_str = self.gammaloop_state.get_dot_files(pid, itg_name)[0]
+            Dot = DotParser(dot_as_str, Model, self.verbose, dot_from_string=True)
+            kinematics = self.gammaloop_state.get_default_runtime_settings().kinematics
+            e_cm = kinematics.e_cm
+            ext_momenta = kinematics.externals.data.momenta.to_dict()
+            # Gammaloop indexes the externals before the internals
+            n_externals = len(ext_momenta)
+            graph_properties_list = []
+            for g_id, graph_group in enumerate(iinfo.graph_groups):
+                lmbs = graph_group.loop_momentum_bases
+                if self.settings['graph'].get('overwrite_lmb_heuristics', False):
+                    active_lmbs = lmbs
+                else:
+                    active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]
+                generation_basis_id = [lmb.matches_generation_basis for lmb in lmbs].index(True)
+                generation_channel_id = active_lmbs.index(lmbs[generation_basis_id])
+                lmb_array = [[e_id-n_externals for e_id in lmb.edge_ids] for lmb in active_lmbs]
+                orientations = graph_group.orientations
+                graph_properties = Dot.get_graph_properties(g_id, ext_momenta)
+                graph_properties.orientation_ids = [o.orientation_id for o in orientations]
+                graph_properties.orientation_signatures = [o.signature for o in orientations]
+                graph_properties.lmb_array = lmb_array
+                graph_properties.generation_channel_id = generation_channel_id
+                graph_properties.e_cm = e_cm
+                graph_properties.__post_init__()
+
+                n_int_edges = graph_properties.n_edges
+                edge_weight = self.settings['graph']['momtrop_edge_weight']
+                match edge_weight:
+                    case int() | float():
+                        edge_weight = n_int_edges*[float(edge_weight)]
+                    case [_, *_]:
+                        if not len(edge_weight) == n_int_edges:
+                            raise ValueError("If provided as a sequence, the number of momtrop "
+                                             + "edgeweights must match the number of internal edges.")
+                        edge_weight = edge_weight
+                    case "default":
+                        default_weight = (
+                            3*graph_properties.n_loops + 3/2)/n_int_edges/2
+                        edge_weight = n_int_edges*[default_weight]
+                        if self.verbose:
+                            shell_print(
+                                f"Setting momtrop edge weights to default: {default_weight:.5f}")
+                    case _:
+                        raise ValueError("Momtrop edge weights must be one of: \n"
+                                         + "Number, Sequence of Numbers or \"default\".")
+
+                graph_properties.momtrop_edge_weight = edge_weight
+                graph_properties_list.append(graph_properties)
+
+            return graph_properties_list
 
         process_id = self.settings['gammaloop_state']['process_id']
         lmb_array = []
         orientations = []
         generation_channel_id = 0
         e_cm = 0.0
-
-        if self._graph_from_state:
-            iinfo = self.gammaloop_state.get_integrand_info()
-            process_id = iinfo.process_id
-            graph_group = iinfo.graph_groups[process_id]
-            model_as_str = self.gammaloop_state.get_model()
-            Model = ModelParser(model_as_str, from_string=True)
-            dot_as_str_list = self.gammaloop_state.get_dot_files()
-            Dot = DotParser(dot_as_str_list, Model,
-                            self.verbose, dot_from_string=True)
-            kinematics = self.gammaloop_state.get_default_runtime_settings().kinematics
-            e_cm = kinematics.e_cm
-            ext_momenta = kinematics.externals.data.momenta.to_dict()
-            lmbs = graph_group.loop_momentum_bases
-            if self.settings['graph'].get('overwrite_lmb_heuristics', False):
-                active_lmbs = lmbs
-            else:
-                active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]
-            generation_basis_id = [lmb.matches_generation_basis for lmb in lmbs].index(True)
-            generation_channel_id = active_lmbs.index(lmbs[generation_basis_id])
-            # Gammaloop indexes the externals before the internals
-            n_externals = len(ext_momenta)
-            lmb_array = [[e_id-n_externals for e_id in lmb.edge_ids] for lmb in active_lmbs]
-            orientations = graph_group.orientations
-        else:
-            Dot = DotParser(self.dot_path, self.model_path, self.verbose)
-            ext_momenta = self.settings['graph']['external_momenta']
+        Dot = DotParser(self.dot_path, self.model_path, self.verbose)
+        ext_momenta = self.settings['graph']['external_momenta']
         graph_properties = Dot.get_graph_properties(process_id, ext_momenta)
         graph_properties.orientation_ids = [o.orientation_id for o in orientations]
         graph_properties.orientation_signatures = [o.signature for o in orientations]

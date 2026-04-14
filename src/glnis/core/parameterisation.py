@@ -248,8 +248,10 @@ class Parameterisation(ABC):
 class LayeredParameterisation:
     IDENTIFIER = "layered parameterisation"
 
-    def __init__(self, graph_properties: GraphProperties,
+    def __init__(self, graph_properties: GraphProperties | List[GraphProperties],
                  param_settings: List[Dict[str, Any]],):
+        if isinstance(graph_properties, list):
+            graph_properties = graph_properties[0]
         param_layers: List[Parameterisation] = []
         num_layers = len(param_settings)
         for i_layer, kdict in enumerate(param_settings):
@@ -430,7 +432,9 @@ class SphericalParameterisation(Parameterisation):
                                          ] | List[float] | None = None,
                  **kwargs):
         super().__init__(**kwargs)
-        self.conformal_scale = conformal_scale if conformal_scale else self.graph_properties.e_cm
+        self.conformal_scale = conformal_scale
+        if self.graph_properties.e_cm > 0.0:
+            self.conformal_scale *= self.graph_properties.e_cm
         self.n_loops = self.graph_properties.n_loops
         if origins is None or origins == 0.:
             self.origins = self.n_loops * [None]
@@ -493,7 +497,9 @@ class InverseSphericalParameterisation(Parameterisation):
                                          ] | List[float] | None = None,
                  **kwargs):
         super().__init__(**kwargs)
-        self.conformal_scale = conformal_scale if conformal_scale else self.graph_properties.e_cm
+        self.conformal_scale = conformal_scale
+        if self.graph_properties.e_cm > 0.0:
+            self.conformal_scale *= self.graph_properties.e_cm
         self.n_loops = self.graph_properties.n_loops
         if origins is None or origins == 0.:
             self.origins = self.n_loops * [None]
