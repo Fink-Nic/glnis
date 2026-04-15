@@ -162,7 +162,9 @@ class GammaLoopIntegrand(Integrand):
                 run_commands = [run_commands]
             for cmd in run_commands:
                 self.gammaloop_state.run(cmd)
-        self.outputs = [o for o in self.gammaloop_state.list_outputs() if len(o) > 0][process_id]
+        self.outputs = dict()
+        for o in self.gammaloop_state.list_outputs():
+            self.outputs.update(o)
         if integrand_name not in self.outputs or integrand_name == "summed":
             integrand_name = list(self.outputs)[0]
             process_id = self.outputs[integrand_name]

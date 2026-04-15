@@ -1,5 +1,6 @@
 run_name = "aa_aa_1L_ppmm"
 templates = [
+    "settings/aa_aa_1L/aa_aa_1L",
     "settings/templates/flow/size8",
     "settings/templates/madnis_bins/size2",
     "settings/templates/transformer/size4",

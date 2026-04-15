@@ -1,0 +1,86 @@
+run_name = "sunrise_angle_shift"
+templates = [
+    "settings/vacuum_graphs/sunrise/sunrise_base",
+    "settings/vacuum_graphs/sunrise/sunrise_optimised",
+    "settings/templates/flow/size9",
+    "settings/templates/madnis_bins/size2",
+    "settings/templates/transformer/size2",
+]
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "rkaapo"
+# chem potential [3.141592653589793, 3.141592653589793, 0.0]
+# no chem potential [0.0, 0.0, 0.0]
+mu = [3.141592653589793, 3.141592653589793, 0.0]
+a = 0.5
+b = 1.0
+angle_shift = 0.5
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "fermi"
+ose_exponent = 4.0
+fermi_exponent = 1.0
+
+# Parameters used in the tprog subcommand
+[scripts.sampler_comp]
+n_training_steps = 400
+n_samples = 1000000
+nitn = 20
+# Number of samples drawn after the training to compute the final result
+n_samples_after_training = 10000000
+# Training steps between callback of loss to console
+n_log = 10
+# Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
+# Will also output the result +- error and rsd to console
+n_plot_rsd = 20
+# Training steps between plotting the loss
+n_plot_loss = 1
+
+[[scripts.slice_plots.slice]]
+origin = [0.44341431, 0.22723927, 0.55458468]
+discrete = [1]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965]
+discrete = [1]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965]
+discrete = [1]
+dirs = [0, 2]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965]
+discrete = [1]
+dirs = [2, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.95709241, 0.97321720, 0.03780411]
+discrete = [2]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965]
+discrete = [1]
+dirs = [1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+]

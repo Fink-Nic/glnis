@@ -554,11 +554,13 @@ class KaapoParameterisation(Parameterisation):
                  b: float = 1.0,
                  vary_a: bool = False,
                  a_min: float = 0.2,
+                 shift_angles: float = 0.0,
                  **kwargs):
         self.a = a
         self.b = b if b else self.graph_properties.e_cm
         self.vary_a = vary_a
         self.a_min = a_min
+        self.angle_shift = shift_angles
 
         super().__init__(**kwargs)
         self.mu = mu
@@ -597,6 +599,9 @@ class KaapoParameterisation(Parameterisation):
 
             xs = continuous[:, _start:_end]
             x1, x2, x3 = np.hsplit(xs, [1, 2])
+            if self.angle_shift != 0.:
+                x2 = (x2 + self.angle_shift) % 1
+                x3 = (x3 + self.angle_shift) % 1
 
             cos_az = (2*x2-1)
             sin_az = np.sqrt(1 - cos_az**2)
@@ -637,11 +642,13 @@ class RKaapoParameterisation(Parameterisation):
                  b: float = 1.0,
                  vary_a: bool = False,
                  a_min: float = 0.2,
+                 shift_angles: float = 0.0,
                  **kwargs):
         self.a = a
         self.b = b if b else self.graph_properties.e_cm
         self.vary_a = vary_a
         self.a_min = a_min
+        self.angle_shift = shift_angles
 
         super().__init__(**kwargs)
         self.mu = mu
@@ -687,13 +694,19 @@ class RKaapoParameterisation(Parameterisation):
                 pol = 0
             elif i_loop == 1:
                 x1 = continuous[:, 1].reshape(-1, 1)
-                cos_az = (2*continuous[:, 2] - 1).reshape(-1, 1)
+                x2 = continuous[:, 1].reshape(-1, 1)
+                if self.angle_shift != 0.:
+                    x2 = (x2 + self.angle_shift) % 1
+                cos_az = (2*x2 - 1).reshape(-1, 1)
                 sin_az = np.sqrt(1 - cos_az**2)
                 pol = 0
             else:
                 xs = continuous[:, _start -
                                 self.N_SPATIAL_DIMS: _end-self.N_SPATIAL_DIMS]
                 x1, x2, x3 = np.hsplit(xs, [1, 2])
+                if self.angle_shift != 0.:
+                    x2 = (x2 + self.angle_shift) % 1
+                    x3 = (x3 + self.angle_shift) % 1
 
                 cos_az = (2*x2-1)
                 sin_az = np.sqrt(1 - cos_az**2)

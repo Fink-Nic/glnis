@@ -1,0 +1,15 @@
+run_name = "epem_a_ttxh_LO_semi_inclusive"
+templates = [
+    "settings/epem_a_ttxh/epem_a_ttxh_LO",
+    "settings/templates/flow/size7",
+    "settings/templates/madnis_bins/size2",
+    "settings/templates/transformer/size4",
+]
+
+[layered_integrand]
+integrand_type = "gammaloop"
+training_phase = "real"
+n_cores = 64
+
+[integrand.gammaloop]
+integrand_name = "LO_semi_inclusive"

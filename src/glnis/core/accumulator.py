@@ -41,11 +41,15 @@ class GraphProperties:
         self.n_channels = self.lmb_array.shape[0]
         self.n_orientations = len(self.orientation_ids)
 
-        # Calculate the inverse lmb transforms, ordered as the LMBs in graph properties
-        self.channel_transforms = np.array(
-            self.graph_signature)[self.lmb_array].reshape(self.n_channels, self.n_loops, self.n_loops)
-        # Inverse transforms of each channel
-        self.channel_inv_transforms = np.linalg.inv(self.channel_transforms)
+        try:
+            # Calculate the inverse lmb transforms, ordered as the LMBs in graph properties
+            self.channel_transforms = np.array(
+                self.graph_signature)[self.lmb_array].reshape(self.n_channels, self.n_loops, self.n_loops)
+            # Inverse transforms of each channel
+            self.channel_inv_transforms = np.linalg.inv(self.channel_transforms)
+        except:
+            self.channel_transforms = np.zeros((0, self.n_loops, self.n_loops), dtype=np.float64)
+            self.channel_inv_transforms = np.zeros((0, self.n_loops, self.n_loops), dtype=np.float64)
 
 
 @dataclass

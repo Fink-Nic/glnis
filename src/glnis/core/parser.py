@@ -426,7 +426,9 @@ class SettingsParser:
         if self._graph_from_state:
             process_id = self.settings['integrand']['gammaloop']['process_id']
             integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
-            outputs = [o for o in self.gammaloop_state.list_outputs() if len(o) > 0][process_id]
+            outputs = dict()
+            for o in self.gammaloop_state.list_outputs():
+                outputs.update(o)
             if integrand_name not in outputs:
                 integrand_name = list(outputs)[0]
             process_id = outputs[integrand_name]
