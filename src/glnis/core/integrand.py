@@ -133,6 +133,8 @@ class GammaLoopIntegrand(Integrand):
 
     def __init__(self,
                  gammaloop_state_path: str,
+                 process_id: int = 0,
+                 integrand_name: str = "",
                  run_commands: str | List[str] = "",
                  momentum_space: bool = True,
                  sample_lmbs: bool = False,
@@ -142,7 +144,7 @@ class GammaLoopIntegrand(Integrand):
                  read_only_state: bool = True,
                  **kwargs):
         try:
-            from gammaloop import GammaLoopAPI
+            import gammaloop
         except:
             raise ImportError("Failed to import gammaloop module.")
         super().__init__(**kwargs)
@@ -150,52 +152,84 @@ class GammaLoopIntegrand(Integrand):
         self.use_arb_prec = use_arb_prec
         self.minimal_output = minimal_output
 
-        self.gammaloop_state = GammaLoopAPI(gammaloop_state_path, read_only_state=read_only_state)
+        self.gammaloop_state = gammaloop.GammaLoopAPI(
+            gammaloop_state_path,
+            level=gammaloop.LogLevel.Off,
+            logfile_level=gammaloop.LogLevel.Off,
+            read_only_state=read_only_state)
         if run_commands:
             if isinstance(run_commands, str):
                 run_commands = [run_commands]
             for cmd in run_commands:
                 self.gammaloop_state.run(cmd)
-        outputs = [o for o in self.gammaloop_state.list_outputs() if len(0) > 0][0]
-        # Just select the first one, kek
-        self.integrand_name = list(outputs.keys())[0]
-        self.process_id = outputs[self.integrand_name]
-        state_info = self.gammaloop_state.get_integrand_info(self.process_id, self.integrand_name)
-        # TODO: validate the approaches to getting info about discrete sampling from gl integrand, also which comes first
-        # Check whether we need to provide discrete input to gammaloop
-        self.sample_graphs = len(state_info.graph_groups) > 1
+        self.outputs = [o for o in self.gammaloop_state.list_outputs() if len(o) > 0][process_id]
+        if integrand_name not in self.outputs or integrand_name == "summed":
+            integrand_name = list(self.outputs)[0]
+            process_id = self.outputs[integrand_name]
+        else:
+            process_id = self.outputs[integrand_name]
+            self.outputs = {integrand_name: process_id}
+        self.sample_graphs = len(self.graph_properties) > 1
+        if self.sample_graphs and self.momentum_space:
+            raise ValueError("Discrete sampling over graphs is not supported in momentum space.")
         self.discrete_dims = []
+        self._discrete_types: List[str] = []
+        self._gl_discrete_types: Dict[str, int] = dict(graph=0)
         if self.sample_graphs:
-            self.discrete_dims.append(len(state_info.graph_groups))
+            self.discrete_dims.append(len(self.graph_properties))
+            self._discrete_types.append("graph")
         if sample_orientations:
-            self.gammaloop_state.run("set default-runtime kv sampling.orientations 'monte_carlo'")
-            n_orientations = [gp.n_orientations for gp in self.graph_properties]
-            self.discrete_dims.append(max(n_orientations))
+            for itg_name, pid in self.outputs.items():
+                self.gammaloop_state.run(
+                    f"set process -p {pid} -i {itg_name} kv sampling.orientations='monte_carlo'")
+            n_orientations = max([gp.n_orientations for gp in self.graph_properties])
+            if n_orientations > 1:
+                self.discrete_dims.append(n_orientations)
+                self._discrete_types.append("orientation")
+            self._gl_discrete_types["orientation"] = len(self._gl_discrete_types)
         else:
-            self.gammaloop_state.run("set default-runtime kv sampling.orientations 'summed'")
+            for itg_name, pid in self.outputs.items():
+                self.gammaloop_state.run(
+                    f"set process -p {pid} -i {itg_name} kv sampling.orientations='summed'")
         if sample_lmbs:
-            self.gammaloop_state.run("set default-runtime kv sampling.lmb_multichanneling true")
-            # Need to make sure the LMB heuristics are not overwritten
-            n_channels = [gp.n_channels for gp in self.graph_properties]
-            self.discrete_dims.append(max(n_channels))
+            for itg_name, pid in self.outputs.items():
+                self.gammaloop_state.run(
+                    f"set process -p {pid} -i {itg_name} kv sampling.lmb_multichanneling=true")
+                self.gammaloop_state.run(
+                    f"set process -p {pid} -i {itg_name} kv sampling.lmb_channels='monte_carlo'")
+            n_channels = max([gp.n_channels for gp in self.graph_properties])
+            self._mask_lmb_dims = n_channels == 1
+            if not self._mask_lmb_dims:
+                self.discrete_dims.append(n_channels)
+                self._discrete_types.append("lmb_channel")
+            self._gl_discrete_types["lmb_channel"] = len(self._gl_discrete_types)
         else:
-            self.gammaloop_state.run("set default-runtime kv sampling.lmb_multichanneling false")
+            for itg_name, pid in self.outputs.items():
+                self.gammaloop_state.run(
+                    f"set process -p {pid} -i {itg_name} kv sampling.lmb_multichanneling=false")
+                self.gammaloop_state.run(
+                    f"set process -p {pid} -i {itg_name} kv sampling.lmb_channels='summed'")
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         # When not sampling graphs, prepend graph_id=0 for gammaloop
-        discrete_dims = np.hstack([
-            np.zeros((len(continuous), int(not self.sample_graphs)), dtype=np.uint64),
-            discrete,
-        ])
-        res = self.gammaloop_state.evaluate_samples(
-            points=continuous.astype(np.float64), discrete_dims=discrete_dims,
-            momentum_space=self.momentum_space,
-            process_id=self.process_id,
-            integrand_name=self.integrand_name,
-            use_arb_prec=self.use_arb_prec,
-            minimal_output=self.minimal_output,
-        )
-        numpy_res = np.array([s.integrand_result for s in res.samples])
+        discrete_dims = np.zeros((len(continuous), len(self._gl_discrete_types)), dtype=np.uint64)
+        for dim, tpe in enumerate(self._discrete_types):
+            gl_dim = self._gl_discrete_types[tpe]
+            discrete_dims[:, gl_dim] = discrete[:, dim]
+        numpy_res = np.zeros(len(continuous), dtype=np.complex128)
+        for itg_name, pid in self.outputs.items():
+            res = self.gammaloop_state.evaluate_samples(
+                points=continuous.astype(np.float64), discrete_dims=discrete_dims,
+                momentum_space=self.momentum_space,
+                process_id=pid,
+                integrand_name=itg_name,
+                use_arb_prec=self.use_arb_prec,
+                minimal_output=self.minimal_output,
+            )
+            itg_res = np.array([s.integrand_result for s in res.samples])
+            if not self.momentum_space:
+                itg_res *= np.array([s.parameterization_jacobian for s in res.samples])
+            numpy_res += itg_res
         return numpy_res.reshape(-1, 1)
 
     def discrete_prior_prob_function(self, indices: NDArray, _: int = 0) -> NDArray:
@@ -209,25 +243,24 @@ class GammaLoopIntegrand(Integrand):
         if num_disc_input == len(self.discrete_dims):
             return np.zeros_like(indices, dtype=np.float64)
 
-        match num_disc_input:
-            case 0:
-                n_graphs = self.discrete_dims[0]
+        disc_type = self._discrete_types[num_disc_input]
+        match disc_type:
+            case "graph":
+                n_graphs = self.discrete_dims[num_disc_input]
                 prior = np.ones((len(indices), n_graphs), dtype=np.float64)
-            case 1:
-                max_orientations = self.discrete_dims[1]
+            case "orientation":
+                max_orientations = self.discrete_dims[num_disc_input]
                 n_or_arr = np.array([gp.n_orientations for gp in self.graph_properties])
                 n_per_graph = n_or_arr[indices[:, 0]]
                 prior = (np.arange(max_orientations) < n_per_graph[:, None]).astype(np.float64)
-            case 2:
-                max_channels = self.discrete_dims[2]
+            case "lmb_channel":
+                max_channels = self.discrete_dims[num_disc_input]
                 n_ch_arr = np.array([gp.n_channels for gp in self.graph_properties])
                 n_per_graph = n_ch_arr[indices[:, 0]]
                 prior = (np.arange(max_channels) < n_per_graph[:, None]).astype(np.float64)
-            case len(self.discrete_dims):
-                return np.zeros_like(indices, dtype=np.float64)
             case _:
                 raise ValueError(
-                    f"Invalid number of discrete input dimensions: {num_disc_input}. Expected at most {len(self.discrete_dims)}.")
+                    f"Invalid type of discrete input dimensions: {disc_type}. Expected one of {self._discrete_types}.")
 
         return prior / np.prod(prior, axis=1, keepdims=True)
 

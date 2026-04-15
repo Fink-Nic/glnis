@@ -54,8 +54,6 @@ seed = 1337
 [layered_integrand]
 integrand_type = "gammaloop"
 # Number of continuous input dimensions above the expected 3 * n_loop
-continuous_dim = 0 
-discrete_dims = []
 use_f128 = false
 n_cores = 1
 # Can be one of "real", "imag", "abs"
@@ -114,6 +112,8 @@ min_bin_derivative = 1e-3
 [integrand.gammaloop]
 # Can set a state manually here, else will use settings from [gammaloop_state]
 gammaloop_state_path = "from_state"
+integrand_name = "summed"
+process_id = 0
 run_commands = ""
 momentum_space = true
 use_arb_prec = false

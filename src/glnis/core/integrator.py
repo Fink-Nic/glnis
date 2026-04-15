@@ -140,7 +140,7 @@ class Integrator(ABC):
     def init_layer_data(self, n_points: int) -> LayerData:
         return LayerData(
             n_points,
-            n_mom=3*self.integrand.graph_properties.n_loops,
+            n_mom=3*self.integrand.graph_properties[0].n_loops,
             n_cont=self.continuous_dim,
             n_disc=self.num_discrete_dims,
             dtype=self.dtype,
@@ -156,7 +156,7 @@ class Integrator(ABC):
 
     @staticmethod
     def from_dicts(
-            graph_properties: GraphProperties,
+            graph_properties: GraphProperties | List[GraphProperties],
             parameterisation_kwargs: List[Dict[str, Any]],
             integrand_kwargs: Dict[str, Any],
             integrator_kwargs: Dict[str, Any],) -> 'Integrator':

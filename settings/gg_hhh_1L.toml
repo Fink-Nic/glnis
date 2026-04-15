@@ -31,6 +31,14 @@ integrand_type = "gammaloop"
 training_phase = "real"
 n_cores = 32
 
+[integrand.gammaloop]
+momentum_space = true
+sample_lmbs = false
+sample_orientations = false
+use_arb_prec = false
+minimal_output = true
+read_only_state = true
+
 [scripts.sampler_comp]
 n_training_steps = 1000
 n_samples = 1000000

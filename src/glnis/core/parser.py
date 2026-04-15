@@ -319,9 +319,12 @@ class SettingsParser:
             'gammaloop_state_path'] = str(self.gammaloop_state_path)
         self._graph_from_state = self.settings['graph']['from_state']
         if self._graph_from_state:
-            from gammaloop import GammaLoopAPI
-
-            self.gammaloop_state = GammaLoopAPI(self.gammaloop_state_path, read_only_state=True)
+            import gammaloop
+            self.gammaloop_state = gammaloop.GammaLoopAPI(
+                self.gammaloop_state_path,
+                level=gammaloop.LogLevel.Off,
+                logfile_level=gammaloop.LogLevel.Off,
+                read_only_state=True)
             self.dot_path = "Loaded dot from state."
         else:
             self.gammaloop_state = None
@@ -358,15 +361,35 @@ class SettingsParser:
         gammaloop_result = self.get_gammaloop_integration_result()
         if gammaloop_result is None:
             return IntegrationResult(**self.settings.get('integration_target', {}))
-        result = gammaloop_result['slots'][0]['integral']
+        try:
+            itg_name = self.settings['integrand']['gammaloop']['integrand_name']
+            result = [slot['integral'] for slot in gammaloop_result['slots']
+                      if slot['integrand'] == itg_name
+                      or itg_name == "summed"]
+            if len(result) == 0:
+                result = [gammaloop_result['slots'][0]['integral']]
 
-        return IntegrationResult(
-            n_points=result['neval'],
-            real_central_value=result['result']['re'],
-            imag_central_value=result['result']['im'],
-            real_error=result['error']['re'],
-            imag_error=result['error']['im'],
-        )
+            int_res = IntegrationResult(
+                n_points=result[0]['neval'] / len(result),
+                real_central_value=result[0]['result']['re'],
+                imag_central_value=result[0]['result']['im'],
+                real_error=result[0]['error']['re'],
+                imag_error=result[0]['error']['im'],
+            )
+            for r in result[1:]:
+                int_res.combine_with(
+                    IntegrationResult(
+                        n_points=r['neval'] / len(result),
+                        real_central_value=r['result']['re'],
+                        imag_central_value=r['result']['im'],
+                        real_error=r['error']['re'],
+                        imag_error=r['error']['im'],
+                    )
+                )
+
+            return int_res
+        except:
+            return IntegrationResult(**self.settings.get('integration_target', {}))
 
     def get_model(self) -> ModelParser:
         return ModelParser(self.model_path)
@@ -401,14 +424,16 @@ class SettingsParser:
             return GraphProperties(**self.settings['graph']['graph_properties'])
 
         if self._graph_from_state:
-            outputs = [o for o in self.gammaloop_state.list_outputs() if len(0) > 0][0]
-            # Just select the first one, kek
-            itg_name = list(outputs.keys())[0]
-            pid = outputs[itg_name]
-            iinfo = self.gammaloop_state.get_integrand_info(pid, itg_name)
+            process_id = self.settings['integrand']['gammaloop']['process_id']
+            integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
+            outputs = [o for o in self.gammaloop_state.list_outputs() if len(o) > 0][process_id]
+            if integrand_name not in outputs:
+                integrand_name = list(outputs)[0]
+            process_id = outputs[integrand_name]
+            iinfo = self.gammaloop_state.get_integrand_info(process_id, integrand_name)
             model_as_str = self.gammaloop_state.get_model()
             Model = ModelParser(model_as_str, from_string=True)
-            dot_as_str = self.gammaloop_state.get_dot_files(pid, itg_name)[0]
+            dot_as_str = self.gammaloop_state.get_dot_files(process_id, integrand_name)
             Dot = DotParser(dot_as_str, Model, self.verbose, dot_from_string=True)
             kinematics = self.gammaloop_state.get_default_runtime_settings().kinematics
             e_cm = kinematics.e_cm
@@ -418,7 +443,8 @@ class SettingsParser:
             graph_properties_list = []
             for g_id, graph_group in enumerate(iinfo.graph_groups):
                 lmbs = graph_group.loop_momentum_bases
-                if self.settings['graph'].get('overwrite_lmb_heuristics', False):
+                momentum_space = self.settings['integrand']['gammaloop']['momentum_space']
+                if self.settings['graph'].get('overwrite_lmb_heuristics', False) and momentum_space:
                     active_lmbs = lmbs
                 else:
                     active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]

@@ -33,11 +33,7 @@ def run_state_test(file: str) -> None:
         integrator.train(nitn, batch_size)
 
         shell_print("Attempting integration.")
-        time_last = time()
-        output = integrator.integrate(batch_size)
-        shell_print(f"""Evaluating {batch_size} samples using {integrator.integrand.n_cores} cores took {
-            - time_last + (time_last := time()):.2f}s""")
-        shell_print(output.str_report())
+        integrator.integrate(batch_size)
 
         shell_print(f"Test successfully completed!")
         shell_print(
@@ -48,6 +44,9 @@ def run_state_test(file: str) -> None:
         integrator.free()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
+        from traceback import print_exc
+        print_exc()
         integrator.free()
+        raise
     finally:
         integrator.free()

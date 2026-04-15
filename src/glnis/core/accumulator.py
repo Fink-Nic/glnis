@@ -101,6 +101,7 @@ class IntegrationResult:
         self.abs_imag_error = ce(self.abs_imag_error, other.abs_imag_error)
 
         self.n_points += other.n_points
+        self.total_time += other.total_time
         self.__post_init__()  # Recalculate derived observables
 
     def str_report(self: 'IntegrationResult') -> str:
@@ -873,4 +874,4 @@ class TrainingData(AccumulatorModule):
         sqr_n_points = np.sqrt(self.training_result[0].shape[0])
         self.central_value = np.mean(self.training_result[0])
         self.error = np.std(self.training_result[0]) / sqr_n_points
-        self.rsd = self.error / self.central_value * sqr_n_points if self.central_value != 0 else 0
+        self.rsd = np.abs(self.error / self.central_value) * sqr_n_points if self.central_value != 0 else 0

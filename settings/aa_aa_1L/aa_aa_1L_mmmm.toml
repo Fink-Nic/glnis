@@ -1,0 +1,16 @@
+run_name = "aa_aa_1L_mmmm"
+templates = [
+    "settings/templates/flow/size8",
+    "settings/templates/madnis_bins/size2",
+    "settings/templates/transformer/size4",
+]
+
+[integrand.gammaloop]
+process_id = 0
+integrand_name = "1L_mmmm"
+momentum_space = false
+sample_lmbs = true
+sample_orientations = false
+use_arb_prec = false
+minimal_output = true
+read_only_state = true

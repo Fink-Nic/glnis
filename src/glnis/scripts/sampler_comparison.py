@@ -72,13 +72,39 @@ def run_sampler_comp(
     no_plot: bool = False,
     export_states: bool = True,
     subroutine: str = "sampler_comp",
+    overwrite_plotting_settings: str = "",
 ) -> SamplerCompData | None:
+
+    plotting_settings = dict()
+    if overwrite_plotting_settings:
+        try:
+            import tomllib
+            with open(verify_path(overwrite_plotting_settings, suffix=".toml"), "rb") as f:
+                _overwrite = tomllib.load(f)
+            plotting_settings = _overwrite.get(subroutine, dict()).get("plotting", dict())
+            if len(plotting_settings) == 0:
+                plotting_settings = _overwrite.get("sampler_comp", dict()).get("plotting", dict())
+        except:
+            pass
 
     if isinstance(file, dict):
         pass
     elif Path(file).suffix == ".pkl":
-        plot_sampler_comp(file, comment)
-        return
+        from torch import load as torch_load
+        with Path(file).open('rb') as f:
+            SData = torch_load(f, weights_only=False)
+        if len(plotting_settings) == 0:
+            scripts = SData.settings.get("scripts", dict())
+            params = scripts.get(subroutine, dict())
+            if len(params) == 0:
+                params = scripts.get("sampler_comp", dict())
+            plotting_settings = params.get("plotting", dict())
+        if isinstance(SData, SamplerCompData):
+            plot_sampler_comp(file, SData, comment, plotting_settings)
+            return
+        else:
+            raise ValueError(
+                f"Expected a SamplerCompData object in the file, but got {type(SData)}")
 
     import signal
     import gc
@@ -116,6 +142,8 @@ def run_sampler_comp(
         # Training parameters
         scripts: Dict[str, Any] = Settings.settings.get("scripts", dict())
         params: Dict[str, Any] = scripts.get(subroutine, dict())
+        if len(params) == 0:
+            params = scripts.get("sampler_comp", dict())
         n_training_steps = params.get("n_training_steps", 1000)
         n_log = params.get("n_log", 10)
         n_plot_rsd = params.get("n_plot_rsd", 100)
@@ -124,8 +152,9 @@ def run_sampler_comp(
         n_plot_disc = params.get("n_plot_disc", 10)
         n_samples = params.get("n_samples", 10_000)
         n_samples_after_training = params.get("n_samples_after_training", 100_000)
-        nitn = params.get('nitn', 10)  # number of vegas/havana training iterations
-        # number of evals per vegas/havana training iteration
+        nitn = params.get("nitn", 10)  # number of vegas/havana training iterations
+        if len(plotting_settings) == 0:
+            plotting_settings = params.get("plotting", dict())
 
         if not no_output:
             PROJECT_ROOT = Path(__file__).parents[3]
@@ -265,7 +294,7 @@ def run_sampler_comp(
             torch.save(Data, f)
 
         if not no_plot:
-            plot_sampler_comp(file, comment)
+            plot_sampler_comp(file, Data, comment, plotting_settings)
 
         return Data
 
@@ -282,16 +311,16 @@ def run_sampler_comp(
         end_all_integrators()
 
 
-def plot_sampler_comp(file: str, comment: str = "") -> None:
+def plot_sampler_comp(file: str,
+                      Data: SamplerCompData,
+                      comment: str = "",
+                      plotting_settings: Dict[str, Any] = dict()) -> None:
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
-    from torch import load as torch_load
 
     file: Path = verify_path(file, suffix=".pkl")
-    with file.open('rb') as f:
-        Data: SamplerCompData = torch_load(f, weights_only=False)
-        if not isinstance(Data, SamplerCompData):
-            raise ValueError(f"Expected a SamplerCompData object in the file, but got {type(Data)}")
+    if not isinstance(Data, SamplerCompData):
+        raise ValueError(f"Expected a SamplerCompData object in the file, but got {type(Data)}")
 
     shell_print(f"Plotting data from '{file}'")
 
@@ -431,10 +460,12 @@ def plot_sampler_comp(file: str, comment: str = "") -> None:
         )
 
     if discrete_probs is not None:
-        n_show = 3
+        n_show = plotting_settings.get("n_show_best_worst_discrete", 3)
         sorted_indices = np.argsort(discrete_probs[-1])[::-1]
         if sorted_indices.size > 2*n_show:
-            show_indices = sorted_indices[np.r_[0:n_show, -n_show:0]]
+            show_indices = sorted_indices[
+                np.r_[0:n_show, -n_show:0]
+            ]
         else:
             show_indices = sorted_indices
         show_probs = discrete_probs.T[show_indices]

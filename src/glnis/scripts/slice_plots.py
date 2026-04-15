@@ -75,7 +75,6 @@ def run_slice_plots(
     )
     from glnis.core.parser import SettingsParser
     from glnis.core.integrand import MPIntegrand
-    import traceback
 
     if isinstance(file, SamplerCompData):
         SData = file
@@ -372,9 +371,11 @@ def run_slice_plots(
         free_integrators()
     except Exception as e:
         shell_print(f"\nCaught Exception {e} — stopping workers...")
+        from traceback import print_exc
+        print_exc()
         integrand.free()
         free_integrators()
-        print(traceback.format_exc())
+        raise
     finally:
         integrand.free()
         free_integrators()

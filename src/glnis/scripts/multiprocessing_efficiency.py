@@ -45,8 +45,13 @@ def run_multiprocessing_efficiency(
     signal.signal(signal.SIGINT, signal.default_int_handler)
 
     file = verify_path(file)
-    with file.open('rb') as f:
-        SData = torch.load(f, weights_only=False)
+    try:
+        with file.open('rb') as f:
+            SData = torch.load(f, weights_only=False)
+    except:
+        with file.open('rb') as f:
+            SData = pickle.load(f)
+
     if isinstance(SData, SamplerCompData):
         pass
     elif isinstance(SData, MPEfficiencyData):
@@ -64,9 +69,9 @@ def run_multiprocessing_efficiency(
         # parameters
         scripts: Dict[str, Any] = Settings.settings.get("scripts", dict())
         params: Dict[str, Any] = scripts.get(subroutine, dict())
-        n_cores: List[int] = params.get("n_cores", [1, 2, 4, 8, 16, 32, 64, 128])
-        n_samples: List[int] = params.get("n_samples", [1_000, 10_000, 100_000, 1_000_000, 10_000_000])
-        max_samples_per_core: int = params.get("max_samples_per_core", 100_000)
+        n_cores: List[int] = params.get("n_cores", [1, 2, 4, 8, 16, 32, 64, 128, 256])
+        n_samples: List[int] = params.get("n_samples", [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000])
+        max_samples_per_core: int = params.get("max_samples_per_core", 1_000_000)
 
         madnis_state = SData.integrator_states.get("MadNIS", None)
 
@@ -102,7 +107,7 @@ def run_multiprocessing_efficiency(
             for samples in n_samples:
                 if samples / cores > max_samples_per_core:
                     continue
-                acc = madnis_integrator.integrate(samples)
+                acc = madnis_integrator.integrate(samples, n_start=10_000_000)
                 times = MPEfficiencyData.Times(cores, samples, acc.processing_times.processing_times)
                 Data.data.append(times)
 
@@ -125,7 +130,10 @@ def run_multiprocessing_efficiency(
         madnis_integrator.free()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
+        from traceback import print_exc
+        print_exc()
         madnis_integrator.free()
+        raise
     finally:
         madnis_integrator.free()
 
@@ -179,6 +187,7 @@ def plot_multiprocessing_efficiency(file: str, comment: str = "") -> None:
 
     ax.set_xlabel("Number of Samples")
     ax.set_ylabel(r"$t_{eval}$ [CPU-µs]")
+    ax.set_yscale("log")
     ax.legend(title=r"$n_{cores}$", loc="upper right")
     ax.set_title("Total time")
     fig.savefig(
@@ -219,6 +228,7 @@ def plot_multiprocessing_efficiency(file: str, comment: str = "") -> None:
 
         ax.set_xlabel("Number of Samples")
         ax.set_ylabel(r"$t_{eval}$ [CPU-µs]")
+        ax.set_yscale("log")
         ax.legend(title=r"$n_{cores}$", loc="upper right")
         match name:
             case "sampler":

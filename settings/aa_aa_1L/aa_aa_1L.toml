@@ -1,0 +1,41 @@
+run_name = "aa_aa_1L"
+templates = [
+    "settings/templates/flow/size8",
+    "settings/templates/madnis_bins/size2",
+    "settings/templates/transformer/size4",
+]
+
+[gammaloop_state]
+state_dir = "/home/nfink/gammaloop"
+state_name = "examples/cli/aa_aa/1L/state"
+integration_state_name = "examples/cli/aa_aa/1L/state/integration_workspace"
+integration_result_file = "integration_result.json"
+
+[integrator.madnis]
+batch_size = 100000
+learning_rate = 1e-3
+use_scheduler = true
+scheduler_type = "cosineannealing"
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "identity"
+
+[layered_integrand]
+integrand_type = "gammaloop"
+training_phase = "real"
+n_cores = 64
+
+[integrand.gammaloop]
+process_id = 0
+integrand_name = ""
+momentum_space = false
+sample_lmbs = true
+sample_orientations = false
+use_arb_prec = false
+minimal_output = true
+read_only_state = true
+
+[scripts.sampler_comp]
+n_training_steps = 1000
+n_samples = 10_000_000
+n_samples_after_training = 100_000_000
