@@ -42,6 +42,10 @@ def main() -> None:
                                     help="Enable this flag to not save anything to disk.")
     sampler_comparison.add_argument('--no_plot', action='store_true', default=False,
                                     help="Enable this flag to not output the plot file.")
+    sampler_comparison.add_argument('--no_export', action='store_true', default=False,
+                                    help="Enable this flag to not save the sampler states to output.")
+    sampler_comparison.add_argument('--plotting_settings', '-p', type=str, default="",
+                                    help="Use to overwrite plotting settings.")
 
     slice_plots = subparsers.add_parser("splots")
     slice_plots.add_argument('--file', '-f', type=str,
@@ -102,7 +106,9 @@ def main() -> None:
                              no_vegas=args.no_vegas,
                              no_havana=args.no_havana,
                              no_output=args.no_output,
-                             no_plot=args.no_plot,)
+                             no_plot=args.no_plot,
+                             export_states=not args.no_export,
+                             overwrite_plotting_settings=args.plotting_settings)
         case "splots":
             run_slice_plots(file=args.file,
                             settings_file=args.settings_file,

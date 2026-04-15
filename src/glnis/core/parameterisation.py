@@ -560,13 +560,13 @@ class KaapoParameterisation(Parameterisation):
                  b: float = 1.0,
                  vary_a: bool = False,
                  a_min: float = 0.2,
-                 shift_angles: float = 0.0,
+                 angle_shift: float = 0.0,
                  **kwargs):
         self.a = a
         self.b = b if b else self.graph_properties.e_cm
         self.vary_a = vary_a
         self.a_min = a_min
-        self.angle_shift = shift_angles
+        self.angle_shift = angle_shift
 
         super().__init__(**kwargs)
         self.mu = mu
@@ -648,13 +648,13 @@ class RKaapoParameterisation(Parameterisation):
                  b: float = 1.0,
                  vary_a: bool = False,
                  a_min: float = 0.2,
-                 shift_angles: float = 0.0,
+                 angle_shift: float = 0.0,
                  **kwargs):
         self.a = a
         self.b = b if b else self.graph_properties.e_cm
         self.vary_a = vary_a
         self.a_min = a_min
-        self.angle_shift = shift_angles
+        self.angle_shift = angle_shift
 
         super().__init__(**kwargs)
         self.mu = mu

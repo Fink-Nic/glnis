@@ -102,7 +102,7 @@ class TestIntegrand(Integrand):
     IDENTIFIER = "test integrand"
 
     def __init__(self, offset: NDArray | List[List[float]] | List[float] | None = None,
-                 sigma: float = 10.0,
+                 sigma: float | List[float] = 10.0,
                  const_f: bool = False,
                  **kwargs):
         super().__init__(**kwargs)
@@ -113,17 +113,25 @@ class TestIntegrand(Integrand):
         self.const_f = const_f
         if not self.const_f:
             self.target = IntegrationResult(real_central_value=1)
+        if isinstance(sigma, list):
+            self.sigma = np.array(sigma)
+            self.discrete_dims.append(len(sigma))
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         if self.const_f:
             return np.ones((len(continuous), 1), dtype=self.dtype)
+        if discrete.shape[1] > 0:
+            sigma = self.sigma[discrete[:, 0]]
+        else:
+            sigma = self.sigma
 
         if self.offset is not None:
             continuous -= self.offset.reshape(1, -1)
-        norm_factor = (2*np.pi * self.sigma **
-                       2)**(continuous.shape[1]/2)
+        norm_factor = np.sum((2*np.pi * sigma ** 2)**(continuous.shape[1]/2))
+        # if discrete.shape[1] > 0:
+        #     norm_factor *= len(sigma)
 
-        return np.exp(-(continuous**2).sum(axis=1) / self.sigma**2 / 2) / norm_factor
+        return np.exp(-(continuous**2).sum(axis=1) / sigma**2 / 2) / norm_factor
 
 
 class GammaLoopIntegrand(Integrand):

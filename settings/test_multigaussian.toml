@@ -1,0 +1,23 @@
+run_name = "test_multigaussian"
+templates = ["settings/test_nomc"]
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "spherical"
+conformal_scale = 10.0
+
+[layered_integrand]
+integrand_type = "test"
+n_cores = 1
+
+[integrand.test]
+sigma = [0.1, 1.0, 10.0]
+
+[scripts.sampler_comp]
+n_training_steps = 50
+n_samples = 10000
+n_samples_after_training = 100000
+n_log = 5
+n_plot_rsd = 10
+n_plot_loss = 1
+plot_disc = true
+n_plot_disc = 2
