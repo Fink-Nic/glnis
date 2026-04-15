@@ -253,7 +253,6 @@ class LayeredParameterisation:
         if isinstance(graph_properties, list):
             graph_properties = graph_properties[0]
         param_layers: List[Parameterisation] = []
-        num_layers = len(param_settings)
         for i_layer, kdict in enumerate(param_settings):
             kwargs = deepcopy(kdict)
             if not "parameterisation_type" in kwargs.keys():
@@ -261,7 +260,7 @@ class LayeredParameterisation:
                     "Each parameterisation layer must specify its parameterisation type.")
 
             param_type: str = kwargs.pop("parameterisation_type")
-            is_first_layer = (i_layer + 1) == num_layers
+            is_first_layer = (i_layer + 1) == len(param_settings)
             next_param = None if i_layer == 0 else param_layers[-1]
             kwargs.update(dict(is_first_layer=is_first_layer,
                                next_param=next_param,
@@ -298,6 +297,13 @@ class LayeredParameterisation:
                     raise NotImplementedError(
                         f"Parameterisation {param_type} has not been implemented.")
             param_layers.append(p)
+
+        if not param_layers:
+            param_layers.append(
+                IdentityParameterisation(
+                    graph_properties=graph_properties,
+                    is_first_layer=True,)
+            )
 
         self.param = param_layers[-1]
         self.continuous_dim = self.param.chain_continuous_dim_in
@@ -694,10 +700,10 @@ class RKaapoParameterisation(Parameterisation):
                 pol = 0
             elif i_loop == 1:
                 x1 = continuous[:, 1].reshape(-1, 1)
-                x2 = continuous[:, 1].reshape(-1, 1)
+                x2 = continuous[:, 2].reshape(-1, 1)
                 if self.angle_shift != 0.:
                     x2 = (x2 + self.angle_shift) % 1
-                cos_az = (2*x2 - 1).reshape(-1, 1)
+                cos_az = (2*x2 - 1)
                 sin_az = np.sqrt(1 - cos_az**2)
                 pol = 0
             else:

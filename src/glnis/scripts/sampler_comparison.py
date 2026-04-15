@@ -201,6 +201,8 @@ def run_sampler_comp(
             for dim in madnis_integrator.integrand.discrete_dims:
                 n_tot_ch *= dim
             plot_disc = n_tot_ch <= 10000 and plot_disc
+        else:
+            plot_disc = False
         if plot_disc:
             Data.plottables.all_channels = np.array(
                 np.meshgrid(*[range(dim) for dim in madnis_integrator.integrand.discrete_dims])

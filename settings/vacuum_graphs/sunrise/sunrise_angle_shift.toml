@@ -38,7 +38,7 @@ n_plot_rsd = 20
 n_plot_loss = 1
 
 [[scripts.slice_plots.slice]]
-origin = [0.44341431, 0.22723927, 0.55458468]
+origin = [0.44341431, 0.22723927, 0.05458468]
 discrete = [1]
 dirs = [0, 1]
 grid = [
@@ -46,7 +46,7 @@ grid = [
     {start = 0, stop = 1, num = 1000},
 ]
 [[scripts.slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965]
+origin = [0.84720132, 0.83117505, 0.49961965]
 discrete = [1]
 dirs = [0, 1]
 grid = [
@@ -54,7 +54,7 @@ grid = [
     {start = 0, stop = 1, num = 1000},
 ]
 [[scripts.slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965]
+origin = [0.84720132, 0.83117505, 0.49961965]
 discrete = [1]
 dirs = [0, 2]
 grid = [
@@ -62,7 +62,7 @@ grid = [
     {start = 0, stop = 1, num = 1000},
 ]
 [[scripts.slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965]
+origin = [0.84720132, 0.83117505, 0.49961965]
 discrete = [1]
 dirs = [2, 1]
 grid = [
@@ -70,7 +70,7 @@ grid = [
     {start = 0, stop = 1, num = 1000},
 ]
 [[scripts.slice_plots.slice]]
-origin = [0.95709241, 0.97321720, 0.03780411]
+origin = [0.95709241, 0.97321720, 0.53780411]
 discrete = [2]
 dirs = [0, 1]
 grid = [
@@ -78,7 +78,7 @@ grid = [
     {start = 0, stop = 1, num = 1000},
 ]
 [[scripts.slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965]
+origin = [0.84720132, 0.83117505, 0.49961965]
 discrete = [1]
 dirs = [1]
 grid = [

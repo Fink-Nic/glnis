@@ -17,9 +17,6 @@ learning_rate = 1e-3
 use_scheduler = true
 scheduler_type = "cosineannealing"
 
-[layered_parameterisation.layer_0]
-parameterisation_type = "identity"
-
 [layered_integrand]
 integrand_type = "gammaloop"
 training_phase = "real"

@@ -24,6 +24,7 @@ except:
 
 class Integrand(ABC):
     IDENTIFIER = "ABCIntegrand"
+    momentum_space = True
 
     def __init__(self,
                  graph_properties: GraphProperties | List[GraphProperties],
@@ -367,9 +368,11 @@ class ParameterisedIntegrand:
         self.sum_channels = integrand_kwargs.get('sum_channels', False)
         self.verbose = verbose
 
-        self.param = LayeredParameterisation(
-            self.graph_properties, self.param_kwargs)
         self.integrand = Integrand.get_integrand_instance(self.graph_properties, self.integrand_kwargs)
+        # If the integrand is not in momentum space, we assume it does not require a parameterisation.
+        if not self.integrand.momentum_space:
+            self.param_kwargs = []
+        self.param = LayeredParameterisation(self.graph_properties, self.param_kwargs)
         self.sum_channels = self.sum_channels and len(self.param.discrete_dims) == 1
         self.dtype = self.integrand.dtype
         self.continuous_dim = self._get_continuous_dims()
