@@ -42,6 +42,7 @@ class Integrator(ABC):
         self.continuous_dim = integrand.continuous_dim
         self.discrete_dims = integrand.discrete_dims
         self.num_discrete_dims = len(integrand.discrete_dims)
+        self._discrete_prod: int = int(np.prod(self.discrete_dims)) if self.num_discrete_dims > 0 else 0
         self.input_dim = self.continuous_dim + self.num_discrete_dims
         self.dtype = integrand.dtype
         self.seed = seed
@@ -416,22 +417,22 @@ class HavanaIntegrator(Integrator):
         layer_input = self.init_layer_data(n_points)
         samples = self.havana.sample(n_points, self.symbolica_rng)
 
-        continuous = np.zeros(
+        continuous = np.empty(
             (n_points, self.continuous_dim), dtype=self.integrand.dtype)
-        for i in range(n_points):
-            continuous[i] = samples[i].c
+        for i, sample in enumerate(samples):
+            continuous[i] = sample.c
 
         if self.num_discrete_dims > 0:
-            discrete = np.zeros(
+            discrete = np.empty(
                 (n_points, self.num_discrete_dims), dtype=np.uint64)
-            for i in range(n_points):
-                discrete[i] = samples[i].d
+            for i, sample in enumerate(samples):
+                discrete[i] = sample.d
         else:
             discrete = np.zeros((n_points, 0), dtype=np.uint64)
 
         layer_input.continuous = continuous
         layer_input.discrete = discrete
-        total_wgt = np.ones((n_points), dtype=self.integrand.dtype)
+        total_wgt = np.full((n_points), 1.0/self._discrete_prod, dtype=self.integrand.dtype)
         for i in range(self.num_discrete_dims):
             try:
                 discrete_wgt = np.take_along_axis(
@@ -444,15 +445,8 @@ class HavanaIntegrator(Integrator):
                 shell_print(f"Discrete samples for this dimension: {discrete[:, i]}")
                 raise e
 
-        if training:
-            total_wgt /= np.array(self.discrete_dims).prod()
-        else:
-            sample_weights = np.array([s.weights for s in samples])
-            sample_weights = sample_weights[:, -1]
-            total_wgt *= sample_weights
-
-            # sample_weights = np.prod(sample_weights, axis=1)
-            # total_wgt *= sample_weights * np.array(self.discrete_dims).prod()
+        if not training:
+            total_wgt *= np.array([s.weights[0] for s in samples])
 
         layer_input.wgt = total_wgt
         layer_input.update(self.IDENTIFIER)

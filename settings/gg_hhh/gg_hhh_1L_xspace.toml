@@ -1,6 +1,6 @@
 run_name = "gg_hhh_1L_xspace"
 templates = [
-    "settings/gg_hhh/gg_hhh_1L"
+    "settings/gg_hhh/gg_hhh_1L",
     "settings/templates/flow/size6",
     "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size2",
@@ -13,3 +13,25 @@ sample_orientations = false
 use_arb_prec = false
 minimal_output = true
 read_only_state = true
+
+[[scripts.slice_plots.slice]]
+origin = [0.58196708, 0.18319655, 0.95370665]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.58196708, 0.18319655, 0.95370665]
+dirs = [0, 2]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.58196708, 0.18319655, 0.95370665]
+dirs = [1, 2]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]

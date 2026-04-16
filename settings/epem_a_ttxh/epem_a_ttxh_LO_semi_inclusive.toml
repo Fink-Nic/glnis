@@ -13,3 +13,20 @@ n_cores = 64
 
 [integrand.gammaloop]
 integrand_name = "LO_semi_inclusive"
+
+[[scripts.slice_plots.slice]]
+origin = [0.21197481, 0.50832561, 0.72426355, 0.28365847, 0.96061689, 0.16644217]
+discrete = [0]
+dirs = [0, 3]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.21197481, 0.50832561, 0.72426355, 0.28365847, 0.96061689, 0.16644217]
+discrete = [1]
+dirs = [0, 3]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]

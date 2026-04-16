@@ -130,6 +130,8 @@ def run_slice_plots(
     try:
         # Initialize the integrand to be shared across integrators
         graph_properties = Settings.get_graph_properties()
+        if isinstance(graph_properties, list):
+            graph_properties = graph_properties[0]
         parameterisation_kwargs = Settings.get_parameterisation_kwargs()
         integrand_kwargs = Settings.get_integrand_kwargs()
         n_cores = integrand_kwargs.pop("n_cores", 16)
