@@ -371,11 +371,15 @@ class HavanaIntegrator(Integrator):
                 self.continuous_dim, n_continuous_bins)
             self.uniform_disc_grid = None
         elif self._discrete_prod < 1000 and not use_uniform:
-            self.havana = NumericalIntegrator.discrete(
-                [NumericalIntegrator.continuous(
-                    self.continuous_dim, n_continuous_bins) for _ in range(self.discrete_dims[0])],
-                max_prob_ratio,
-            )
+            def build_nested(dims: List[int], idx: int = 0) -> NumericalIntegrator:
+                if idx == len(dims):
+                    return NumericalIntegrator.continuous(
+                        self.continuous_dim, n_continuous_bins)
+                return NumericalIntegrator.discrete(
+                    [build_nested(dims, idx+1) for _ in range(dims[idx])],
+                    max_prob_ratio,
+                )
+            self.havana = build_nested(self.discrete_dims)
             self.uniform_disc_grid = False
         else:
             self.havana = NumericalIntegrator.uniform(

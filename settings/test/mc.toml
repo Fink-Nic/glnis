@@ -1,5 +1,12 @@
-run_name = "test_mc"
-templates = ["settings/test_nomc"]
+run_name = "test@mc"
+output_dir = "test/mc"
+
+templates = [
+    "settings/test/base",
+    "settings/templates/flow/size1",
+    "settings/templates/madnis_bins/size1",
+    "settings/templates/transformer/size1",
+]
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "spherical"
@@ -8,14 +15,3 @@ parameterisation_type = "spherical"
 parameterisation_type = "mc_layer"
 subtype = "ose"
 ose_exponent = 0.5
-fermi_exponent = 0.5
-
-[scripts.training_prog]
-n_training_steps = 50
-n_samples = 1000
-n_samples_after_training = 20000
-n_log = 5
-n_plot_rsd = 10
-n_plot_loss = 1
-plot_disc = true
-n_plot_disc = 2

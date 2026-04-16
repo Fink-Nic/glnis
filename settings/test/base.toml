@@ -1,0 +1,86 @@
+run_name = "test@base"
+output_dir = "test/base"
+
+templates = [
+    "settings/templates/flow/size1",
+    "settings/templates/madnis_bins/size1",
+    "settings/templates/transformer/size1",
+]
+
+[graph]
+from_state = false
+momtrop_edge_weight = 0.75
+is_vacuum = true
+overwrite_graph_properties = true
+
+[integration_target]
+real_central_value = 1.0
+
+[graph.graph_properties]
+edge_src_dst_vertices = [
+    [0, 1], 
+    [1, 0], 
+    [1, 0]
+]
+edge_masses = [
+    0.0,
+    0.0,
+    0.0
+]
+edge_momentum_shifts = [
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ]
+]
+graph_external_vertices = []
+graph_signature = [
+    [1, 0], 
+    [0, 1], 
+    [1, -1]
+]
+momtrop_edge_weight = []
+lmb_array = [
+    [0, 1], 
+    [0, 2], 
+    [1, 2]
+]
+[model]
+from_state = false
+
+[layered_integrator]
+integrator_type = "madnis"
+
+[integrator.madnis]
+batch_size = 1000
+learning_rate = 1e-3
+use_scheduler = true
+pretrain_c_flow = false
+
+[layered_integrand]
+integrand_type = "test"
+n_cores = 1
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "spherical"
+
+[scripts.sampler_comp]
+n_training_steps = 50
+n_samples = 1000
+n_samples_after_training = 20000
+n_log = 5
+n_plot_rsd = 10
+n_plot_loss = 1
+plot_disc = true
+n_plot_disc = 2
