@@ -681,7 +681,7 @@ class MaxWeight(AccumulatorModule):
                 self.imag_neg_max_wgt_point = other.imag_neg_max_wgt_point
 
     def str_report(self) -> str:
-        report = ["Max weights and their location in momentum-space:"]
+        report = ["Max weights and their location in x-space:"]
 
         def mwp_to_discstr_cont(mwp):
             disc, cont = mwp

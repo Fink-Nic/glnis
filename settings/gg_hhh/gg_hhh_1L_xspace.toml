@@ -1,0 +1,15 @@
+run_name = "gg_hhh_1L_xspace"
+templates = [
+    "settings/gg_hhh/gg_hhh_1L"
+    "settings/templates/flow/size6",
+    "settings/templates/madnis_bins/size1",
+    "settings/templates/transformer/size2",
+]
+
+[integrand.gammaloop]
+momentum_space = false
+sample_lmbs = true
+sample_orientations = false
+use_arb_prec = false
+minimal_output = true
+read_only_state = true

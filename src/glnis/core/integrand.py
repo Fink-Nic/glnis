@@ -143,7 +143,7 @@ class GammaLoopIntegrand(Integrand):
                  integrand_name: str = "",
                  run_commands: str | List[str] = "",
                  momentum_space: bool = True,
-                 sample_lmbs: bool = False,
+                 sample_lmbs: bool | Literal["summed"] = False,
                  sample_orientations: bool = False,
                  use_arb_prec: bool = False,
                  minimal_output: bool = True,
@@ -199,7 +199,13 @@ class GammaLoopIntegrand(Integrand):
             for itg_name, pid in self.outputs.items():
                 self.gammaloop_state.run(
                     f"set process -p {pid} -i {itg_name} kv sampling.orientations='summed'")
-        if sample_lmbs:
+        if sample_lmbs == "summed":
+            for itg_name, pid in self.outputs.items():
+                self.gammaloop_state.run(
+                    f"set process -p {pid} -i {itg_name} kv sampling.lmb_multichanneling=false")
+                self.gammaloop_state.run(
+                    f"set process -p {pid} -i {itg_name} kv sampling.lmb_channels='summed'")
+        elif sample_lmbs:
             for itg_name, pid in self.outputs.items():
                 self.gammaloop_state.run(
                     f"set process -p {pid} -i {itg_name} kv sampling.lmb_multichanneling=true")
@@ -215,8 +221,6 @@ class GammaLoopIntegrand(Integrand):
             for itg_name, pid in self.outputs.items():
                 self.gammaloop_state.run(
                     f"set process -p {pid} -i {itg_name} kv sampling.lmb_multichanneling=false")
-                self.gammaloop_state.run(
-                    f"set process -p {pid} -i {itg_name} kv sampling.lmb_channels='summed'")
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         # When not sampling graphs, prepend graph_id=0 for gammaloop
