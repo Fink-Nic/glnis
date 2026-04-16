@@ -19,19 +19,15 @@ run_name = "default"
 # Any parameter specified here will be overwritten. Example (string quotes required):
 # 'scripts.training_prog.n_training_steps' = 1337
 
-[gammaloop_state]
+[gammaloop]
 # Name of the gammaloop state directory. REQUIRED TO BE OVERWRITTEN
-state_dir = "/home/nfink/gammaloop/gl_states"
+state_dir = "/home/nic/Master/glnis/gammaloop_files"
 # Name of the state inside state_dir.
-state_name = "default"
+state = "default"
 # Name of the gammaloop integration state, if any
-integration_state_name = "default"
-# Name of the model file inside the state_name folder
-model_name = "model.json"
-# Name of the runcard file inside the state_name folder
-runcard_name = "run.toml"
+integration_workspace = "default"
 # Name of the integration results file inside the integration_state_name folder
-integration_result_file = "result.txt"
+result_file = "integration_result.json"
 process_id = 0
 integrand_name = "default"
 

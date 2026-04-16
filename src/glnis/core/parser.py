@@ -258,6 +258,11 @@ class SettingsParser:
             settings_default_path = verify_path("settings/default.toml")
             with settings_default_path.open("rb") as f:
                 default_settings = tomllib.load(f)
+            if default_settings.get('gammaloop', {}).get('state_dir', "default") == "default":
+                raise ValueError(
+                    """No default gammaloop state directory specified. 
+                    You can set it using 'glnis setdef -d <path_to_gammaloop_examples>'."""
+                )
 
         for t in settings.get("templates", []):
             try:
@@ -277,8 +282,8 @@ class SettingsParser:
             default_settings, settings,
             always_overwrite=['layered_parameterisation', 'templates'])
 
-        self.gammaloop_state_path = Path(self.settings['gammaloop_state']['state_dir'],
-                                         self.settings['gammaloop_state']['state_name'])
+        self.gammaloop_state_path = Path(self.settings['gammaloop']['state_dir'],
+                                         self.settings['gammaloop']['state'])
         self.settings['integrand']['gammaloop'][
             'gammaloop_state_path'] = str(self.gammaloop_state_path)
         self._graph_from_state = self.settings['graph']['from_state']
@@ -310,9 +315,9 @@ class SettingsParser:
         return SettingsParser(new_settings, _from_existing=True)
 
     def get_gammaloop_integration_result(self) -> Dict | None:
-        result_path = Path(self.settings['gammaloop_state']['state_dir'],
-                           self.settings['gammaloop_state']['integration_state_name'],
-                           self.settings['gammaloop_state']['integration_result_file'])
+        result_path = Path(self.settings['gammaloop']['state_dir'],
+                           self.settings['gammaloop']['integration_workspace'],
+                           self.settings['gammaloop']['result_file'])
         if not result_path.exists():
             return None
 
@@ -327,31 +332,21 @@ class SettingsParser:
             return IntegrationResult(**self.settings.get('integration_target', {}))
         try:
             itg_name = self.settings['integrand']['gammaloop']['integrand_name']
-            result = [slot['integral'] for slot in gammaloop_result['slots']
-                      if slot['integrand'] == itg_name
-                      or itg_name == "summed"]
-            if len(result) == 0:
-                result = [gammaloop_result['slots'][0]['integral']]
+            slots = gammaloop_result['slots']
+            candidates = [slot for slot in slots
+                          if slot['integrand'] == itg_name]
+            if len(candidates) == 0:
+                raise ValueError("No matching slots found in GammaLoop result.")
+            candidate = candidates[0]
+            target = candidate.get('target') or candidate.get('integral')
 
-            int_res = IntegrationResult(
-                n_points=result[0]['neval'] / len(result),
-                real_central_value=result[0]['result']['re'],
-                imag_central_value=result[0]['result']['im'],
-                real_error=result[0]['error']['re'],
-                imag_error=result[0]['error']['im'],
+            return IntegrationResult(
+                n_points=target['neval'],
+                real_central_value=target['result']['re'],
+                imag_central_value=target['result']['im'],
+                real_error=target['error']['re'],
+                imag_error=target['error']['im'],
             )
-            for r in result[1:]:
-                int_res.combine_with(
-                    IntegrationResult(
-                        n_points=r['neval'] / len(result),
-                        real_central_value=r['result']['re'],
-                        imag_central_value=r['result']['im'],
-                        real_error=r['error']['re'],
-                        imag_error=r['error']['im'],
-                    )
-                )
-
-            return int_res
         except:
             return IntegrationResult(**self.settings.get('integration_target', {}))
 

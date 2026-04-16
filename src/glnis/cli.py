@@ -9,9 +9,14 @@ def main() -> None:
     from glnis.scripts.multiprocessing_efficiency import run_multiprocessing_efficiency
     from glnis.scripts.hyperparam_comparison import run_hyperparam_comparison
     from glnis.scripts.generate_thermal_integrand_evaluators import run_generate_thermal_integrand_evaluators
+    from glnis.scripts.set_default_gl_path import run_set_default_gl_path
 
     parser = argparse.ArgumentParser(prog="glnis")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    set_def = subparsers.add_parser("setdef")
+    set_def.add_argument('--directory', '-d', type=str,
+                         help="The path to the GammaLoop examples directory.")
 
     state_test = subparsers.add_parser("stest")
     state_test.add_argument('--file', '-f', type=str,
@@ -92,6 +97,8 @@ def main() -> None:
     args = parser.parse_args()
 
     match args.command:
+        case "setdef":
+            run_set_default_gl_path(path=args.directory,)
         case "stest":
             run_state_test(file=args.file,)
         case "tprog":

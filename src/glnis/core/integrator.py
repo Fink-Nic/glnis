@@ -42,7 +42,7 @@ class Integrator(ABC):
         self.continuous_dim = integrand.continuous_dim
         self.discrete_dims = integrand.discrete_dims
         self.num_discrete_dims = len(integrand.discrete_dims)
-        self._discrete_prod: int = int(np.prod(self.discrete_dims)) if self.num_discrete_dims > 0 else 0
+        self._discrete_prod: int = int(np.prod(self.discrete_dims))
         self.input_dim = self.continuous_dim + self.num_discrete_dims
         self.dtype = integrand.dtype
         self.seed = seed
@@ -370,7 +370,7 @@ class HavanaIntegrator(Integrator):
             self.havana = NumericalIntegrator.continuous(
                 self.continuous_dim, n_continuous_bins)
             self.uniform_disc_grid = None
-        elif self.num_discrete_dims == 1 and not use_uniform:
+        elif self._discrete_prod < 1000 and not use_uniform:
             self.havana = NumericalIntegrator.discrete(
                 [NumericalIntegrator.continuous(
                     self.continuous_dim, n_continuous_bins) for _ in range(self.discrete_dims[0])],
