@@ -109,13 +109,12 @@ class TestIntegrand(Integrand):
         self.offset = offset
         if offset is not None:
             self.offset = np.array(offset)
-        self.sigma = sigma
+        self.sigma = np.array(sigma)
         self.const_f = const_f
         if not self.const_f:
             self.target = IntegrationResult(real_central_value=1)
-        if isinstance(sigma, list):
-            self.sigma = np.array(sigma)
-            self.discrete_dims.append(len(sigma))
+        if self.sigma.size > 1:
+            self.discrete_dims.append(self.sigma.size)
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
         if self.const_f:
@@ -127,9 +126,7 @@ class TestIntegrand(Integrand):
 
         if self.offset is not None:
             continuous -= self.offset.reshape(1, -1)
-        norm_factor = np.sum((2*np.pi * sigma ** 2)**(continuous.shape[1]/2))
-        # if discrete.shape[1] > 0:
-        #     norm_factor *= len(sigma)
+        norm_factor = np.sum((2*np.pi * self.sigma ** 2)**(continuous.shape[1]/2))
 
         return np.exp(-(continuous**2).sum(axis=1) / sigma**2 / 2) / norm_factor
 
@@ -367,14 +364,12 @@ class ParameterisedIntegrand:
                  graph_properties: GraphProperties | List[GraphProperties],
                  param_kwargs: List[Dict[str, Any]],
                  integrand_kwargs: Dict[str, Any],
-                 verbose: bool = False,
                  **kwargs):
         self.graph_properties = graph_properties if isinstance(graph_properties, list) else [graph_properties]
         self.param_kwargs = param_kwargs
         self.integrand_kwargs = integrand_kwargs
         self.condition_integrand_first = integrand_kwargs.pop('condition_integrand_first', False)
         self.sum_channels = integrand_kwargs.get('sum_channels', False)
-        self.verbose = verbose
 
         self.integrand = Integrand.get_integrand_instance(self.graph_properties, self.integrand_kwargs)
         # If the integrand is not in momentum space, we assume it does not require a parameterisation.
@@ -428,9 +423,6 @@ class ParameterisedIntegrand:
             target=self.integrand.target,
             training_phase=self.integrand.training_phase,)
         accumulator = integration_result.accumulate(acc_type, **acc_kwargs)
-
-        if self.verbose:
-            shell_print(accumulator.str_report())
 
         return accumulator
 
@@ -486,7 +478,6 @@ class MPIntegrand(ParameterisedIntegrand):
                  integrand_kwargs: Dict[str, Any],
                  n_cores: int = 1,
                  n_shards: int = 32,
-                 verbose: bool = False,
                  **kwargs):
         self.n_cores = min(n_cores, mp.cpu_count() - self.N_UNUSED) if n_cores > 0 else 1
         n_shards = min(n_shards, self.n_cores)
@@ -499,7 +490,7 @@ class MPIntegrand(ParameterisedIntegrand):
         super().__init__(graph_properties,
                          param_kwargs,
                          integrand_kwargs,
-                         verbose, **kwargs)
+                         **kwargs)
         worker_args = (
             self.stop_event,
             graph_properties,
@@ -516,10 +507,7 @@ class MPIntegrand(ParameterisedIntegrand):
             w.start()
         for w_id in range(self.n_cores):
             output = self.q_out[w_id % n_shards].get()
-            if output == 'STARTED':
-                if self.verbose:
-                    shell_print(f"Core {w_id} has been initialized.")
-            else:
+            if not output == 'STARTED':
                 raise ValueError(
                     f"Unexpected initialization value in queue: {output}")
 
@@ -607,9 +595,6 @@ class MPIntegrand(ParameterisedIntegrand):
         if n_processed != n_chunks:
             raise RuntimeError("MPIntegrand evaluation was interrupted before all chunks were processed.")
 
-        if self.verbose:
-            shell_print(accumulator.str_report())
-
         if acc_type == 'training':
             accumulator: TrainingAccumulator
             result_sorted = n_chunks*[None]
@@ -676,8 +661,6 @@ class MPIntegrand(ParameterisedIntegrand):
         if self._ended:
             return
 
-        if self.verbose:
-            shell_print("Attempting to close queues.")
         self.stop_event.set()
 
         for w in self.workers:
@@ -719,5 +702,3 @@ class MPIntegrand(ParameterisedIntegrand):
         self.workers = None
 
         self._ended = True
-        if self.verbose:
-            shell_print(f"{self.IDENTIFIER.upper()} has successfully terminated.")

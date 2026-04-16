@@ -5,6 +5,9 @@ templates = [
     "settings/templates/transformer/size2",
 ]
 
+[graph]
+overwrite_lmb_heuristics = true
+
 [gammaloop_state]
 state_dir = "/home/nfink/gammaloop"
 state_name = "examples/cli/gg_hhh/1L/state"

@@ -75,7 +75,7 @@ class ModelParser:
 
 class DotParser:
     def __init__(self, dot_file: str | Path, model: str | Path | ModelParser,
-                 verbose: bool = False, dot_from_string: bool = False,):
+                 dot_from_string: bool = False,):
         if dot_from_string:
             self.graph_file = pydot.graph_from_dot_data(dot_file)
         else:
@@ -85,10 +85,9 @@ class DotParser:
             self.Model = model
         else:
             self.Model = ModelParser(model)
-        self.verbose = verbose
 
-    def get_dot_graph(self, process_id: int):
-        return self.graph_file[process_id]
+    def get_dot_graph(self, graph_id: int):
+        return self.graph_file[graph_id]
 
     def infer_dependent_momentum(self,
                                  ext_momenta: List[List[float]],
@@ -111,22 +110,10 @@ class DotParser:
         ext_momenta = ext_momenta[:dmi] + \
             [dependent_momentum] + ext_momenta[dmi:]
 
-        if self.verbose:
-            test_mom_cons = 4*[0.]
-            for momentum, sig in zip(ext_momenta, ext_sigs):
-                test_mom_cons[0] += sig*momentum[0]
-                test_mom_cons[1] += sig*momentum[1]
-                test_mom_cons[2] += sig*momentum[2]
-                test_mom_cons[3] += sig*momentum[3]
-
-            shell_print("------------ INFERED EXTERNAL MOMENTUM --------------")
-            shell_print(f"{dependent_momentum=}")
-            shell_print(f"{test_mom_cons=} SHOULD BE ZERO")
-
         return ext_momenta
 
-    def get_external_signature(self, process_id: int = 0) -> List[int]:
-        graph = self.get_dot_graph(process_id)
+    def get_external_signature(self, graph_id: int = 0) -> List[int]:
+        graph = self.get_dot_graph(graph_id)
         edges = graph.get_edges()
 
         ext_sigs = len(edges)*[None]
@@ -141,14 +128,14 @@ class DotParser:
 
         return ext_sigs
 
-    def get_graph_properties(self, process_id: int,
+    def get_graph_properties(self, graph_id: int,
                              ext_momenta: List[List[float]],) -> GraphProperties:
 
         # External momenta
         n_ext_mom = len(ext_momenta)
 
         # Dot graph
-        graph = self.get_dot_graph(process_id)
+        graph = self.get_dot_graph(graph_id)
         edges: List[pydot.Edge] = graph.get_edges()
         vertices = graph.get_nodes()
 
@@ -241,30 +228,8 @@ class DotParser:
                 for i in range(3):
                     momentum_shift[i] += coeff*ext_mom[i+1]
 
-            if self.verbose:
-                shell_print(f"{edge_external_sig=}")
-                shell_print(f"{momentum_shift=}")
-
             edge_momentum_shifts.append(momentum_shift)
             edge_external_sigs.append(edge_external_sig)
-
-        if self.verbose:
-            shell_print("-------------- PARSED MOMTROP SAMPLER ---------------")
-            shell_print(f"{ext_momenta=}")
-            shell_print(f"{edge_masses=}")
-            shell_print(f"{graph_signature=}")
-            shell_print(f"{graph_externals=}")
-            shell_print(f"{edge_momentum_shifts=}")
-            shell_print(f"{edge_external_sigs=}")
-            shell_print(f"------------------ INTERNAL EDGES ------------------")
-            for edge in INT_EDGES:
-                shell_print(edge.to_string())
-            shell_print(f"-------------------- LMB EDGES ---------------------")
-            for edge in LMB_EDGES:
-                shell_print(edge.to_string())
-            shell_print(f"----------------- EXTERNAL VERTICES ----------------")
-            for vert in EXT_VERTICES:
-                shell_print(vert.to_string())
 
         return GraphProperties(
             edge_src_dst_vertices=edge_src_dst_vertices,
@@ -279,8 +244,7 @@ class DotParser:
 
 class SettingsParser:
     def __init__(self, settings: str | Path | Dict = "settings/default.toml",
-                 verbose: bool = False, _from_existing: bool = False):
-        self.verbose = verbose
+                 _from_existing: bool = False):
         if not isinstance(settings, dict):
             settings_path = Path(settings)
             settings_path = verify_path(settings_path, suffix=".toml")
@@ -436,7 +400,7 @@ class SettingsParser:
             model_as_str = self.gammaloop_state.get_model()
             Model = ModelParser(model_as_str, from_string=True)
             dot_as_str = self.gammaloop_state.get_dot_files(process_id, integrand_name)
-            Dot = DotParser(dot_as_str, Model, self.verbose, dot_from_string=True)
+            Dot = DotParser(dot_as_str, Model, dot_from_string=True)
             kinematics = self.gammaloop_state.get_default_runtime_settings().kinematics
             e_cm = kinematics.e_cm
             ext_momenta = kinematics.externals.data.momenta.to_dict()
@@ -444,6 +408,8 @@ class SettingsParser:
             n_externals = len(ext_momenta)
             graph_properties_list = []
             for g_id, graph_group in enumerate(iinfo.graph_groups):
+                master_id = [g.graph_id for g in graph_group.graphs if g.is_master][0]
+                graph_properties = Dot.get_graph_properties(master_id, ext_momenta)
                 lmbs = graph_group.loop_momentum_bases
                 momentum_space = self.settings['integrand']['gammaloop']['momentum_space']
                 if self.settings['graph'].get('overwrite_lmb_heuristics', False) and momentum_space:
@@ -452,12 +418,9 @@ class SettingsParser:
                     active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]
                 generation_basis_id = [lmb.matches_generation_basis for lmb in lmbs].index(True)
                 generation_channel_id = active_lmbs.index(lmbs[generation_basis_id])
-                lmb_array = [[e_id-n_externals for e_id in lmb.edge_ids] for lmb in active_lmbs]
-                orientations = graph_group.orientations
-                graph_properties = Dot.get_graph_properties(g_id, ext_momenta)
-                graph_properties.orientation_ids = [o.orientation_id for o in orientations]
-                graph_properties.orientation_signatures = [o.signature for o in orientations]
-                graph_properties.lmb_array = lmb_array
+                graph_properties.lmb_array = [[e_id-n_externals for e_id in lmb.edge_ids] for lmb in active_lmbs]
+                graph_properties.orientation_ids = [o.orientation_id for o in graph_group.orientations]
+                graph_properties.orientation_signatures = [o.signature for o in graph_group.orientations]
                 graph_properties.generation_channel_id = generation_channel_id
                 graph_properties.e_cm = e_cm
                 graph_properties.__post_init__()
@@ -476,9 +439,6 @@ class SettingsParser:
                         default_weight = (
                             3*graph_properties.n_loops + 3/2)/n_int_edges/2
                         edge_weight = n_int_edges*[default_weight]
-                        if self.verbose:
-                            shell_print(
-                                f"Setting momtrop edge weights to default: {default_weight:.5f}")
                     case _:
                         raise ValueError("Momtrop edge weights must be one of: \n"
                                          + "Number, Sequence of Numbers or \"default\".")
@@ -488,19 +448,11 @@ class SettingsParser:
 
             return graph_properties_list
 
-        process_id = self.settings['gammaloop_state']['process_id']
-        lmb_array = []
-        orientations = []
-        generation_channel_id = 0
-        e_cm = 0.0
-        Dot = DotParser(self.dot_path, self.model_path, self.verbose)
+        Dot = DotParser(self.dot_path, self.model_path)
         ext_momenta = self.settings['graph']['external_momenta']
-        graph_properties = Dot.get_graph_properties(process_id, ext_momenta)
-        graph_properties.orientation_ids = [o.orientation_id for o in orientations]
-        graph_properties.orientation_signatures = [o.signature for o in orientations]
-        graph_properties.lmb_array = lmb_array
-        graph_properties.generation_channel_id = generation_channel_id
-        graph_properties.e_cm = e_cm
+        graph_properties = Dot.get_graph_properties(0, ext_momenta)
+        graph_properties.generation_channel_id = 0
+        graph_properties.e_cm = 0.0
         graph_properties.__post_init__()
 
         n_int_edges = graph_properties.n_edges
@@ -518,9 +470,6 @@ class SettingsParser:
                 default_weight = (
                     3*graph_properties.n_loops + 3/2)/n_int_edges/2
                 edge_weight = n_int_edges*[default_weight]
-                if self.verbose:
-                    shell_print(
-                        f"Setting momtrop edge weights to default: {default_weight:.5f}")
             case _:
                 raise ValueError("Momtrop edge weights must be one of: \n"
                                  + "Number, Sequence of Numbers or \"default\".")

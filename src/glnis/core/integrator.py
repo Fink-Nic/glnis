@@ -163,7 +163,6 @@ class Integrator(ABC):
 
         n_cores = integrand_kwargs.pop('n_cores', 1)
         n_shards = integrand_kwargs.pop('n_shards', 32)
-        verbose = integrand_kwargs.pop('verbose', False)
         integrator_type: str | None = integrator_kwargs.pop('integrator_type', None)
 
         integrand = MPIntegrand(
@@ -172,7 +171,6 @@ class Integrator(ABC):
             integrand_kwargs=integrand_kwargs,
             n_cores=n_cores,
             n_shards=n_shards,
-            verbose=verbose,
         )
 
         match integrator_type.lower() if integrator_type is not None else None:
@@ -452,6 +450,9 @@ class HavanaIntegrator(Integrator):
             sample_weights = np.array([s.weights for s in samples])
             sample_weights = sample_weights[:, -1]
             total_wgt *= sample_weights
+
+            # sample_weights = np.prod(sample_weights, axis=1)
+            # total_wgt *= sample_weights * np.array(self.discrete_dims).prod()
 
         layer_input.wgt = total_wgt
         layer_input.update(self.IDENTIFIER)

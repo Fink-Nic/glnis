@@ -133,13 +133,11 @@ def run_slice_plots(
         parameterisation_kwargs = Settings.get_parameterisation_kwargs()
         integrand_kwargs = Settings.get_integrand_kwargs()
         n_cores = integrand_kwargs.pop("n_cores", 16)
-        verbose = integrand_kwargs.pop("verbose", False)
         integrand = MPIntegrand(
             graph_properties=graph_properties,
             param_kwargs=parameterisation_kwargs,
             integrand_kwargs=integrand_kwargs,
             n_cores=n_cores,
-            verbose=verbose,
         )
         # Get result to normalize the function values
         itg = None

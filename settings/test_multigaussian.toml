@@ -1,5 +1,10 @@
 run_name = "test_multigaussian"
-templates = ["settings/test_nomc"]
+templates = [
+    "settings/test_nomc",
+    "settings/templates/madnis_bins/size0",
+    "settings/templates/flow/size5",
+    "settings/templates/transformer/size3",
+]
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "spherical"
@@ -10,7 +15,13 @@ integrand_type = "test"
 n_cores = 1
 
 [integrand.test]
-sigma = [0.1, 1.0, 10.0]
+sigma = [0.5, 1.0, 2.0]
+
+[integrator.madnis]
+loss_type = "variance"
+
+[integrator.havana]
+max_prob_ratio = 10
 
 [scripts.sampler_comp]
 n_training_steps = 50
