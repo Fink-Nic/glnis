@@ -148,12 +148,12 @@ class Integrator(ABC):
         )
 
     @_block_if_ended
-    def probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
+    def probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
         """Returns the probability of sampling the given discrete and continuous points under the current sampling distribution."""
         return self._probe_prob(discrete, continuous)
 
-    def _probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
-        return np.ones((len(continuous),), dtype=self.dtype)
+    def _probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
+        return np.ones((len(discrete),), dtype=self.dtype)
 
     @staticmethod
     def from_dicts(
@@ -307,11 +307,9 @@ class VegasIntegrator(Integrator):
             return layer_input, r
         return layer_input
 
-    def _probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
-        x_all = np.hstack([continuous, discrete])
-        jac_no_disc = np.prod(self.adaptive_map.jac1d(x_all)[:, :self.continuous_dim], axis=1)
-        jac_disc = np.ones((continuous.shape[0],), dtype=jac_no_disc.dtype)
-        # Basically invert _cont_to_disc
+    def _probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
+        jac_disc = np.ones((continuous.shape[0],), dtype=np.float64)
+        # For the discrete part, basically invert _cont_to_disc
         for i in range(self.num_discrete_dims):
             disc_dim = self.discrete_dims[i]
             unnorm_probs = self.integrand.discrete_prior_prob_function(
@@ -328,6 +326,16 @@ class VegasIntegrator(Integrator):
                 disc_bins[:, j+1] = x_intersection
             disc_jacs = np.diff(disc_bins, axis=1)
             jac_disc *= np.take_along_axis(disc_jacs, discrete[:, [i]]).ravel()
+
+        if continuous is None:
+            return 1. / jac_disc
+
+        # For the continuous part, we need to go back to y-space (input space) and get the jacobian on y
+        x_all = np.hstack([continuous, discrete])
+        y_all = np.empty_like(x_all)
+        _j = np.empty((x_all.shape[0],), dtype=np.float64)
+        self.adaptive_map.invmap(x_all, y_all, _j)
+        jac_no_disc = np.prod(self.adaptive_map.jac1d(y_all)[:, :self.continuous_dim], axis=1)
 
         return 1.0 / jac_no_disc / jac_disc
 
@@ -374,7 +382,7 @@ class HavanaIntegrator(Integrator):
             def build_nested(dims: List[int], idx: int = 0) -> NumericalIntegrator:
                 if idx == len(dims):
                     return NumericalIntegrator.continuous(
-                        self.continuous_dim, n_continuous_bins)
+                        self.continuous_dim, n_continuous_bins,)
                 return NumericalIntegrator.discrete(
                     [build_nested(dims, idx+1) for _ in range(dims[idx])],
                     max_prob_ratio,
@@ -460,17 +468,14 @@ class HavanaIntegrator(Integrator):
 
         return layer_input
 
-    def _probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
+    def _probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
         from symbolica import Probe
-        prob = np.empty((len(continuous),), dtype=np.float64)
-        if self.num_discrete_dims > 0:
-            for i in range(len(continuous)):
-                probe_sample = Probe.discrete(discrete[i], continuous[i].tolist())
-                prob[i] = 1 / self.havana.probe(probe_sample)
-        else:
-            for i in range(len(continuous)):
-                probe_sample = Probe.continuous(continuous[i].tolist())
-                prob[i] = 1 / self.havana.probe(probe_sample)
+        n_samples = len(discrete)
+        if continuous is None:
+            continuous = np.zeros((n_samples, 0))
+        prob = 1. / np.array([
+            self.havana.probe(Probe.discrete(d, c)) for d, c in zip(discrete, continuous)
+        ])
 
         return prob
 
@@ -700,7 +705,7 @@ class MadnisIntegrator(Integrator):
             weighted_func_val.astype(np.float64)).to(self.device)
         return torch_output
 
-    def _probe_prob(self, discrete: NDArray, continuous: NDArray) -> NDArray:
+    def _probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
         n_samples = len(continuous)
         if self.madnis.integrand.discrete_dims_position == "first":
             x_all = torch.as_tensor(
@@ -718,8 +723,12 @@ class MadnisIntegrator(Integrator):
         while n_eval < n_samples:
             n = min(self.max_batch_size, n_samples - n_eval)
             with torch.no_grad():
-                prob[n_eval:n_eval+n] = self.madnis.flow.prob(
-                    x_all[n_eval:n_eval+n, :]).numpy(force=True).reshape(-1)
+                if continuous is not None:
+                    prob[n_eval:n_eval+n] = self.madnis.flow.prob(
+                        x_all[n_eval:n_eval+n, :]).numpy(force=True).reshape(-1)
+                else:
+                    prob[n_eval:n_eval+n] = self.madnis.flow.discrete_flow.prob(
+                        x_all[n_eval:n_eval+n, :]).numpy(force=True).reshape(-1)
             n_eval += n
         return prob
 

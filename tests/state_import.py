@@ -7,6 +7,7 @@ def run_state_import(
 
     from glnis.utils.helpers import shell_print, verify_path
     from glnis.scripts.sampler_comparison import SamplerCompData
+    from glnis.core.accumulator import DefaultAccumulator
 
     import signal
     from torch import load
@@ -32,10 +33,6 @@ def run_state_import(
         shell_print(f"Working on file {file}")
         Settings = SettingsParser(SData.settings)
 
-        state_file: Path = verify_path(state_file)
-        with state_file.open('rb') as f:
-            SData: SamplerCompData = load(f, weights_only=False)
-
         Settings.settings["layered_integrator"]["integrator_type"] = "madnis"
         madnis_integrator: MadnisIntegrator = Integrator.from_settings(
             Settings.settings
@@ -50,7 +47,7 @@ def run_state_import(
         # Creating and importing all the samplers
         for name, state in SData.integrator_states.items():
             shell_print(f"Found {name} state")
-            obs = SData.observables.get(name, None)
+            obs = SData.result.get(name, None)
             if obs is None:
                 shell_print(f"Found no observables for {name}. Skipping...")
                 continue
@@ -86,7 +83,7 @@ def run_state_import(
                     shell_print(f"Failed to import state for {name} with error: {e}. Skipping...")
                     continue
                 shell_print(f"Successfully imported {name} state")
-                acc = integrator.integrate(n_points, progress_report=False)
+                acc: DefaultAccumulator = integrator.integrate(n_points, progress_report=False)
                 obs = acc.statistics.result
                 shell_print(f"Result for {name} after importing, run {i + 1}:")
                 if obs.real_error:
@@ -98,9 +95,9 @@ def run_state_import(
 
     except KeyboardInterrupt:
         shell_print("\nCaught KeyboardInterrupt — stopping workers.")
-        integrand.end()
+        integrator.free()
     finally:
-        integrand.end()
+        integrator.free()
 
 
 def main():

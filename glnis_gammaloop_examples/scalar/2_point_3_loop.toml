@@ -1,3 +1,8 @@
+[cli_settings]
+[cli_settings.state]
+folder = "./glnis_gammaloop_examples/scalar/2_point_3_loop/state"
+name = "scalar_2_point_3_loop"
+
 commands = [
     "import model scalars.json",
     "import graphs ./dot_files/scalar_2_point_3_loop.dot",

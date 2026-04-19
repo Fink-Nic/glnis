@@ -6,3 +6,4 @@ outputs/*
 .env
 thermal_integrand_examples/*/build/
 flake.lock
+*code-workspace

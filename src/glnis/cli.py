@@ -2,7 +2,7 @@
 
 def main() -> None:
     import argparse
-    from glnis.scripts.gammaloop_state_test import run_state_test
+    from glnis.scripts.settings_test import run_settings_test
     from glnis.scripts.training_prog import run_training_prog
     from glnis.scripts.sampler_comparison import run_sampler_comp
     from glnis.scripts.slice_plots import run_slice_plots
@@ -14,11 +14,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="glnis")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    set_def = subparsers.add_parser("setdef")
+    set_def = subparsers.add_parser("setdef", help="Used to set the default path to the GammaLoop examples directory.")
     set_def.add_argument('--directory', '-d', type=str,
                          help="The path to the GammaLoop examples directory.")
 
-    state_test = subparsers.add_parser("stest")
+    state_test = subparsers.add_parser(
+        "stest", help="Tests a settings file by running a single training step and integrating 10k samples.")
     state_test.add_argument('--file', '-f', type=str,
                             help="The settings .toml file.")
 

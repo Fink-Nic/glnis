@@ -14,10 +14,10 @@ def run_set_default_gl_path(path: str) -> None:
         if not path.is_dir():
             raise ValueError(f"Provided path '{path}' is not a directory.")
 
-        magic_file = path / "glnis.finder"
+        magic_file = path / ".glnis.finder"
         if not magic_file.is_file():
             raise ValueError(
-                f"Provided path '{path}' does not contain 'glnis.finder'. Please ensure you have provided the correct path to the GammaLoop examples.")
+                f"Provided directory '{path}' does not contain '.glnis.finder'. Please ensure you have provided the correct path to the GammaLoop examples.")
         path = path
         with open(magic_file, "r") as f:
             # Check for magic number

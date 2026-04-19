@@ -84,3 +84,18 @@ n_plot_rsd = 10
 n_plot_loss = 1
 plot_disc = true
 n_plot_disc = 2
+
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
+discrete = []
+dirs = [0, 3]
+grid = [
+    {start = 0, stop = 1, num = 100},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
+discrete = []
+dirs = [0, 3]
+grid = [
+    {start = 0, stop = 1, num = 100},
+]

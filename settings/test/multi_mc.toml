@@ -14,3 +14,18 @@ sigma = [0.5, 1.0, 2.0]
 
 [integrator.madnis]
 loss_type = "variance"
+
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
+discrete = [1, 2]
+dirs = [0, 3]
+grid = [
+    {start = 0, stop = 1, num = 100},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
+discrete = [1, 0]
+dirs = [0, 3]
+grid = [
+    {start = 0, stop = 1, num = 100},
+]

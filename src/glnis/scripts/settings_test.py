@@ -1,6 +1,5 @@
 # type: ignore
 import torch
-import math
 import signal
 from time import time
 
@@ -9,7 +8,7 @@ from glnis.core.parser import SettingsParser
 from glnis.utils.helpers import shell_print
 
 
-def run_state_test(file: str) -> None:
+def run_settings_test(file: str) -> None:
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
         Settings = SettingsParser(file)
@@ -27,7 +26,7 @@ def run_state_test(file: str) -> None:
 
         # Training parameters
         nitn = 1
-        batch_size = 100_000
+        batch_size = 10_000
 
         shell_print("Attempting training step.")
         integrator.train(nitn, batch_size)
@@ -36,8 +35,6 @@ def run_state_test(file: str) -> None:
         integrator.integrate(batch_size)
 
         shell_print(f"Test successfully completed!")
-        shell_print(
-            f"The gammaloop state specified in {file} should be good to go.")
 
     except KeyboardInterrupt:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
