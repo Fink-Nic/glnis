@@ -3,6 +3,7 @@ import vegas
 import numpy as np
 import torch
 import functools
+import io
 from copy import deepcopy
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -49,22 +50,55 @@ class Integrator(ABC):
         self.rng = np.random.default_rng(self.seed)
         self._ended = False
 
+    @classmethod
+    def from_state(cls, state: 'Integrator.IntegratorState', integrand: MPIntegrand) -> 'Integrator':
+        # if type(cls) is Integrator:
+        match type(state):
+            case Integrator.IntegratorState:
+                cls = NaiveIntegrator
+            case VegasIntegrator.VegasState:
+                cls = VegasIntegrator
+            case HavanaIntegrator.HavanaState:
+                cls = HavanaIntegrator
+            case MadnisIntegrator.MadnisState:
+                cls = MadnisIntegrator
+            case _:
+                raise ValueError("Unknown state type for integrator import.")
+
+        instance = cls.__new__(cls)
+        instance.__dict__.update(state.obj_dict)
+        instance.integrand = integrand
+        instance.import_state(state)
+
+        return instance
+
     @_block_if_ended
     def get_samples(self, n_points: int, *args, **kwargs) -> LayerData:
         """Returns a LayerData object containing the samples to be fed into the integrand."""
         return self._get_samples(n_points, *args, **kwargs)
 
-    @abstractmethod
     def _get_samples(self, n_points: int, *args, **kwargs) -> LayerData:
-        pass
+        layer_input = self.init_layer_data(n_points)
+        layer_input.continuous = self.rng.random((n_points, self.continuous_dim))
+        discrete = self.rng.uniform(
+            size=(n_points, len(self.discrete_dims)))
+        layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
+        layer_input.update(self.IDENTIFIER)
+
+        return layer_input
 
     @_block_if_ended
-    def export_state(self) -> Any:
+    def export_state(self) -> 'Integrator.IntegratorState':
         """Exports the state of the integrator, e.g. for checkpointing or analysis."""
-        return self._export_state()
+        state = self._export_state()
+        state.obj_dict.pop('integrand', None)
+        state.obj_dict.pop('rng', None)
+        return state
 
     def _export_state(self) -> 'Integrator.IntegratorState':
-        return Integrator.IntegratorState(rng_state=deepcopy(self.rng.bit_generator.state))
+        return Integrator.IntegratorState(
+            obj_dict=self.__dict__.copy(),
+            rng_state=deepcopy(self.rng.bit_generator.state))
 
     @_block_if_ended
     def import_state(self, state: 'Integrator.IntegratorState'):
@@ -72,10 +106,13 @@ class Integrator(ABC):
         Imports the state of the integrator from a previous export.
         Upon importing, the integrand must be set up to match the imported state.
         """
+        self.__dict__.update(state.obj_dict)
+        self.rng = np.random.default_rng()  # reinitialize to reset state
+        self.rng.bit_generator.state = deepcopy(state.rng_state)
         self._import_state(state)
 
     def _import_state(self, state: 'Integrator.IntegratorState'):
-        self.rng.bit_generator.state = deepcopy(state.rng_state)
+        pass
 
     @_block_if_ended
     def integrate(self,
@@ -233,6 +270,7 @@ class Integrator(ABC):
 
     @dataclass(kw_only=True)
     class IntegratorState:
+        obj_dict: Dict[str, Any]
         rng_state: Dict
 
 
@@ -243,16 +281,6 @@ class NaiveIntegrator(Integrator):
                  integrand: MPIntegrand,
                  **kwargs,):
         super().__init__(integrand=integrand, **kwargs)
-
-    def _get_samples(self, n_points: int) -> LayerData:
-        layer_input = self.init_layer_data(n_points)
-        layer_input.continuous = self.rng.random((n_points, self.continuous_dim))
-        discrete = self.rng.uniform(
-            size=(n_points, len(self.discrete_dims)))
-        layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
-        layer_input.update(self.IDENTIFIER)
-
-        return layer_input
 
 
 class VegasIntegrator(Integrator):
@@ -340,14 +368,19 @@ class VegasIntegrator(Integrator):
         return 1.0 / jac_no_disc / jac_disc
 
     def _export_state(self) -> 'VegasIntegrator.VegasState':
-        return VegasIntegrator.VegasState(grid=deepcopy(self.adaptive_map.extract_grid()),
-                                          rng_state=deepcopy(self.rng.bit_generator.state))
+        obj_dict = self.__dict__.copy()
+        del obj_dict['adaptive_map']
+        return VegasIntegrator.VegasState(
+            obj_dict=obj_dict,
+            rng_state=deepcopy(self.rng.bit_generator.state),
+            grid=deepcopy(self.adaptive_map.extract_grid()),
+        )
 
     def _import_state(self, state: 'VegasIntegrator.VegasState'):
         if not isinstance(state, VegasIntegrator.VegasState):
             raise ValueError("State for VegasIntegrator must be of type VegasState.")
         super()._import_state(state)
-        self.adaptive_map = vegas.AdaptiveMap(grid=deepcopy(state.grid))
+        self.adaptive_map = vegas.AdaptiveMap(grid=state.grid)
         if self.adaptive_map.dim != self.input_dim:
             raise ValueError("Imported Vegas state does not match input dimension of integrand.")
 
@@ -480,7 +513,12 @@ class HavanaIntegrator(Integrator):
         return prob
 
     def _export_state(self) -> 'HavanaIntegrator.HavanaState':
+        obj_dict = self.__dict__.copy()
+        obj_dict.pop('havana', None)
+        obj_dict.pop('symbolica_rng', None)
+
         return HavanaIntegrator.HavanaState(
+            obj_dict=obj_dict,
             rng_state=deepcopy(self.rng.bit_generator.state),
             grid=self.havana.export_grid(export_samples=False),
             symbolica_rng_state=self.symbolica_rng.save(),
@@ -559,20 +597,8 @@ class MadnisIntegrator(Integrator):
         torch.set_default_dtype(torch.float64)
         torch.manual_seed(self.seed)
 
-        self.device = torch.device('cpu')  # default
-
-        if torch.cuda.is_available() and use_gpu:
-            for i in range(torch.cuda.device_count()):
-                major, minor = torch.cuda.get_device_capability(i)
-                if (7, 0) <= (major, minor) < (12, 0):
-                    self.device = torch.device(f'cuda:{i}')
-                    shell_print(
-                        f"Using CUDA device {i}: {torch.cuda.get_device_name(i)} (capability {major}.{minor})")
-                    break
-            else:
-                shell_print("CUDA devices found but none are compatible. Using CPU.")
-        else:
-            shell_print("No CUDA device found. Using CPU.")
+        self.use_gpu = use_gpu
+        self.device = self._get_device()
 
         self.use_scheduler = use_scheduler
         self.scheduler_type = scheduler_type
@@ -580,23 +606,8 @@ class MadnisIntegrator(Integrator):
         self.batch_size = batch_size
         self.discrete_dims_position = discrete_dims_position
 
-        from glnis.core import losses
-        match loss_type.lower():
-            case "variance":
-                loss = madnis_integrator.losses.stratified_variance
-            case "variance_softclip":
-                loss = losses.stratified_variance_softclip
-            case "kl_divergence":
-                loss = madnis_integrator.losses.kl_divergence
-            case "kl_divergence_softclip":
-                loss = losses.kl_divergence_softclip
-            case "test":
-                loss = losses.test()
-            case _:
-                loss = None
-
-        def loss_with_kwargs(*args, **kwargs):
-            return loss(*args, **kwargs, **loss_kwargs)
+        self.loss_type = loss_type
+        self.loss_kwargs = loss_kwargs
 
         madnis_integrand = madnis_integrator.Integrand(
             function=self._madnis_eval,
@@ -611,14 +622,12 @@ class MadnisIntegrator(Integrator):
             madnis_integrand,
             device=self.device,
             discrete_flow_kwargs=discrete_flow_kwargs,
-            loss=loss_with_kwargs,
+            loss=self._get_loss(),
             batch_size=self.batch_size,
             discrete_model=discrete_model,
             learning_rate=learning_rate,
             flow_kwargs=flow_kwargs,
         )
-        # self.madnis.optimizer = torch.optim.Adam(self.madnis.flow.parameters(), lr=learning_rate,
-        #                                          weight_decay=1e-5, betas=(0.8, 0.99))
         self.callback = self._default_callback if callback is None else callback
         self.max_batch_size = max_batch_size
 
@@ -748,77 +757,88 @@ class MadnisIntegrator(Integrator):
             continuous = x_all[:, :-self.num_discrete_dims].numpy(force=True)
         return discrete, continuous
 
-    def _get_scheduler(self, T_max: int, scheduler_type: str | None
-                       ) -> torch.optim.lr_scheduler._LRScheduler | None:
-        if scheduler_type is None:
-            return None
-        match scheduler_type.lower():
-            case 'cosineannealing':
-                return torch.optim.lr_scheduler.CosineAnnealingLR(
-                    self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
-            case 'reducelronplateau':
-                return torch.optim.lr_scheduler.ReduceLROnPlateau(
-                    self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
-            case 'linear':
-                return torch.optim.lr_scheduler.LinearLR(
-                    self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
-            case _:
-                return None
-        # if not isinstance(scheduler_type, list):
-        #     scheduler_type = [scheduler_type]
-
-        # sched_list = []
-        # for sched in scheduler_type:
-        #     match sched.lower():
-        #         case 'cosineannealing':
-        #             sched_list.append(torch.optim.lr_scheduler.CosineAnnealingLR)
-        #         case 'reducelronplateau':
-        #             sched_list.append(torch.optim.lr_scheduler.ReduceLROnPlateau)
-        #         case 'linear':
-        #             sched_list.append(torch.optim.lr_scheduler.LinearLR)
-        #         case _:
-        #             return None
-
-        # torch.optim.lr_scheduler.LambdaLR(self.madnis.optimizer, self.)
-
     @staticmethod
     def _default_callback(status: madnis_integrator.TrainingStatus) -> None:
         if (status.step + 1) % 10 == 0:
             shell_print(f"Step {status.step+1}: Loss={status.loss} ")
 
     def _export_state(self) -> 'MadnisIntegrator.MadnisState':
-        flow_state = self.madnis.flow.state_dict()
-        cwnet_state = self.madnis.cwnet.state_dict() if self.madnis.cwnet is not None else None
-        optimizer_state = self.madnis.optimizer.state_dict() if self.madnis.optimizer is not None else None
-        scheduler_state = self.madnis.scheduler.state_dict() if self.madnis.scheduler is not None else None
+        obj_dict = self.__dict__.copy()
+        obj_dict.pop('madnis', None)
+        obj_dict.pop('callback', None)
+        buffer = io.BytesIO()
+        tmp_integrand = self.madnis.integrand
+        tmp_loss = self.madnis.loss
+        tmp_ch_remap = (
+            None
+            if self.madnis.group_channels and not self.madnis.group_channels_uniform
+            else tmp_integrand.remap_channels
+        )
+        try:
+            self.madnis.integrand = None
+            self.madnis.loss = None
+            self.madnis.flow.prior_prob_function = None
+            if hasattr(self.madnis.flow, 'channel_remap_function') and self.madnis.flow.channel_remap_function is not None:
+                self.madnis.flow.channel_remap_function = None
+            if hasattr(self.madnis.flow, 'continuous_flow') and self.madnis.flow.continuous_flow is not None:
+                self.madnis.flow.continuous_flow.channel_remap_function = None
+            if hasattr(self.madnis.flow, 'discrete_flow') and self.madnis.flow.discrete_flow is not None:
+                self.madnis.flow.discrete_flow.prior_prob_function = None
+
+            # def try_nested(obj, key="Madnis"):
+            #     for sub_key, sub_obj in obj.__dict__.items():
+            #         try:
+            #             torch.save(sub_obj, buffer)
+            #         except Exception as e:
+            #             print(f"Error occurred while saving {key+'.'+sub_key}: {e}")
+            #             try_nested(sub_obj, f"{key}.{sub_key}")
+            # try_nested(self.madnis)
+            torch.save(self.madnis, buffer)
+            madnis_blob = buffer.getvalue()
+        finally:
+            self.madnis.integrand = tmp_integrand
+            self.madnis.loss = tmp_loss
+            self.madnis.flow.prior_prob_function = self._madnis_discrete_prior_prob_function
+            if hasattr(self.madnis.flow, 'channel_remap_function'):
+                self.madnis.flow.channel_remap_function = tmp_ch_remap
+            if hasattr(self.madnis.flow, 'continuous_flow') and self.madnis.flow.continuous_flow is not None:
+                self.madnis.flow.continuous_flow.channel_remap_function = tmp_ch_remap
+            if hasattr(self.madnis.flow, 'discrete_flow') and self.madnis.flow.discrete_flow is not None:
+                self.madnis.flow.discrete_flow.prior_prob_function = self._madnis_discrete_prior_prob_function
         return MadnisIntegrator.MadnisState(
+            obj_dict=obj_dict,
             rng_state=deepcopy(self.rng.bit_generator.state),
             torch_rng_state=torch.get_rng_state(),
-            flow_state=flow_state,
-            cwnet_state=cwnet_state,
-            optimizer_state=optimizer_state,
-            scheduler_state=scheduler_state,
+            madnis_blob=madnis_blob,
         )
 
     def _import_state(self, state: 'MadnisIntegrator.MadnisState'):
         if not isinstance(state, MadnisIntegrator.MadnisState):
             raise ValueError("Invalid state type for MadnisIntegrator.")
         super()._import_state(state)
+        self.device = self._get_device()
+        buffer = io.BytesIO(state.madnis_blob)
+        self.madnis: madnis_integrator.Integrator = torch.load(buffer, map_location=self.device, weights_only=False)
+        self.madnis.integrand = madnis_integrator.Integrand(
+            function=self._madnis_eval,
+            input_dim=self.input_dim,
+            discrete_dims=self.discrete_dims,
+            discrete_dims_position=self.discrete_dims_position,
+            discrete_prior_prob_function=self._madnis_discrete_prior_prob_function,
+        )
+        ch_remap = (
+            None
+            if self.madnis.group_channels and not self.madnis.group_channels_uniform
+            else self.madnis.integrand.remap_channels
+        )
+        self.madnis.loss = self._get_loss()
+        if hasattr(self.madnis.flow, 'channel_remap_function'):
+            self.madnis.flow.channel_remap_function = ch_remap
+        if hasattr(self.madnis.flow, 'continuous_flow') and self.madnis.flow.continuous_flow is not None:
+            self.madnis.flow.continuous_flow.channel_remap_function = ch_remap
+        if hasattr(self.madnis.flow, 'discrete_flow') and self.madnis.flow.discrete_flow is not None:
+            self.madnis.flow.discrete_flow.prior_prob_function = self._madnis_discrete_prior_prob_function
         torch.set_rng_state(state.torch_rng_state)
-        self.madnis.flow.load_state_dict(state.flow_state)
-        if state.cwnet_state is not None:
-            if self.madnis.cwnet is None:
-                shell_print("WARNING: Cannot load CWNet state: Madnis integrator was not initialized with a CWNet.")
-            else:
-                self.madnis.cwnet.load_state_dict(state.cwnet_state)
-        if state.optimizer_state is not None:
-            if self.madnis.optimizer is None:
-                shell_print("WARNING: Cannot load optimizer state: Madnis integrator was not initialized with an optimizer.")
-            else:
-                self.madnis.optimizer.load_state_dict(state.optimizer_state)
-        if state.scheduler_state is not None:
-            self.madnis.scheduler = self._get_scheduler(T_max=1, scheduler_type=self.scheduler_type)
-            self.madnis.scheduler.load_state_dict(state.scheduler_state)
 
     def free(self) -> None:
         """Performs any necessary cleanup after integration is done."""
@@ -842,14 +862,6 @@ class MadnisIntegrator(Integrator):
                 torch.cuda.empty_cache()
                 if hasattr(torch.cuda, 'ipc_collect'):
                     torch.cuda.ipc_collect()
-
-    @dataclass(kw_only=True)
-    class MadnisState(Integrator.IntegratorState):
-        torch_rng_state: Tensor
-        flow_state: Dict[str, Any]
-        cwnet_state: Dict[str, Any] | None
-        optimizer_state: Dict[str, Any] | None
-        scheduler_state: Dict[str, Any] | None
 
     def _get_info(self) -> Dict[str, Any]:
         info = super()._get_info()
@@ -879,3 +891,62 @@ class MadnisIntegrator(Integrator):
             info["CWNet total parameters"] = total_cwnet
 
         return info
+
+    def _get_scheduler(self, T_max: int, scheduler_type: str | None
+                       ) -> torch.optim.lr_scheduler._LRScheduler | None:
+        if scheduler_type is None:
+            return None
+        match scheduler_type.lower():
+            case 'cosineannealing':
+                return torch.optim.lr_scheduler.CosineAnnealingLR(
+                    self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
+            case 'reducelronplateau':
+                return torch.optim.lr_scheduler.ReduceLROnPlateau(
+                    self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
+            case 'linear':
+                return torch.optim.lr_scheduler.LinearLR(
+                    self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
+            case _:
+                return None
+
+    def _get_device(self) -> torch.device:
+        if torch.cuda.is_available() and self.use_gpu:
+            for i in range(torch.cuda.device_count()):
+                major, minor = torch.cuda.get_device_capability(i)
+                if (7, 0) <= (major, minor) < (12, 0):
+                    return torch.device(f'cuda:{i}')
+            else:
+                shell_print("CUDA devices found but none are compatible. Using CPU.")
+        else:
+            shell_print("No CUDA device found. Using CPU.")
+            return torch.device('cpu')
+
+    def _get_loss(self):
+        from glnis.core import losses
+        loss = None
+        match self.loss_type.lower():
+            case "variance":
+                loss = madnis_integrator.losses.stratified_variance
+            case "variance_softclip":
+                loss = losses.stratified_variance_softclip
+            case "kl_divergence":
+                loss = madnis_integrator.losses.kl_divergence
+            case "kl_divergence_softclip":
+                loss = losses.kl_divergence_softclip
+            case "test":
+                loss = losses.test()
+            case _:
+                pass
+
+        if loss is None:
+            return None
+
+        def loss_with_kwargs(*args, **kwargs):
+            return loss(*args, **kwargs, **self.loss_kwargs)
+
+        return loss_with_kwargs
+
+    @dataclass(kw_only=True)
+    class MadnisState(Integrator.IntegratorState):
+        torch_rng_state: Tensor
+        madnis_blob: bytes

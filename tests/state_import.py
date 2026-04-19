@@ -3,8 +3,6 @@
 def run_state_import(
     file: str,
 ) -> None:
-    from pathlib import Path
-
     from glnis.utils.helpers import shell_print, verify_path
     from glnis.scripts.sampler_comparison import SamplerCompData
     from glnis.core.accumulator import DefaultAccumulator
@@ -12,13 +10,7 @@ def run_state_import(
     import signal
     from torch import load
 
-    from glnis.core.integrator import (
-        Integrator,
-        NaiveIntegrator,
-        VegasIntegrator,
-        HavanaIntegrator,
-        MadnisIntegrator,
-    )
+    from glnis.core.integrator import Integrator
     from glnis.core.parser import SettingsParser
 
     file = verify_path(file)
@@ -34,7 +26,7 @@ def run_state_import(
         Settings = SettingsParser(SData.settings)
 
         Settings.settings["layered_integrator"]["integrator_type"] = "madnis"
-        madnis_integrator: MadnisIntegrator = Integrator.from_settings(
+        madnis_integrator = Integrator.from_settings(
             Settings.settings
         )
         integrand = madnis_integrator.integrand
@@ -51,37 +43,22 @@ def run_state_import(
             if obs is None:
                 shell_print(f"Found no observables for {name}. Skipping...")
                 continue
-            else:
-                match name.lower():
-                    case "naive":
-                        Settings.settings["layered_integrator"]["integrator_type"] = "naive"
-                        integrator = NaiveIntegrator(integrand, **Settings.get_integrator_kwargs())
-                    case "vegas":
-                        Settings.settings["layered_integrator"]["integrator_type"] = "vegas"
-                        integrator = VegasIntegrator(integrand, **Settings.get_integrator_kwargs())
-                    case "havana":
-                        Settings.settings["layered_integrator"]["integrator_type"] = "havana"
-                        integrator = HavanaIntegrator(integrand, **Settings.get_integrator_kwargs())
-                    case "madnis":
-                        integrator = madnis_integrator
-                    case _:
-                        shell_print(f"Unknown sampler type '{name}' in state file. Skipping...")
-                        continue
 
-                n_points = obs.n_points
-                shell_print(f"Result before exporting, using {n_points} samples:")
-                if obs.real_error:
-                    shell_print(
-                        f"    RE : {obs.real_central_value:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}\n")
-                if obs.imag_error:
-                    shell_print(
-                        f"    IM : {obs.imag_central_value:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
+            try:
+                integrator = Integrator.from_state(state, integrand)
+            except Exception as e:
+                shell_print(f"Failed at 'from_state' for {name} with error: {e}. Skipping...")
+                continue
+            n_points = obs.n_points
+            shell_print(f"Result before exporting, using {n_points} samples:")
+            if obs.real_error:
+                shell_print(
+                    f"    RE : {obs.real_central_value:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}\n")
+            if obs.imag_error:
+                shell_print(
+                    f"    IM : {obs.imag_central_value:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
             for i in range(2):
-                try:
-                    integrator.import_state(state)
-                except Exception as e:
-                    shell_print(f"Failed to import state for {name} with error: {e}. Skipping...")
-                    continue
+                shell_print(f"type of integrator: {type(integrator)}")
                 shell_print(f"Successfully imported {name} state")
                 acc: DefaultAccumulator = integrator.integrate(n_points, progress_report=False)
                 obs = acc.statistics.result
@@ -92,6 +69,11 @@ def run_state_import(
                 if obs.imag_error:
                     shell_print(
                         f"    IM : {obs.imag_central_value:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
+                try:
+                    integrator.import_state(state)
+                except Exception as e:
+                    shell_print(f"Failed at 'import_state' for {name} with error: {e}. Skipping...")
+                    continue
 
     except KeyboardInterrupt:
         shell_print("\nCaught KeyboardInterrupt — stopping workers.")
