@@ -504,6 +504,29 @@ class TrainingAccumulator(DefaultAccumulator):
         super().__init__(data=data, **kwargs)
         self.training_data = TrainingData(data, training_phase=training_phase)
         self.modules.append(self.training_data)
+        self.training_mean = 0.0
+        self.training_err = 0.0
+        self.training_rsd = 0.0
+        self.training_abs_rsd = 0.0
+        self.training_tvar = 0.0
+        self.training_abs_tvar = 0.0
+
+    def _derive_training_observables(self) -> None:
+        n_points = self.training_data.training_result.shape[0]
+        time_per_sample = self.statistics.result.total_time / n_points
+        sqrtn = np.sqrt(n_points)
+        self.training_mean = self.training_data.training_result.mean()
+        self.training_err = self.training_data.training_result.std() / sqrtn
+        self.training_rsd = abs(self.training_err / self.training_mean) * sqrtn if self.training_mean != 0 else 0
+        abs_res = np.abs(self.training_data.training_result)
+        abs_res_mean = abs_res.mean()
+        self.training_abs_rsd = abs(abs_res.std() / abs_res_mean) if abs_res_mean != 0 else 0
+        self.training_tvar = self.training_rsd**2 * time_per_sample
+        self.training_abs_tvar = self.training_abs_rsd**2 * time_per_sample
+
+    def finalise(self) -> None:
+        super().finalise()
+        self._derive_training_observables()
 
 
 class IntegrationStatistics(AccumulatorModule):
@@ -725,7 +748,8 @@ class MaxWeight(AccumulatorModule):
 class ProcessingTimes(AccumulatorModule):
     def __init__(self,
                  data: LayerData | None = None,
-                 dtype: DTypeLike | None = None,):
+                 dtype: DTypeLike | None = None,
+                 detailed: bool = False):
         self.dtype = np.dtype(np.float64) if dtype is None else dtype
         if data is None:
             self.processing_times = dict()
@@ -735,6 +759,12 @@ class ProcessingTimes(AccumulatorModule):
             self.processing_times = data.get_processing_times()
             self.n_points = data.n_points
             self._t_init = data._t_init
+        self.time_processing = 0.0
+        self.time_sampler = 0.0
+        self.time_integrand = 0.0
+        self.time_param = 0.0
+        self.time_total = 0.0
+        self.detailed = detailed
 
     def combine_with(self: 'ProcessingTimes', other: 'ProcessingTimes') -> None:
         self.n_points += other.n_points
@@ -747,14 +777,19 @@ class ProcessingTimes(AccumulatorModule):
     def str_report(self) -> str:
         mus_factor = 1.0e6 / self.n_points
         time_since_init = perf_counter() - self._t_init
-        total_time = self.processing_times['total_time']
         report = [
-            f"Total elapsed time: {time_since_init:.2f} s | {total_time:.2f} CPU-s | {total_time*mus_factor:.1f} µs / eval. Breakdown by subroutine:"]
+            f"Total elapsed time: {time_since_init:.2f} s | {self.time_total:.2f} CPU-s | {self.time_total*mus_factor:.1f} µs / eval. Breakdown by subroutine:"]
         subroutine_times = []
-        for identifier, time in self.processing_times.items():
+        processing_times = dict(
+            sampler=self.time_sampler,
+            param=self.time_param,
+            integrand=self.time_integrand,
+            processing=self.time_processing
+        ) if not self.detailed else self.processing_times
+        for identifier, time in processing_times.items():
             if identifier == 'total_time':
                 continue
-            perc_time = 100. * time / total_time
+            perc_time = 100. * time / self.time_total
             if perc_time > 50.:
                 subroutine_times.append(
                     f"{identifier}: {Colour.RED}{mus_factor*time:.1f}{Colour.END} µs ({Colour.RED}{int(perc_time)}%{Colour.END})")
@@ -767,8 +802,23 @@ class ProcessingTimes(AccumulatorModule):
 
     def get_observables(self) -> Dict[str, Any]:
         return dict(
-            processing_times=self.processing_times
+            processing_times=self.processing_times,
+            time_total=self.time_total,
+            time_integrand=self.time_integrand,
+            time_sampler=self.time_sampler,
+            time_param=self.time_param,
+            time_processing=self.time_processing,
         )
+
+    def finalise(self) -> None:
+        self.time_total = self.processing_times.get('total_time', 0)
+        self.time_processing = self.processing_times.get('processing', 0)
+        sampler_keys = [k for k in self.processing_times.keys() if 'sampler' in k]
+        integrand_keys = [k for k in self.processing_times.keys() if 'integrand' in k]
+        param_keys = [k for k in self.processing_times.keys() if 'param' in k]
+        self.time_sampler = sum(self.processing_times.get(k, 0) for k in sampler_keys)
+        self.time_integrand = sum(self.processing_times.get(k, 0) for k in integrand_keys)
+        self.time_param = sum(self.processing_times.get(k, 0) for k in param_keys)
 
 
 class FailuresMonitor(AccumulatorModule):
@@ -836,7 +886,7 @@ class TrainingData(AccumulatorModule):
                  training_phase: Literal['real', 'imag', 'abs'] = 'real',):
         self.dtype = data.dtype
         self.training_phase = training_phase
-        self.training_result: list[NDArray] = []
+        self.training_result: list[NDArray] | NDArray = []
         self.has_failures = len(data.failures) > 0
         if self.has_failures:
             data._data[~data.success] = self.FAILUREVALUE
@@ -852,11 +902,7 @@ class TrainingData(AccumulatorModule):
                 raise ValueError(
                     "Training phase must be one of 'real', 'imag' or 'abs'.")
         int_result[np.isnan(int_result)] = self.FAILUREVALUE
-
         self.training_result.append(int_result)
-        self.central_value = 0.0
-        self.error = 0.0
-        self.rsd = 0.0
 
     def combine_with(self: 'TrainingData', other: 'TrainingData') -> None:
         if not self.training_phase == other.training_phase:
@@ -874,8 +920,4 @@ class TrainingData(AccumulatorModule):
         )
 
     def finalise(self) -> None:
-        self.training_result = [np.vstack(self.training_result)]
-        sqr_n_points = np.sqrt(self.training_result[0].shape[0])
-        self.central_value = np.mean(self.training_result[0])
-        self.error = np.std(self.training_result[0]) / sqr_n_points
-        self.rsd = np.abs(self.error / self.central_value) * sqr_n_points if self.central_value != 0 else 0
+        self.training_result = np.vstack(self.training_result)

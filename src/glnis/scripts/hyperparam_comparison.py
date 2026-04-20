@@ -8,20 +8,10 @@ from pickle import dump, load
 
 from glnis.utils.helpers import shell_print, verify_path
 from glnis.core.accumulator import IntegrationResult
-from glnis.scripts.sampler_comparison import run_sampler_comp, SamplerCompData
+from glnis.scripts.sampler_comparison import (
+    run_sampler_comp, SamplerCompData, TrainingProgress, MADNIS_KEY
+)
 from glnis.scripts.slice_plots import run_slice_plots
-
-
-@dataclass
-class OLDRunData:
-    comp_name: str
-    block_name: str
-    settings: Dict[str, Any]
-    madnis_info: Dict[str, Any]
-    plottables: SamplerCompData.Plottables
-    target: IntegrationResult
-    observables: IntegrationResult
-    run_time: float
 
 
 @dataclass
@@ -30,75 +20,10 @@ class RunData:
     block_name: str
     settings: Dict[str, Any]
     madnis_info: Dict[str, Any]
-    plottables: SamplerCompData.Plottables
+    training_progress: TrainingProgress
     target: IntegrationResult
     observables: Dict[str, Any]
     run_time: float
-
-
-class OLDHParamCompData:
-    def __init__(self, filename: str) -> None:
-        self.filename = filename
-        self.sorted_by_comp_and_name: Dict[str, Dict[str, RunData]] = dict()
-        self.sorted_by_obs: Dict[str, List[Tuple[str, str, float]]] = dict()
-        self._total_comparisons = 0
-
-    def check_if_done(self, comp_name: str, block_name: str) -> bool:
-        if comp_name in self.sorted_by_comp_and_name:
-            if block_name in self.sorted_by_comp_and_name[comp_name]:
-                return True
-        return False
-
-    def add_result(
-            self, comp_name: str, block_name: str, additional_params: Dict[str, Any],
-            result: SamplerCompData, save: bool = True) -> None:
-        if self.check_if_done(comp_name, block_name):
-            shell_print(f"Result for comparison '{comp_name}' and block '{block_name}' already exists, skipping...")
-            return
-        run_data = self.to_run_data(comp_name, block_name, additional_params, result)
-        if comp_name not in self.sorted_by_comp_and_name:
-            self.sorted_by_comp_and_name[comp_name] = dict()
-        self.sorted_by_comp_and_name[comp_name][block_name] = run_data
-
-        all_obs_dict = asdict(run_data.result)
-        all_obs_dict['run_time'] = run_data.run_time
-        all_obs_dict['discrete_params'] = run_data.madnis_info.get('discrete flow total parameters', 0)
-        all_obs_dict['continuous_params'] = run_data.madnis_info.get('continuous flow total parameters', 0)
-        all_obs_dict['total_params'] = run_data.madnis_info.get('flow total parameters', 0)
-
-        for obs_name, value in all_obs_dict.items():
-            if value != 0:
-                if obs_name not in self.sorted_by_obs:
-                    self.sorted_by_obs[obs_name] = [(comp_name, block_name, value)]
-                else:
-                    self.sorted_by_obs[obs_name].append((comp_name, block_name, value))
-                    self.sorted_by_obs[obs_name].sort(key=lambda x: x[2])
-
-        self._total_comparisons += 1
-        if save:
-            self.save()
-
-    def to_run_data(
-            self, comp_name: str, block_name: str, additional_params: Dict[str, Any],
-            result: SamplerCompData) -> RunData:
-        observables = list(result.observables.values())[0] if result.observables else IntegrationResult()
-        return RunData(
-            comp_name=comp_name,
-            block_name=block_name,
-            settings=result.settings,
-            madnis_info=result.madnis_info,
-            plottables=result.plottables,
-            target=result.target,
-            observables=observables,
-            run_time=additional_params.get('run_time', 0.0)
-        )
-
-    def save(self, file: str | None = None) -> None:
-        path = Path(file if file is not None else self.filename)
-        temp_path = path.with_suffix(".tmp")
-        with temp_path.open("wb") as f:
-            dump(self, f)
-        temp_path.replace(path.with_suffix(".pkl"))
 
 
 class HParamCompData:
@@ -150,13 +75,14 @@ class HParamCompData:
     def to_run_data(
             self, comp_name: str, block_name: str, additional_params: Dict[str, Any],
             result: SamplerCompData) -> RunData:
-        madnis_observables = list(result.observables.values())[0] if result.observables else IntegrationResult()
+        madnis_observables = result.observables.get(MADNIS_KEY, dict())
+        madnis_training_progress = result.training_progress.get(MADNIS_KEY, TrainingProgress())
         return RunData(
             comp_name=comp_name,
             block_name=block_name,
             settings=result.settings,
             madnis_info=result.madnis_info,
-            plottables=result.plottables,
+            training_progress=madnis_training_progress,
             target=result.target,
             observables=madnis_observables,
             run_time=additional_params.get('run_time', 0.0)
@@ -205,7 +131,7 @@ def run_hyperparam_comparison(
     else:
         PROJECT_ROOT = Path(__file__).parents[3]
         OUTPUT_DIR = "outputs"
-        directory = Path(PROJECT_ROOT, OUTPUT_DIR, MasterSettings.settings['run_name'].replace(" ", "_"), subroutine)
+        directory = Path(PROJECT_ROOT, OUTPUT_DIR, MasterSettings.settings['output_dir'], subroutine)
         if not directory.exists():
             directory.mkdir(parents=True)
             shell_print(f"Created output folder at {directory}")
@@ -432,9 +358,13 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
         if not subdirectory.exists():
             subdirectory.mkdir()
         for i, (block_name, run_data) in enumerate(blocks.items()):
-            losses, steps_losses = np.array(run_data.plottables.losses), np.array(run_data.plottables.steps_losses)
-            rsds, steps_snapshot = np.array(run_data.plottables.rsds), np.array(run_data.plottables.steps_snapshot)
-            tvars, atvars = np.array(run_data.plottables.tvars), np.array(run_data.plottables.abs_tvars)
+            losses, steps_losses = np.array(
+                run_data.training_progress.losses), np.array(
+                run_data.training_progress.steps_losses)
+            rsds, steps_snapshot = np.array(
+                run_data.training_progress.rsds), np.array(
+                run_data.training_progress.steps_snapshot)
+            tvars, atvars = np.array(run_data.training_progress.tvars), np.array(run_data.training_progress.abs_tvars)
 
             # Training progression data
             if len(steps_losses) and len(steps_snapshot):
@@ -494,7 +424,7 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
         plt.close(fig2)
         plt.close(fig3)
         blocks_with_disc_evolution = [
-            block_name for block_name in blocks if len(blocks[block_name].plottables.discrete_probs) > 0
+            block_name for block_name in blocks if len(blocks[block_name].training_progress.discrete_probs) > 0
         ]
         n_d = len(blocks_with_disc_evolution)
         if n_d > 0:
@@ -504,7 +434,7 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
             for i in range(n_d):
                 n_show = 3
                 block_name = blocks_with_disc_evolution[i]
-                plottables = blocks[block_name].plottables
+                plottables = blocks[block_name].training_progress
                 discrete_probs = np.array(plottables.discrete_probs)
                 steps_discrete = np.array(plottables.steps_discrete)
                 sorted_indices = np.argsort(discrete_probs[-1])[::-1]

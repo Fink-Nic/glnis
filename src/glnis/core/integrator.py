@@ -48,6 +48,8 @@ class Integrator(ABC):
         self.dtype = integrand.dtype
         self.seed = seed
         self.rng = np.random.default_rng(self.seed)
+        self.total_training_samples = 0
+        self.step = 0
         self._ended = False
 
     @classmethod
@@ -115,12 +117,15 @@ class Integrator(ABC):
         pass
 
     @_block_if_ended
-    def integrate(self,
-                  n_samples: int,
-                  n_start: int = 1_000_000,
-                  n_increase: int = 1_000_000,
-                  max_batch: int = 10_000_000,
-                  progress_report: bool = True) -> DefaultAccumulator:
+    def integrate(
+        self,
+        n_samples: int,
+        n_start: int = 1_000_000,
+        n_increase: int = 1_000_000,
+        max_batch: int = 10_000_000,
+        progress_report: bool = True,
+        acc_type: Literal['default', 'training'] = 'default'
+    ) -> DefaultAccumulator | TrainingAccumulator:
         n_eval = 0
         n_curr_iter = n_start
         accumulator = None
@@ -128,9 +133,9 @@ class Integrator(ABC):
             n = min(max_batch, n_samples - n_eval, n_curr_iter)
             layer_input = self.get_samples(n)
             if accumulator is None:
-                accumulator = self.integrand.eval_integrand(layer_input)
+                accumulator = self.integrand.eval_integrand(layer_input, acc_type)
             else:
-                accumulator.combine_with(self.integrand.eval_integrand(layer_input))
+                accumulator.combine_with(self.integrand.eval_integrand(layer_input, acc_type))
             n_eval += n
             if progress_report:
                 if n_eval % 1e6 == 0 and n_samples % 1e6 == 0:
@@ -149,7 +154,8 @@ class Integrator(ABC):
         return accumulator
 
     @_block_if_ended
-    def train(self, nitn: int = 10, batch_size: int = 10000, ):
+    def train(self, nitn: int = 10, batch_size: int = 10000,
+              callback: Callable[['Integrator.TrainingStatus'], None] | None = None) -> str | None:
         shell_print(f"Training not available for Integrator {self.IDENTIFIER}.")
 
     def _cont_to_discr(self, continuous: NDArray
@@ -268,10 +274,21 @@ class Integrator(ABC):
         self.integrand = None
         self._ended = True
 
+    @staticmethod
+    def _default_callback(status: 'Integrator.TrainingStatus') -> None:
+        shell_print(
+            f"itn {status.step}: {error_fmter(status.acc.training_mean, status.acc.training_err)}, RSD={status.acc.training_rsd:.3f}")
+
     @dataclass(kw_only=True)
     class IntegratorState:
         obj_dict: Dict[str, Any]
         rng_state: Dict
+
+    @dataclass
+    class TrainingStatus:
+        step: int
+        total_samples: int
+        acc: TrainingAccumulator
 
 
 class NaiveIntegrator(Integrator):
@@ -299,21 +316,32 @@ class VegasIntegrator(Integrator):
         self.alpha = alpha
 
     @_block_if_ended
-    def train(self, nitn: int = 10, batch_size: int = 1000, alpha: float | None = None) -> vegas._vegas.RAvg:
+    def train(self, nitn: int = 10, batch_size: int = 1000,
+              callback: Callable[['VegasIntegrator.TrainingStatus'], None] | None = None,
+              alpha: float | None = None) -> str:
+        callback = callback or self._default_callback
         if alpha is None:
             alpha = self.alpha
         shell_print(f"Training Vegas for {nitn} iterations à {batch_size} samples with alpha={alpha}:")
         report = []
         for itn in range(nitn):
             layer_input, r = self.get_samples(batch_size, return_r=True)
-            accumulated_result: TrainingAccumulator = self.integrand.eval_integrand(
+            acc: TrainingAccumulator = self.integrand.eval_integrand(
                 layer_input, 'training')
-            f = accumulated_result.training_data.training_result[0].astype(np.float64)
+            f = acc.training_data.training_result.astype(np.float64)
             self.adaptive_map.add_training_data(r, f.ravel())
             self.adaptive_map.adapt(alpha=alpha)
-            res = accumulated_result.training_data.central_value
-            err = accumulated_result.training_data.error
-            rsd = accumulated_result.training_data.rsd
+            self.step += 1
+            self.total_training_samples += batch_size
+            res = acc.training_mean
+            err = acc.training_err
+            rsd = acc.training_rsd
+            status = Integrator.TrainingStatus(
+                step=self.step,
+                total_samples=self.total_training_samples,
+                acc=acc
+            )
+            callback(status)
             report.append(f"itn {itn+1}: {error_fmter(res, err)}, RSD={rsd:.3f}")
 
         return "\n".join(f"{line}" for line in report)
@@ -336,7 +364,7 @@ class VegasIntegrator(Integrator):
         return layer_input
 
     def _probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
-        jac_disc = np.ones((continuous.shape[0],), dtype=np.float64)
+        jac_disc = np.ones((discrete.shape[0],), dtype=np.float64)
         # For the discrete part, basically invert _cont_to_disc
         for i in range(self.num_discrete_dims):
             disc_dim = self.discrete_dims[i]
@@ -347,7 +375,7 @@ class VegasIntegrator(Integrator):
             cdf = cdf / norm[:, None]
             # Need to find all intersections of the discrete cdf with the vegas linear interpolation
             g_disc = np.array(self.adaptive_map.grid[self.continuous_dim - 1 + i])
-            disc_bins = np.zeros((continuous.shape[0], disc_dim+1), dtype=unnorm_probs.dtype)
+            disc_bins = np.zeros((discrete.shape[0], disc_dim+1), dtype=unnorm_probs.dtype)
             for j in range(disc_dim):
                 y_intersection = cdf[:, j]
                 x_intersection = np.interp(y_intersection, np.linspace(0, 1, len(g_disc)), g_disc)
@@ -384,15 +412,20 @@ class VegasIntegrator(Integrator):
         if self.adaptive_map.dim != self.input_dim:
             raise ValueError("Imported Vegas state does not match input dimension of integrand.")
 
-    @dataclass(kw_only=True)
-    class VegasState(Integrator.IntegratorState):
-        grid: List[List[float]]
-
     def _get_info(self) -> Dict[str, Any]:
         info = super()._get_info()
         info["bins"] = self.bins
         info["alpha"] = self.alpha
         return info
+
+    @dataclass(kw_only=True)
+    class VegasState(Integrator.IntegratorState):
+        grid: List[List[float]]
+
+    @dataclass
+    class TrainingStatus:
+        iteration: int
+        total_samples: int
 
 
 class HavanaIntegrator(Integrator):
@@ -438,7 +471,10 @@ class HavanaIntegrator(Integrator):
         self.continuous_learning_rate = continuous_learning_rate
 
     @_block_if_ended
-    def train(self, nitn: int = 10, batch_size: int = 10000) -> str:
+    def train(self, nitn: int = 10, batch_size: int = 1000,
+              callback: Callable[[Integrator.TrainingStatus], None] | None = None,
+              ) -> str:
+        callback = callback or self._default_callback
         report = [
             f"Training Havana for {nitn} iterations à {batch_size} samples:"]
         n_digits = len(str(nitn))
@@ -446,14 +482,22 @@ class HavanaIntegrator(Integrator):
             samples, layer_input = self.get_samples(batch_size, True, True)
             acc: TrainingAccumulator = self.integrand.eval_integrand(
                 layer_input, 'training')
-            weighted_func_val = acc.training_data.training_result[0]
+            weighted_func_val = acc.training_data.training_result
             self.havana.add_training_samples(
                 samples, weighted_func_val.ravel().tolist())
             avg, err, chi_sq = self.havana.update(
                 self.discrete_learning_rate, self.continuous_learning_rate)
-
+            self.step += 1
+            self.total_training_samples += batch_size
+            rsd = err / avg * np.sqrt(batch_size) if avg != 0 else 0
+            status = Integrator.TrainingStatus(
+                step=self.step,
+                total_samples=self.total_training_samples,
+                acc=acc
+            )
+            callback(status)
             report.append(
-                f"It {itn+1:0>{n_digits}}: {avg:.6e} +- {err:.6e}, chi={chi_sq:.3f}")
+                f"It {itn+1:0>{n_digits}}: {avg:.6e} +- {err:.6e}, RSD={rsd:.3f}, chi={chi_sq:.3f}")
 
         return "\n".join(f"{line}" for line in report)
 
@@ -491,7 +535,9 @@ class HavanaIntegrator(Integrator):
                 raise e
 
         if not training:
-            total_wgt *= np.array([s.weights[0] for s in samples])
+            wgts = np.array([s.weights for s in samples])
+            print(f"Havana weights: shape: {wgts.shape}, axis-wise means: {wgts.mean(axis=0)}")
+            # total_wgt *= np.array([s.weights[0] for s in samples])
 
         layer_input.wgt = total_wgt
         layer_input.update(self.IDENTIFIER)
@@ -588,7 +634,6 @@ class MadnisIntegrator(Integrator):
             bins_mult=4,
             alpha=0.7,
         ),
-        callback: Callable[[object], None] | None = None,
         max_batch_size: int = 100_000,
         use_gpu: bool = True,
         **kwargs,
@@ -628,7 +673,6 @@ class MadnisIntegrator(Integrator):
             learning_rate=learning_rate,
             flow_kwargs=flow_kwargs,
         )
-        self.callback = self._default_callback if callback is None else callback
         self.max_batch_size = max_batch_size
 
         if pretrain_c_flow:
@@ -659,11 +703,24 @@ class MadnisIntegrator(Integrator):
             shell_print(f"MadNIS pretraining successfully completed!")
 
     @_block_if_ended
-    def train(self, nitn: int = 10, _=None):
+    def train(self, nitn: int = 10, batch_size: int | None = None,
+              callback: Callable[['MadnisIntegrator.TrainingStatus'], None] | None = None) -> str:
+        if batch_size is not None:
+            self.madnis.batch_size = batch_size
+        callback = callback or self._default_callback
         if self.use_scheduler:
             self.madnis.scheduler = self._get_scheduler(
                 self.madnis.step + nitn, self.scheduler_type)
-        self.madnis.train(nitn, self.callback, True)
+        for _ in range(nitn):
+            madnis_status = self.madnis.train_step()
+            self.step += 1
+            self.total_training_samples += self.madnis.batch_size
+            status = self.TrainingStatus(
+                step=self.step,
+                total_samples=self.total_training_samples,
+                madnis_status=madnis_status,
+            )
+            callback(status)
 
     def _get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)
@@ -700,7 +757,7 @@ class MadnisIntegrator(Integrator):
 
         accumulated_result: TrainingAccumulator = self.integrand.eval_integrand(
             layer_input, 'training')
-        weighted_func_val = accumulated_result.training_data.training_result[0].flatten()
+        weighted_func_val = accumulated_result.training_data.training_result.flatten()
 
         start = 2.0
         max_step = 1500
@@ -715,24 +772,25 @@ class MadnisIntegrator(Integrator):
         return torch_output
 
     def _probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
-        n_samples = len(continuous)
+        n_samples = len(discrete)
+        if continuous is None:
+            continuous = np.zeros((n_samples, 0), dtype=discrete.dtype)
         if self.madnis.integrand.discrete_dims_position == "first":
-            x_all = torch.as_tensor(
-                np.hstack([discrete, continuous]),
-                device=self.madnis.dummy.device,
-                dtype=self.madnis.dummy.dtype)
+            x_all = np.hstack([discrete, continuous])
         elif self.madnis.integrand.discrete_dims_position == "last":
-            x_all = torch.as_tensor(
-                np.hstack([continuous, discrete]),
-                device=self.madnis.dummy.device,
-                dtype=self.madnis.dummy.dtype)
+            x_all = np.hstack([continuous, discrete])
         prob = np.empty((n_samples,), dtype=np.float64)
+        x_all = torch.as_tensor(
+            x_all,
+            device=self.madnis.dummy.device,
+            dtype=self.madnis.dummy.dtype if continuous.shape[1] > 0 else torch.int64,
+        )
 
         n_eval = 0
         while n_eval < n_samples:
             n = min(self.max_batch_size, n_samples - n_eval)
             with torch.no_grad():
-                if continuous is not None:
+                if continuous.shape[1] > 0:
                     prob[n_eval:n_eval+n] = self.madnis.flow.prob(
                         x_all[n_eval:n_eval+n, :]).numpy(force=True).reshape(-1)
                 else:
@@ -765,7 +823,6 @@ class MadnisIntegrator(Integrator):
     def _export_state(self) -> 'MadnisIntegrator.MadnisState':
         obj_dict = self.__dict__.copy()
         obj_dict.pop('madnis', None)
-        obj_dict.pop('callback', None)
         buffer = io.BytesIO()
         tmp_integrand = self.madnis.integrand
         tmp_loss = self.madnis.loss
@@ -805,7 +862,7 @@ class MadnisIntegrator(Integrator):
                 self.madnis.flow.continuous_flow.channel_remap_function = tmp_ch_remap
             if hasattr(self.madnis.flow, 'discrete_flow') and self.madnis.flow.discrete_flow is not None:
                 self.madnis.flow.discrete_flow.prior_prob_function = self._madnis_discrete_prior_prob_function
-        return MadnisIntegrator.MadnisState(
+        return self.MadnisState(
             obj_dict=obj_dict,
             rng_state=deepcopy(self.rng.bit_generator.state),
             torch_rng_state=torch.get_rng_state(),
@@ -950,3 +1007,9 @@ class MadnisIntegrator(Integrator):
     class MadnisState(Integrator.IntegratorState):
         torch_rng_state: Tensor
         madnis_blob: bytes
+
+    @dataclass
+    class TrainingStatus:
+        step: int
+        total_samples: int
+        madnis_status: madnis_integrator.TrainingStatus

@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from glnis.utils.helpers import shell_print, verify_path
-from glnis.scripts.sampler_comparison import SamplerCompData
+from glnis.scripts.sampler_comparison import SamplerCompData, NAIVE_KEY, MADNIS_KEY
 
 
 class MPEfficiencyData:
@@ -27,45 +27,39 @@ class MPEfficiencyData:
 
 def run_multiprocessing_efficiency(
     file: str,
-    comment: str = "",
     no_output: bool = False,
     no_plot: bool = False,
     subroutine: str = "multiprocessing_efficiency",
+    use_naive: bool = False,
 ) -> MPEfficiencyData | None:
     import os
     import signal
-    import torch
 
-    from glnis.core.integrator import (
-        Integrator,
-        MadnisIntegrator,
-    )
+    from glnis.core.integrator import Integrator
     from glnis.core.parser import SettingsParser
+    from glnis.core.accumulator import DefaultAccumulator
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
 
     file = verify_path(file)
     try:
-        with file.open('rb') as f:
-            SData = torch.load(f, weights_only=False)
-    except:
+        Settings = SettingsParser(file)
+        SData = None
+    except Exception as e:
         with file.open('rb') as f:
             SData = pickle.load(f)
-
-    if isinstance(SData, SamplerCompData):
-        pass
-    elif isinstance(SData, MPEfficiencyData):
-        plot_multiprocessing_efficiency(file, comment)
-        quit()
-    else:
-        raise ValueError(
-            f"Expected pickled object at '{file}' to contain either a SamplerCompData or MPEfficiencyData object, but found {type(SData)}.")
+        if isinstance(SData, SamplerCompData):
+            pass
+        elif isinstance(SData, MPEfficiencyData):
+            plot_multiprocessing_efficiency(file)
+            quit()
+        else:
+            raise ValueError(
+                f"Expected file at '{file}' to contain either a settings.toml file, SamplerCompData or MPEfficiencyData object, but found {type(SData)}.")
+        Settings = SettingsParser(SData.settings)
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
-        shell_print(f"Working on settings {file}")
-        Settings = SettingsParser(SData.settings)
-
         # parameters
         scripts: Dict[str, Any] = Settings.settings.get("scripts", dict())
         params: Dict[str, Any] = scripts.get(subroutine, dict())
@@ -73,49 +67,56 @@ def run_multiprocessing_efficiency(
         n_samples: List[int] = params.get("n_samples", [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000])
         max_samples_per_core: int = params.get("max_samples_per_core", 1_000_000)
 
-        madnis_state = SData.integrator_states.get("MadNIS", None)
+        integrator_state = None if SData is None else SData.integrator_states.get(
+            NAIVE_KEY if use_naive else MADNIS_KEY, None)
 
         if not no_output:
             OUTPUT_DIR = verify_path("outputs")
-            directory = Path(OUTPUT_DIR, Settings.settings['run_name'].replace(" ", "_"), subroutine)
+            directory = Path(OUTPUT_DIR, Settings.settings.get('output_dir', 'default'), subroutine)
             if not os.path.exists(str(directory)):
                 os.makedirs(str(directory))
                 shell_print(f"Created output folder at {directory}")
             shell_print(f"Output will be at {directory}")
 
-        Settings.settings["layered_integrand"]["use_prec"] = False
-        Settings.settings["layered_integrand"]["use_f128"] = False
         Settings.settings["layered_integrand"]["n_cores"] = max(n_cores)
-        Settings.settings["layered_integrator"]["integrator_type"] = "madnis"
+        Settings.settings["layered_integrator"]["integrator_type"] = "naive" if use_naive else "madnis"
         Settings.settings["layered_integrator"]["pretrain_c_flow"] = False
-        madnis_integrator: MadnisIntegrator = Integrator.from_settings(
+        integrator: Integrator = Integrator.from_settings(
             Settings.settings
         )
-        if madnis_state is None:
+        if integrator_state is None:
             print(
-                f"WARNING: Could not find MadNIS state at '{file}'. Will use untrained MadNIS instance.")
+                f"WARNING: Could not find '{(NAIVE_KEY if use_naive else MADNIS_KEY)}' state at '{file}'. Will use untrained {('Naive' if use_naive else 'MadNIS')} instance.")
         else:
-            madnis_integrator.import_state(madnis_state)
-            print("Successfully imported madnis state")
+            integrator.import_state(integrator_state)
+            print("Successfully imported integrator state")
 
         # Will hold integration results to write to text file and plot
         Data = MPEfficiencyData(n_cores=n_cores, n_samples=n_samples)
 
         for cores in n_cores:
-            madnis_integrator.integrand.n_cores = cores
+            integrator.integrand.n_cores = cores
 
             for samples in n_samples:
                 if samples / cores > max_samples_per_core:
                     continue
-                acc = madnis_integrator.integrate(samples, n_start=10_000_000)
-                times = MPEfficiencyData.Times(cores, samples, acc.processing_times.processing_times)
+                acc: DefaultAccumulator = integrator.integrate(samples, n_start=10_000_000)
+                times = MPEfficiencyData.Times(
+                    cores, samples,
+                    dict(
+                        total=acc.processing_times.time_total,
+                        sampler=acc.processing_times.time_sampler,
+                        param=acc.processing_times.time_param,
+                        integrand=acc.processing_times.time_integrand
+                    )
+                )
                 Data.data.append(times)
 
         if no_output:
             quit()
 
-        run_name = SData.settings['run_name'].replace(' ', '_')
-        filename = run_name + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
+        run_name = SData.settings.get('run_name', 'default').replace(' ', '_')
+        filename = run_name + "_mpe_" + datetime.now().strftime("%Y_%m_%d-%H_%M_%S") + ".pkl"
         file = Path(directory, filename)
         with file.open("wb") as f:
             pickle.dump(Data, f)
@@ -123,22 +124,22 @@ def run_multiprocessing_efficiency(
         if no_plot:
             quit()
 
-        plot_multiprocessing_efficiency(file, comment)
+        plot_multiprocessing_efficiency(file)
 
     except KeyboardInterrupt:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
-        madnis_integrator.free()
+        integrator.free()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
         from traceback import print_exc
         print_exc()
-        madnis_integrator.free()
+        integrator.free()
         raise
     finally:
-        madnis_integrator.free()
+        integrator.free()
 
 
-def plot_multiprocessing_efficiency(file: str, comment: str = "") -> None:
+def plot_multiprocessing_efficiency(file: str) -> None:
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
     import numpy as np
@@ -168,47 +169,8 @@ def plot_multiprocessing_efficiency(file: str, comment: str = "") -> None:
         colors.to_hex(cmap(t))
         for t in np.linspace(0.0, 1.0, len(Data.n_cores), endpoint=True)
     ]
-    fig, ax = plt.subplots(layout="constrained")
-    ax.set_xticks(range(len(Data.n_samples)), Data.n_samples, rotation=45)
 
-    added_labels = []
-    for d in Data.data:
-        mus_factor = 1.0e6 / d.n_samples
-        cidx = Data.n_cores.index(d.n_cores)
-        sidx = Data.n_samples.index(d.n_samples)
-        offset = 2 * (cidx - (len(Data.n_cores) - 1) / 2) * width
-        loc = sidx + offset
-        lbl = f"{d.n_cores}"
-        if lbl in added_labels:
-            ax.bar(loc, mus_factor * d.times['total_time'], width=width, color=cols[cidx])
-        else:
-            added_labels.append(lbl)
-            ax.bar(loc, mus_factor * d.times['total_time'], width=width, color=cols[cidx], label=lbl)
-
-    ax.set_xlabel("Number of Samples")
-    ax.set_ylabel(r"$t_{eval}$ [CPU-µs]")
-    ax.set_yscale("log")
-    ax.legend(title=r"$n_{cores}$", loc="upper right")
-    ax.set_title("Total time")
-    fig.savefig(
-        Path(directory, filename + "_total.png"), dpi=300, bbox_inches="tight"
-    )
-    plt.close(fig)
-
-    processing_times = Data.data[0].times
-    sampler_key = [k for k in processing_times.keys() if "sampler" in k]
-    sampler_key = None if len(sampler_key) == 0 else sampler_key[0]
-    param_key = [k for k in processing_times.keys() if "param" in k]
-    param_key = None if len(param_key) == 0 else param_key[0]
-    integrand_key = [k for k in processing_times.keys() if "integrand" in k]
-    integrand_key = None if len(integrand_key) == 0 else integrand_key[0]
-
-    names = ["sampler", "param", "integrand"]
-    keys = [sampler_key, param_key, integrand_key]
-
-    for name, key in zip(names, keys):
-        if key is None:
-            continue
+    for key in Data.data[0].times.keys():
         fig, ax = plt.subplots(layout="constrained")
         ax.set_xticks(range(len(Data.n_samples)), Data.n_samples, rotation=45)
 
@@ -230,7 +192,9 @@ def plot_multiprocessing_efficiency(file: str, comment: str = "") -> None:
         ax.set_ylabel(r"$t_{eval}$ [CPU-µs]")
         ax.set_yscale("log")
         ax.legend(title=r"$n_{cores}$", loc="upper right")
-        match name:
+        match key:
+            case "total":
+                ax.set_title(f"Total time")
             case "sampler":
                 ax.set_title(f"Sampler time")
             case "param":
@@ -238,6 +202,6 @@ def plot_multiprocessing_efficiency(file: str, comment: str = "") -> None:
             case "integrand":
                 ax.set_title(f"Integrand time")
         fig.savefig(
-            Path(directory, filename + f"_{name}.png"), dpi=300, bbox_inches="tight"
+            Path(directory, filename + f"_{key}.png"), dpi=300, bbox_inches="tight"
         )
         plt.close(fig)

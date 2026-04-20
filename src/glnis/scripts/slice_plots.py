@@ -1,4 +1,5 @@
 # type: ignore
+import pickle
 from numpy.typing import NDArray
 from typing import Dict, List, Any
 from dataclasses import dataclass, asdict
@@ -64,7 +65,6 @@ def run_slice_plots(
     import os
     import signal
     import numpy as np
-    import torch
 
     from glnis.core.accumulator import LayerData
     from glnis.core.integrator import (
@@ -81,7 +81,7 @@ def run_slice_plots(
     else:
         file = verify_path(file)
         with file.open('rb') as f:
-            SData = torch.load(f, weights_only=False)
+            SData = pickle.load(f)
         if isinstance(SData, SamplerCompData):
             pass
         elif isinstance(SData, SlicePlotData):
@@ -287,7 +287,7 @@ def run_slice_plots(
                 n_disc=len(integrand.discrete_dims),)
             layer_input.discrete, layer_input.continuous = discrete, continuous
             acc: TrainingAccumulator = integrand.eval_integrand(layer_input, "training")
-            func_val = acc.training_data.training_result[0].ravel()
+            func_val = acc.training_data.training_result.ravel()
             if itg:
                 func_val /= itg
             s1d.func_val = func_val
@@ -319,7 +319,7 @@ def run_slice_plots(
             layer_input.discrete = discrete[inside_hcube_mask]
             acc: TrainingAccumulator = integrand.eval_integrand(layer_input, "training")
             func_val = np.zeros(n_samples_2d)
-            func_val[inside_hcube_mask] = acc.training_data.training_result[0].ravel()
+            func_val[inside_hcube_mask] = acc.training_data.training_result.ravel()
             if itg:
                 func_val /= itg
             s2d.func_val = func_val.reshape(s2d.grid[0].num, s2d.grid[1].num)
@@ -354,11 +354,11 @@ def run_slice_plots(
             plot_slices(file=Data, comment=comment, force_directory=force_directory)
             return Data
 
-        run_name = Data.settings['run_name'].replace(' ', '_')
+        run_name = Data.settings.get('run_name', 'default').replace(' ', '_')
         filename = run_name + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
         file = Path(directory, filename)
         with file.open("wb") as f:
-            torch.save(Data, f)
+            pickle.dump(Data, f)
 
         if not no_plot:
             plot_slices(file=file, comment=comment, force_directory=force_directory)
@@ -385,7 +385,6 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
     import numpy as np
-    from torch import load
 
     if isinstance(file, SlicePlotData):
         Data = file
@@ -394,7 +393,7 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
     else:
         file: Path = verify_path(file)
         with file.open('rb') as f:
-            Data: SlicePlotData = load(f, weights_only=False)
+            Data: SlicePlotData = pickle.load(f)
         shell_print(f"Plotting data from '{file}'")
 
         directory = file.parent
@@ -403,6 +402,7 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
     if force_directory is not None:
         directory = verify_path(force_directory)
 
+    run_name = Data.settings.get('run_name', 'default').replace(' ', '_')
     precision = 3  # For table printout of numpy arrays
     cmap_name = 'plasma'
     use_blue_green_red = True  # Whether to use a custom blue-green-red colormap for the ratio plot
@@ -451,7 +451,7 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
             table.auto_set_font_size(False)
             table.set_fontsize(9)
 
-            fig.suptitle(f"1D Slices #{i} for {Data.settings['run_name']} using {itype}")
+            fig.suptitle(f"1D Slices #{i} for {run_name} using {itype}")
             plt.savefig(
                 Path(directory, filename + f"_slice1d_{itype}_{i}.png"), dpi=300, bbox_inches="tight"
             )
@@ -591,7 +591,7 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
                                    cellLoc='center', loc='center', bbox=[0.0, 0.0, 1.0, 1.0])
             table.auto_set_font_size(False)
             table.set_fontsize(9)
-            fig.suptitle(f"2D Slices #{i} for {Data.settings['run_name']} using {itype}")
+            fig.suptitle(f"2D Slices #{i} for {run_name} using {itype}")
 
             plt.savefig(
                 Path(directory, filename + f"_slice2d_{itype}_{i}.png"), dpi=300, bbox_inches="tight"
