@@ -1,4 +1,5 @@
-run_name = "sunrise_base"
+run_name = "sunrise@base"
+output_dir = "sunrise"
 
 [integration_target]
 # chem potential 0.0138889

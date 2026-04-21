@@ -155,7 +155,7 @@ def run_sampler_comp(
             params = scripts.get("sampler_comp", dict())
         n_training_steps = params.get("n_training_steps", 1000)
         n_log = params.get("n_log", 10)
-        n_plot_rsd = params.get("n_plot_rsd", 100)
+        n_plot_snapshot = params.get("n_plot_snapshot", 100)
         n_plot_loss = params.get("n_plot_loss", 2)
         plot_disc = params.get("plot_disc", True)
         n_plot_disc = params.get("n_plot_disc", 10)
@@ -246,7 +246,7 @@ def run_sampler_comp(
                 Data.training_progress[MADNIS_KEY].losses.append(status.madnis_status.loss)
                 Data.training_progress[MADNIS_KEY].steps_losses.append(step)
                 Data.training_progress[MADNIS_KEY].nspl_losses.append(status.total_samples)
-            if step % n_plot_rsd == 0:
+            if step % n_plot_snapshot == 0:
                 add_integration_snapshot(madnis_integrator, Data.training_progress[MADNIS_KEY], True)
             if step % n_plot_disc == 0 and plot_disc:
                 add_disc_prob_snapshot(
@@ -267,7 +267,6 @@ def run_sampler_comp(
             f"""Initializing the Integrand and Integrators took {
                 -time_last + (time_last := time()):.2f}s"""
         )
-        madnis_integrator.display_info()
 
         shell_print("Taking preliminary snapshots...")
         for identifier, itg in integrators.items():
@@ -352,8 +351,8 @@ def plot_sampler_comp(file: str,
     width = 60
     line = width * sep + "\n"
     directory = file.parent
-    filename = file.stem
     run_name = Data.settings.get('run_name', 'default')
+    filename = run_name.replace(' ', '_') + "_" + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     madnis_tprog = Data.training_progress[MADNIS_KEY]
 
     with Path(directory, filename + "_summary.txt").open("w") as f:
@@ -436,7 +435,15 @@ def plot_sampler_comp(file: str,
         fig_discrete, axs_discrete = plt.subplots(
             n_spl, 1, sharex=True, layout="constrained", figsize=(10, n_spl*3 + 0.5))
         axs_discrete: list[plt.Axes]
+        # Create secondary x-axis on top of axs_snapshot[0] with training steps
         axs_discrete[-1].set_xlabel("Training Samples")
+        ax_top_discrete = axs_discrete[0].twiny()
+        # Select a sensible number of ticks evenly spaced
+        max_ticks = 6
+        step_indices = np.linspace(0, len(madnis_tprog.steps_discrete) - 1, max_ticks, dtype=int)
+        ax_top_discrete.set_xticks(np.array(madnis_tprog.nspl_discrete)[step_indices])
+        ax_top_discrete.set_xticklabels([str(madnis_tprog.steps_discrete[i]) for i in step_indices])
+        ax_top_discrete.set_xlabel("Training Steps")
 
     for i, (KEY, tp) in enumerate(Data.training_progress.items()):
         c = COLS.get(KEY) or "black"
@@ -493,6 +500,7 @@ def plot_sampler_comp(file: str,
         Path(directory, filename + "_training_prog.png"), dpi=300, bbox_inches="tight"
     )
     if plot_discrete:
+        ax_top_discrete.set_xlim(axs_discrete[0].get_xlim())
         fig_discrete.suptitle(f"Discrete Probabilities progression for {run_name}")
         fig_discrete.savefig(
             Path(directory, filename + "_discrete_probs.png"), dpi=300, bbox_inches="tight"

@@ -166,3 +166,13 @@ def _fd_limit() -> int | None:
         return resource.getrlimit(resource.RLIMIT_NOFILE)[0]
     except Exception:
         return None
+
+
+def _finite_float(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except:
+        return None
+    if math.isfinite(parsed):
+        return parsed
+    return None

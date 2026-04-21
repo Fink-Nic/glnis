@@ -11,26 +11,30 @@
 # parameterisation_type = "spherical"
 # [layered_parameterisation.Y75]
 # parameterisation_type = "mc_layer"
+# When using templates, stick to layer_0, layer_1, ...
 # -------------------------------------------------------------------------------------------
 
-run_name = "default"
-output_dir = "default"
+run_name = "default" 
+output_dir = "default" # Directory for scripts
+templates = [] # Entries can be settings files, or valid TOML strings.
 
 [overwrite]
 # Any parameter specified here will be overwritten. Example (string quotes required):
 # 'scripts.training_prog.n_training_steps' = 1337
 
 [gammaloop]
-# Name of the gammaloop state directory. REQUIRED TO BE OVERWRITTEN
-state_dir = "/home/nic/Master/glnis/gammaloop_files"
-# Name of the state inside state_dir.
+# Name of the glnis gammaloop examples directory. Set with 'glnis setdef -d <str>'
+state_dir = "default"
+# Name of the state inside state_dir. Can be absolute path to overwrite state_dir.
 state = "default"
+integrand_name = "default"
 # Name of the gammaloop integration state, if any
 integration_workspace = "default"
 # Name of the integration results file inside the integration_state_name folder
 result_file = "integration_result.json"
-process_id = 0
-integrand_name = "default"
+get_target_from_gammaloop = true # If false, will always use [integration_target]
+# Whether to take gammaloop integration result as integration_target, even if target exists within result_file
+prefer_gammaloop_over_target = false 
 
 [integration_target]
 n_points = 0
@@ -50,11 +54,12 @@ seed = 1337
 
 [layered_integrand]
 integrand_type = "gammaloop"
-# Number of continuous input dimensions above the expected 3 * n_loop
 use_f128 = false
 n_cores = 1
-# Can be one of "real", "imag", "abs"
-training_phase = "real"
+n_shards = 32 # Maximum number of I/O queues. If n_shards < n_cores, some workers will share queues.
+training_phase = "real" # Can be one of "real", "imag", "abs"
+condition_integrand_first = true # Reorders discrete dimensions to be first
+sum_channels = false # Explicit sum over parameterisation channels (only for one discrete parameterisation input, e.g. lmbs)
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "momtrop"
@@ -62,8 +67,8 @@ parameterisation_type = "momtrop"
 [integrator.naive]
 
 [integrator.vegas]
-
-[integrator.vegas.vegas_init_kwargs]
+bins = 500 # Number of bins per dimension
+alpha = 0.7 # learning rate
 
 [integrator.havana]
 use_uniform = false
@@ -79,19 +84,15 @@ discrete_model = "transformer"
 use_scheduler = true
 scheduler_type = "cosineannealing"
 loss_type = "kl_divergence_softclip"
+discrete_dims_position = "first" # Whether to sample discrete or continuous first
+pretrain_c_flow = false # Use vegas grid to pretrain the continuous flow
+max_batch_size = 100_000 # Maximum number of samples drawn from the flow at once. Decrease if memory issues
+use_gpu = true # If available
 
 [integrator.madnis.scheduler_kwargs]
+[integrator.madnis.loss_kwargs]
 
-# Parameters for the transformer model
-[integrator.madnis.transformer]
-embedding_dim  = 64
-feedforward_dim = 256
-heads = 8
-transformer_layers = 3
-mlp_layers = 3
-mlp_units = 256
-
-# Parameters for the Flow module
+# Parameters for the Flow module, which handles continuous sampling
 [integrator.madnis.flow_kwargs]
 uniform_latent = true
 permutations = "log"
@@ -102,29 +103,57 @@ min_bin_width = 1e-3
 min_bin_height = 1e-3
 min_bin_derivative = 1e-3
 
-# Haven't bothered with the non-transformer model yet, will use default params set by madnis
+# Parameters for the transformer model
+[integrator.madnis.transformer]
+embedding_dim = 64
+feedforward_dim = 64
+heads = 4
+mlp_units = 64
+transformer_layers = 2
+mlp_layers = 2
+mlp_units = 64
+
 [integrator.madnis.made]
+layers = 3
+nodes_per_feature = 8
+
+[integrator.madnis.pretraining_kwargs]
+nitn = 10
+neval = 10000
+bins_mult = 4 # vegas grids will have int(bins_mult * flow_kwargs.bins) bins
+alpha = 0.7
 
 [integrand.gammaloop]
 # Can set a state manually here, else will use settings from [gammaloop_state]
 gammaloop_state_path = "from_state"
-integrand_name = "summed"
-process_id = 0
-run_commands = ""
-momentum_space = true
-use_arb_prec = false
-minimal_output = true
-read_only_state = true
+integrand_name = "default"
+run_commands = [] # List[str]: GammaLoop commands to be executed upon initialisating the integrand.
+momentum_space = true # Disable if multiple graphs, or simply want to use gammaloop mapping
+# Case sample_lmbs:
+#   true -> sampling.lmb_multichanneling = true, sampling.lmb_channels = 'monte_carlo'
+#   false -> sampling.lmb_multichanneling = false
+#   'summed' -> sampling.lmb_multichanneling = true, sampling.lmb_channels = 'summed'
+sample_lmbs = false 
+# Case sample_orientations:
+#   true -> sampling.orientations = 'monte_carlo'
+#   false -> sampling.orientations = 'summed'
+sample_orientations = false
+use_arb_prec = false # Enable if you have infinite time
+minimal_output = true # Disable to enable rich output (which will not be used)
+read_only_state = true # Disable if you want to save changes to the state (not recommended)
+log_level_off = true # Disable to set log level to 'info'. For debugging.
 
 [integrand.test]
+# Can be List[float] for a sum of gaussians. Will always be normalized to 1
 sigma = 10.0
-const_f = false
+const_f = false # If true, will return 1. Was useful for bughunting before I had LayerData objects.
 
 [integrand.kaapo]
 path_to_example = "default"
 # Params are [m_UV, mu, beta]
 params = [6.283185307179586, 3.141592653589793, 1.0]
 use_prec = true
+apply_pi_factor = true # Multiplies with (2 pi)**(3 n_loops). Required for examples.
 
 [integrand.kaapo.symbolica_integrand_kwargs]
 force_rebuild = false
@@ -154,28 +183,29 @@ sum_orientations = true
 runtime_summation = false
 
 [parameterisation.spherical]
-conformal_scale = 1.0
+conformal_scale = 1.0 # Overall scale. Will multiply graph_properties.e_cm (if e_cm nonzero)
 origins = 0.0
 
 [parameterisation.inv_spherical]
-conformal_scale = 1.0
+conformal_scale = 1.0 
 origins = 0.0
 
 [parameterisation.kaapo]
 mu = [3.141592653589793, 3.141592653589793, 0.0]
-a = 0.5
-b = 1.0
-vary_a = false
-a_min = 0.2
-angle_shift = 0.0
+a = 0.5 # Max of 1, higher means radial component more spread out, lower clusters around fermi surface
+b = 1.0 # Overall scale
+vary_a = false # Enable to expose 'a' as an additional trainable parameter, for each sample point
+a_min = 0.2 # If vary_a, a may go from a_min to 1
+angle_shift = 0.0 # Shift applied to x-space input of angular components
 
+# Leverages symmetry of ti examples (only depend on sc.prods) to reduce continuous input dimension by 3
 [parameterisation.rkaapo]
 mu = [3.141592653589793, 3.141592653589793, 0.0]
 a = 0.5
 b = 1.0
 vary_a = false
 a_min = 0.2
-shift_angles = 0.0
+angle_shift = 0.0
 
 [parameterisation.mc_layer]
 # Choose from 'ose' and 'fermi', for euclidean-propagator-like terms and fermi surface terms, respectively
@@ -186,102 +216,29 @@ fermi_exponent = 1.0
 set_bosonic_edge_to_one = true
 
 [parameterisation.momtrop]
-# Can be one of the following:
+# '\nu_e' exponent. Can be one of the following:
 # false or false equivalent: Uses the values from graph properties
 # float: Sets all edge weights to the same value
 # list[float]: Specify a weight for each edge. Length must match the number of internal edges.
 overwrite_edge_weight = false
-# If false, the integrator will not attempt to learn the discrete inputs
 sample_discrete = true
-mask_redundant = true
+mask_redundant = true # Will mask the redundant continuous input dimensions if sample_discrete
 
-[parameterisation.s]
+# Sigmoid-like mapping layer, applied to all continuous inputs. May be useful to magnify hcube edge regions
+[parameterisation.s] 
 exponent = 2.0
 
+# Used to evaluate x-space integrands. Set automatically if integrand.momentum_space = true
 [parameterisation.identity]
 
 [graph]
-# If true, will attempt to get the dot graph from the gammaloop state
-from_state = true
-# If from_state is false, will use this path instead
+from_state = true # If true, will attempt to get the dot graph from the gammaloop state
+overwrite_lmb_heuristics = false # If true, will always use all lmbs
+overwrite_graph_properties = false # If true, will set graph properties to [graph.graph_properties]
+# If from_state is false, use the following settings instead
 dot_path = ""
-# Can be one of the following:
-# "default": Automatically sets a weight, pretty likely to lead to divergent subgraphs
-# float: Sets all edge weights to the same value
-# list[float]: Specify a weight for each edge. Length must match the number of internal edges.
-momtrop_edge_weight = "default"
-# Set this to true if the graph has no externals (e.g. thermal integrand examples from kaapo)
-is_vacuum = false
-# If true, will set graph properties to [graph.graph_properties]
-overwrite_graph_properties = false
+momtrop_edge_weight = "default" # Alternative to setting them in [parameterisation.momtrop], default is likely to lead to divergent subgraphs
 external_momenta = []
-overwrite_lmb_heuristics = false
-
-# The default is set to 1L_6photons graph kinematics
-[graph.graph_properties]
-edge_src_dst_vertices = [
-    [3, 4], 
-    [4, 5], 
-    [5, 0], 
-    [0, 1], 
-    [1, 2], 
-    [2, 3]
-]
-edge_masses = [
-    1500.0, 
-    1500.0,
-    1500.0, 
-    1500.0, 
-    1500.0, 
-    1500.0
-]
-edge_momentum_shifts = [
-    [
-        -231.8312618377385,
-        -659.5630405248305,
-        450.2378756570221
-    ],
-    [
-        -231.8312618377385,
-        -359.5630405248305,
-        50.23787565702207
-    ],
-    [
-        -209.73057155004852,
-        -399.64339371651585,
-        126.0433066139587
-    ],
-    [
-        -105.8809596665922,
-        -97.7096383269757,
-        49.54838522679282
-    ],
-    [
-        0.0, 
-        0.0, 
-        0.0
-    ],
-    [
-        -231.8312618377385,
-        -359.5630405248305,
-        50.23787565702207
-    ]
-]
-graph_external_vertices = [0, 1, 2, 3, 4, 5]
-graph_signature = [
-    [1], [1], [1], [1], [1], [1]
-]
-momtrop_edge_weight = [
-    0.555555555555, 
-    0.555555555555, 
-    0.555555555555,
-    0.555555555555, 
-    0.555555555555, 
-    0.555555555555
-]
-lmb_array = [
-    [0], [1], [2], [3], [4], [5]
-]
 
 [model]
 # If true, will attempt to get the model from the gammaloop state
@@ -291,18 +248,15 @@ model_path = "default"
 
 # Parameters used in the splcomp subcommand 
 [scripts.sampler_comp]
-n_training_steps = 1000
-n_samples = 10000
-nitn = 10
-# Number of samples drawn after the training to compute the final result
-n_samples_after_training = 1000000
-# Training steps between callback of loss to console
-n_log = 20
-# Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
-# Will also output the result +- error and rsd to console
-n_plot_snapshot = 100
-# Training steps between plotting the loss
-n_plot_loss = 10
+n_training_steps = 1000 # Number of MadNIS training steps
+nitn = 10 # Number of Vegas / Havana training steps (total training samples are equal to MadNIS)
+n_samples = 10000 # Number of samples to compute the snapshot with
+n_samples_after_training = 1000000 # Number of samples drawn after the training to compute the final result
+n_log = 20 # Training steps between callback of loss to console
+n_plot_snapshot = 100 # Training steps between drawing n_samples samples for a snapshot
+n_plot_loss = 10 # Training steps between plotting the loss
+n_plot_disc = 10 # Training steps between plotting the discrete probabilities
+plot_disc = true 
 
 # Paramters used in the tprog subcommand
 [scripts.training_prog]
@@ -334,4 +288,120 @@ low_high_gap = 0.05 # Gap between low and high colors in the segmented colormap
 # the slice is calculated from origin + np.linspace(**grid[i]) * dirs[i]
 # grid = [
 #     {start = 0, stop = 1, num = 100}, 
+# ]
+
+# Parameters used in the hpcomp subcommand
+# The run is split into comparisons, each of which may define a number of blocks, which each define one training run
+# [[scripts.hyperparam_comparison.comparison]]
+# name = "made network"
+# Each entry in blocks may define any number of templates (same rules apply)
+# blocks = [ 
+#         ["settings/templates/made/size0"],
+#         ["settings/templates/made/size1"],
+#         ["settings/templates/made/size2"],
+#     ]
+# block_names = ["1_4", "1_8", "2_8",]
+# plot_slices = false
+
+# tprog parameters to use for comparison runs
+# [scripts.hpcomp_training_run]
+
+# Slices to compute for comparisons that specify plot_slices = true
+# [[scripts.hpcomp_slice_plots.slice]] Same structure as [[scripts.slice_plots.slice]]
+
+# Sensible defaults for overall comparison across all training runs
+[[scripts.hyperparam_comparison.summary]]
+name = "Reals"
+log_scale = true
+include = [
+    "real_central_value",
+    "real_error",
+    "real_rsd",
+    "real_tvar",
+    "abs_real_tvar",
+]
+[[scripts.hyperparam_comparison.summary]]
+name = "Imags"
+log_scale = true
+include = [
+    "imag_central_value",
+    "imag_error",
+    "imag_rsd",
+    "imag_tvar",
+    "abs_imag_tvar",
+]
+[[scripts.hyperparam_comparison.summary]]
+name = "Max Weights"
+log_scale = true
+include = [
+    "real_pos_max_wgt",
+    "real_neg_max_wgt",
+    "imag_pos_max_wgt",
+    "imag_neg_max_wgt",
+]
+[[scripts.hyperparam_comparison.summary]]
+name = "Times"
+log_scale = false
+include = [
+    "run_time",
+    "time_total",
+    "time_sampler",
+    "time_integrand",
+    "time_param",
+    "time_processing",
+]
+[[scripts.hyperparam_comparison.summary]]
+name = "Parameters"
+log_scale = false
+include = [
+    "total_params",
+    "discrete_params",
+    "continuous_params",
+]
+
+# Parameters for mpe subcommand
+[scripts.multiprocessing_efficiency]
+n_cores = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+n_samples = [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]
+max_samples_per_core = 1_000_000
+
+[graph.graph_properties] # Vacuum sunrise graph as an example
+# edge_src_dst_vertices = [
+#     [0, 1], 
+#     [1, 0], 
+#     [1, 0]
+# ]
+# edge_masses = [
+#     0.0,
+#     0.0,
+#     0.0
+# ]
+# edge_momentum_shifts = [
+#     [
+#         0.0,
+#         0.0,
+#         0.0
+#     ],
+#     [
+#         0.0,
+#         0.0,
+#         0.0
+#     ],
+#     [
+#         0.0,
+#         0.0,
+#         0.0
+#     ]
+# ]
+# graph_external_vertices = []
+# graph_signature = [
+#     [1, 0], 
+#     [0, 1], 
+#     [1, -1]
+# ]
+# momtrop_edge_weight = []
+# lmb_array = [
+#     [0, 1], 
+#     [0, 2], 
+#     [1, 2]
 # ]

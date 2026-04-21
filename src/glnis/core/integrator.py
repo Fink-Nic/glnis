@@ -305,13 +305,11 @@ class VegasIntegrator(Integrator):
 
     def __init__(self,
                  integrand: MPIntegrand,
-                 vegas_init_kwargs: Dict[str, Any] = dict(),
-                 bins: int = 100,
+                 bins: int = 500,
                  alpha: float = 0.7,
                  **kwargs):
         super().__init__(integrand=integrand, **kwargs)
         self.bins = bins
-        self.vegas_init_kwargs = vegas_init_kwargs
         self.adaptive_map = vegas.AdaptiveMap(grid=self.input_dim*[[0, 1],], ninc=bins)
         self.alpha = alpha
 
@@ -601,7 +599,6 @@ class MadnisIntegrator(Integrator):
         learning_rate: float = 1e-3,
         use_scheduler: bool = True,
         scheduler_type: Literal["cosineannealing"] | List[str] | None = None,
-        # warmup_steps: List[int] = [],
         scheduler_kwargs: Dict[str, Any] = dict(),
         loss_type: Literal["test", "variance", "variance_softclip",
                            "kl_divergence", "kl_divergence_softclip"] = "kl_divergence",
@@ -614,7 +611,7 @@ class MadnisIntegrator(Integrator):
             feedforward_dim=64,
             heads=4,
             mlp_units=64,
-            transformer_layers=1,),
+            transformer_layers=2,),
         made: Dict[str, Any] = dict(),
         flow_kwargs: Dict[str, Any] = dict(
             uniform_latent=True,

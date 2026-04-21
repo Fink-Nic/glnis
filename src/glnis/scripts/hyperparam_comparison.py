@@ -1,12 +1,11 @@
 # type: ignore
-import numpy as np
 from typing import Dict, List, Tuple, Any
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from pickle import dump, load
 
-from glnis.utils.helpers import shell_print, verify_path
+from glnis.utils.helpers import shell_print, verify_path, _finite_float
 from glnis.core.accumulator import IntegrationResult
 from glnis.scripts.sampler_comparison import (
     run_sampler_comp, SamplerCompData, TrainingProgress, MADNIS_KEY
@@ -27,8 +26,9 @@ class RunData:
 
 
 class HParamCompData:
-    def __init__(self, filename: str) -> None:
+    def __init__(self, filename: str, settings: Dict[str, Any] = None) -> None:
         self.filename = filename
+        self.settings = settings or dict()
         self.sorted_by_comp_and_name: Dict[str, Dict[str, RunData]] = dict()
         self.sorted_by_obs: Dict[str, List[Tuple[str, str, float]]] = dict()
         self._total_comparisons = 0
@@ -57,11 +57,8 @@ class HParamCompData:
         all_obs_dict['total_params'] = run_data.madnis_info.get('flow total parameters', 0)
 
         for obs_name, value in all_obs_dict.items():
-            try:
-                value = float(value)
-            except (ValueError, TypeError):
-                continue
-            if value != 0:
+            value = _finite_float(value)
+            if value:
                 if obs_name not in self.sorted_by_obs:
                     self.sorted_by_obs[obs_name] = [(comp_name, block_name, value)]
                 else:
@@ -99,14 +96,13 @@ class HParamCompData:
 def run_hyperparam_comparison(
     file: str,
     recovery_file: str = "",
-    comment: str = "",
     no_output: bool = False,
     no_plot: bool = False,
     subroutine: str = "hyperparam_comparison",
 ) -> SamplerCompData | None:
 
     if Path(file).suffix == ".pkl":
-        plot_hyperparam_comparison(file, comment)
+        plot_hyperparam_comparison(file)
         quit()
 
     from time import perf_counter
@@ -126,6 +122,7 @@ def run_hyperparam_comparison(
             Data: HParamCompData = load(f)
             if not isinstance(Data, HParamCompData):
                 raise ValueError(f"Expected a HParamCompData object in the recovery file, but got {type(Data)}")
+        Data.settings = MasterSettings.settings
         directory = recovery_file.parent
         shell_print(f"Recovered data from '{recovery_file}' with {Data._total_comparisons} comparisons.")
     else:
@@ -137,23 +134,21 @@ def run_hyperparam_comparison(
             shell_print(f"Created output folder at {directory}")
         shell_print(f"Output will be at {directory}")
         filename = Path(directory, datetime.now().strftime("%Y_%m_%d-%H_%M_%S"))
-        Data = HParamCompData(filename=str(filename))
+        Data = HParamCompData(filename=str(filename), settings=MasterSettings.settings)
 
     hline = 120 * "="
     # Training parameters
     scripts: Dict[str, Any] = MasterSettings.settings.get("scripts", dict())
-    params_list: Dict[str, Any] = scripts.get(subroutine, dict())
-    if not isinstance(params_list, list):
-        params_list: List[Dict[str, Any]] = [params_list]
+    params: Dict[str, Any] = scripts.get(subroutine, dict())
+    comparison_list = params.get("comparison", [])
+    if not isinstance(comparison_list, list):
+        comparison_list: List[Dict[str, Any]] = [comparison_list]
 
-    for params in params_list:
-        blocks = params.get('blocks', None)
+    for params in comparison_list:
+        comp_name = params.get('name', 'no_name_set')
+        blocks = params.get('blocks', [])
         block_names = params.get('block_names', [])
-        comp_name = params.get('comparison_name', 'no_name_set')
         plot_slices = params.get('plot_slices', False)
-        if blocks is None:
-            shell_print(f"No blocks to run in comparison '{comp_name}', skipping...")
-            continue
 
         if not isinstance(blocks, list):
             blocks = [[blocks]]
@@ -243,25 +238,16 @@ def run_hyperparam_comparison(
     Data.save()
 
     if not no_plot:
-        plot_hyperparam_comparison(Data.filename, comment)
+        plot_hyperparam_comparison(Data.filename)
 
     return Data
 
 
-def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
+def plot_hyperparam_comparison(file: str) -> None:
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
     import numpy as np
     from numpy.typing import NDArray
-
-    def _finite_float(value: Any) -> float | None:
-        try:
-            parsed = float(value)
-        except (TypeError, ValueError):
-            return None
-        if np.isfinite(parsed):
-            return parsed
-        return None
 
     file: Path = verify_path(file, suffix=".pkl")
     with file.open('rb') as f:
@@ -434,16 +420,16 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
             for i in range(n_d):
                 n_show = 3
                 block_name = blocks_with_disc_evolution[i]
-                plottables = blocks[block_name].training_progress
-                discrete_probs = np.array(plottables.discrete_probs)
-                steps_discrete = np.array(plottables.steps_discrete)
+                tprog = blocks[block_name].training_progress
+                discrete_probs = np.array(tprog.discrete_probs)
+                steps_discrete = np.array(tprog.steps_discrete)
                 sorted_indices = np.argsort(discrete_probs[-1])[::-1]
                 if sorted_indices.size > 2*n_show:
                     show_indices = sorted_indices[np.r_[0:n_show, -n_show:0]]
                 else:
                     show_indices = sorted_indices
                 show_probs = discrete_probs.T[show_indices]
-                show_channels = plottables.all_channels[show_indices]
+                show_channels = tprog.all_channels[show_indices]
 
                 channel_labels = [" ".join(str(digit) for digit in ch) for ch in show_channels]
                 cmap = colors.LinearSegmentedColormap.from_list(
@@ -466,48 +452,45 @@ def plot_hyperparam_comparison(file: str, comment: str = "") -> None:
             )
         shell_print(f"Finished plotting comparison '{comp_name}'. Plots saved to '{subdirectory}'.")
 
-    all_rsds = []
-    for (comp, block, real_err) in Data.sorted_by_obs['real_error']:
-        _rsd = None
-        for (c, b, real_mean) in Data.sorted_by_obs['real_central_value']:
-            if c == comp and b == block and real_mean != 0:
-                _rsd = real_err / abs(real_mean)
-        for (c, b, n_points) in Data.sorted_by_obs['n_points']:
-            if c == comp and b == block and n_points > 0:
-                if _rsd is not None:
-                    _rsd *= np.sqrt(n_points)
-        if _rsd is not None:
-            all_rsds.append((comp, block, _rsd))
-    all_rsds.sort(key=lambda x: x[2])
-    Data.sorted_by_obs['real_rsd'] = all_rsds
-    ignore = ["n_points", "real_central_value", "imag_central_value",
-              "abs_real_central_value", "abs_imag_central_value"]
     n_show = 5
     # Overall observables comparison
-    observables_to_plot = [(obs, Data.sorted_by_obs[obs]) for obs in Data.sorted_by_obs.keys() if obs not in ignore]
-    n_obs = len(observables_to_plot)
-    fig4, axs4 = plt.subplots(nrows=n_obs, ncols=2, layout="constrained", figsize=(10, 4*n_obs))
-    axs4: List[plt.Axes]
-    axs4[0, 0].set_title(f"Lowest")
-    axs4[0, 1].set_title(f"Highest")
-    for i, (obs_name, obs_tuples) in enumerate(observables_to_plot):
-        # obs_tuple: List[(comp_name, block_name, value)]
-        n_blocks = len(obs_tuples)
-        n = min(n_show, n_blocks)
-        obs_values = [o[-1] for o in obs_tuples]
-        axs4[i, 0].set_ylabel(obs_name)
-        axs4[i, 0].set_yscale("log")
-        axs4[i, 1].set_yscale("log")
-        axs4[i, 0].set_xticks(range(n), [f"{comp}\n{block}" for comp, block, _ in obs_tuples[:n]], rotation=45)
-        axs4[i, 1].set_xticks(range(n), [f"{comp}\n{block}" for comp, block, _ in obs_tuples[-n:]], rotation=45)
-        axs4[i, 0].scatter(range(n), obs_values[:n], color='black')
-        axs4[i, 1].scatter(range(n), obs_values[-n:], color='black')
-        axs4[i, 0].set_ylim(bottom=0.9*min(obs_values[:n]), top=1.1*max(obs_values[:n]))
-        axs4[i, 1].set_ylim(bottom=0.9*min(obs_values[-n:]), top=1.1*max(obs_values[-n:]))
+    summaries = Data.settings.get(
+        'scripts', dict()).get(
+            'hyperparam_comparison', dict()).get(
+                'summary', [])
+    if not isinstance(summaries, list):
+        summaries = [summaries]
+    for i, summary in enumerate(summaries):
+        name: str = summary.get('name', f'summary_{i}')
+        include = summary.get('include', [])
+        log_scale = summary.get('log_scale', True)
+        observables_to_plot = [(obs, Data.sorted_by_obs[obs]) for obs in include if obs in Data.sorted_by_obs]
+        n_obs = len(observables_to_plot)
+        if n_obs == 0:
+            shell_print(f"No observables to plot for summary '{name}', skipping...")
+            continue
+        fig4, axs4 = plt.subplots(nrows=n_obs, ncols=2, layout="constrained", figsize=(10, 3*n_obs + 0.3))
+        axs4 = axs4.reshape(-1, 2)
+        axs4[0, 0].set_title(f"Lowest")
+        axs4[0, 1].set_title(f"Highest")
+        for i, (obs_name, obs_tuples) in enumerate(observables_to_plot):
+            # obs_tuple: List[(comp_name, block_name, value)]
+            n = min(n_show, len(obs_tuples))
+            obs_values = [abs(o[-1]) for o in obs_tuples]
+            axs4[i, 0].set_ylabel(obs_name)
+            if log_scale:
+                axs4[i, 0].set_yscale("log")
+                axs4[i, 1].set_yscale("log")
+            axs4[i, 0].set_xticks(range(n), [f"{comp}\n{block}" for comp, block, _ in obs_tuples[:n]], rotation=45)
+            axs4[i, 1].set_xticks(range(n), [f"{comp}\n{block}" for comp, block, _ in obs_tuples[-n:]], rotation=45)
+            axs4[i, 0].scatter(range(n), obs_values[:n], color='black')
+            axs4[i, 1].scatter(range(n), obs_values[-n:], color='black')
+            axs4[i, 0].set_ylim(bottom=0.9*min(obs_values[:n]), top=1.1*max(obs_values[:n]))
+            axs4[i, 1].set_ylim(bottom=0.9*min(obs_values[-n:]), top=1.1*max(obs_values[-n:]))
 
-    fig4.suptitle(f"Overall observables comparison {comment}")
-    fig4.savefig(
-        Path(directory, filename + "_overall_observables_comparison.png"), dpi=300, bbox_inches="tight"
-    )
-    plt.close(fig4)
-    shell_print(f"Finished plotting overall observables comparison. Plot saved to '{directory}'.")
+        fig4.suptitle(f"Summary {name}")
+        fig4.savefig(
+            Path(directory, f"{filename}_summary_{name.lower().replace(' ', '_')}.png"), dpi=300, bbox_inches="tight"
+        )
+        plt.close(fig4)
+        shell_print(f"Finished plotting summary {name}. Plot saved to '{directory}'.")

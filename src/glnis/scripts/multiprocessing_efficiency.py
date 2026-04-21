@@ -38,6 +38,7 @@ def run_multiprocessing_efficiency(
     from glnis.core.integrator import Integrator
     from glnis.core.parser import SettingsParser
     from glnis.core.accumulator import DefaultAccumulator
+    from multiprocessing import cpu_count
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
 
@@ -67,6 +68,12 @@ def run_multiprocessing_efficiency(
         n_samples: List[int] = params.get("n_samples", [1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000])
         max_samples_per_core: int = params.get("max_samples_per_core", 1_000_000)
 
+        # sanity check parameters
+        max_allowed = cpu_count() - 1
+        n_cores = [c for c in n_cores if c <= max_allowed]
+        max_cores = max(n_cores)
+        n_samples = [s for s in n_samples if s <= max_cores * max_samples_per_core]
+
         integrator_state = None if SData is None else SData.integrator_states.get(
             NAIVE_KEY if use_naive else MADNIS_KEY, None)
 
@@ -78,7 +85,7 @@ def run_multiprocessing_efficiency(
                 shell_print(f"Created output folder at {directory}")
             shell_print(f"Output will be at {directory}")
 
-        Settings.settings["layered_integrand"]["n_cores"] = max(n_cores)
+        Settings.settings["layered_integrand"]["n_cores"] = max_cores
         Settings.settings["layered_integrator"]["integrator_type"] = "naive" if use_naive else "madnis"
         Settings.settings["layered_integrator"]["pretrain_c_flow"] = False
         integrator: Integrator = Integrator.from_settings(
@@ -115,7 +122,7 @@ def run_multiprocessing_efficiency(
         if no_output:
             quit()
 
-        run_name = SData.settings.get('run_name', 'default').replace(' ', '_')
+        run_name = Settings.settings.get('run_name', 'default').replace(' ', '_')
         filename = run_name + "_mpe_" + datetime.now().strftime("%Y_%m_%d-%H_%M_%S") + ".pkl"
         file = Path(directory, filename)
         with file.open("wb") as f:
@@ -202,6 +209,6 @@ def plot_multiprocessing_efficiency(file: str) -> None:
             case "integrand":
                 ax.set_title(f"Integrand time")
         fig.savefig(
-            Path(directory, filename + f"_{key}.png"), dpi=300, bbox_inches="tight"
+            Path(directory, filename + f"_{key}_times.png"), dpi=300, bbox_inches="tight"
         )
         plt.close(fig)

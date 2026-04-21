@@ -1,12 +1,12 @@
-run_name = "sunrise_nopot"
+run_name = "sunrise@nopot"
+output_dir = "sunrise/nopot"
 templates = [
-    "settings/vacuum_graphs/sunrise/sunrise_base",
-    "settings/vacuum_graphs/sunrise/sunrise_optimised",
+    "settings/vacuum_graphs/sunrise/base",
+    "settings/vacuum_graphs/sunrise/optimised",
     "settings/templates/flow/size5",
     "settings/templates/madnis_bins/size2",
     "settings/templates/transformer/size2",
 ]
-
 
 [integration_target]
 # chem potential 0.0138889

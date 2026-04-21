@@ -282,8 +282,11 @@ class SettingsParser:
             default_settings, settings,
             always_overwrite=['layered_parameterisation', 'templates'])
 
-        self.gammaloop_state_path = Path(self.settings['gammaloop']['state_dir'],
-                                         self.settings['gammaloop']['state'])
+        if Path(self.settings['gammaloop']['state']).is_absolute():
+            self.gammaloop_state_path = Path(self.settings['gammaloop']['state'])
+        else:
+            self.gammaloop_state_path = Path(self.settings['gammaloop']['state_dir'],
+                                             self.settings['gammaloop']['state'])
         self.settings['integrand']['gammaloop'][
             'gammaloop_state_path'] = str(self.gammaloop_state_path)
         self._graph_from_state = self.settings['graph']['from_state']
@@ -328,7 +331,7 @@ class SettingsParser:
 
     def get_integration_target(self) -> IntegrationResult:
         gammaloop_result = self.get_gammaloop_integration_result()
-        if gammaloop_result is None:
+        if not self.settings['gammaloop']['get_target_from_gammaloop'] or gammaloop_result is None:
             return IntegrationResult(**self.settings.get('integration_target', {}))
         try:
             itg_name = self.settings['integrand']['gammaloop']['integrand_name']
@@ -338,7 +341,10 @@ class SettingsParser:
             if len(candidates) == 0:
                 raise ValueError("No matching slots found in GammaLoop result.")
             candidate = candidates[0]
-            target = candidate.get('target') or candidate.get('integral')
+            if self.settings['gammaloop']['prefer_gammaloop_over_target']:
+                target = candidate.get('integral') or candidate.get('target')
+            else:
+                target = candidate.get('target') or candidate.get('integral')
 
             return IntegrationResult(
                 n_points=target['neval'],
@@ -383,7 +389,6 @@ class SettingsParser:
             return GraphProperties(**self.settings['graph']['graph_properties'])
 
         if self._graph_from_state:
-            process_id = self.settings['integrand']['gammaloop']['process_id']
             integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
             outputs = dict()
             for o in self.gammaloop_state.list_outputs():

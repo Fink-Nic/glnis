@@ -17,8 +17,8 @@ subtype = "ose"
 ose_exponent = 1
 fermi_exponent = 0.5
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "bins"
+[[scripts.hyperparam_comparison.comparison]]
+name = "bins"
 plot_slices = true
 blocks = [
         ["settings/templates/madnis_bins/size0"],
@@ -27,8 +27,8 @@ blocks = [
     ]
 block_names = [5, 10, 20]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "flow network"
+[[scripts.hyperparam_comparison.comparison]]
+name = "flow network"
 blocks = [
         ["settings/templates/flow/size0"],
         ["settings/templates/flow/size1"],
@@ -37,8 +37,8 @@ blocks = [
     ]
 block_names = ["1_16", "1_64", "2_64", "2_128"]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "transformer network"
+[[scripts.hyperparam_comparison.comparison]]
+name = "transformer network"
 blocks = [
         ["settings/templates/transformer/size0"],
         ["settings/templates/transformer/size1"],
@@ -46,29 +46,20 @@ blocks = [
     ]
 block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64",]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "made network"
-blocks = [
-        ["settings/templates/made/size0"],
-        ["settings/templates/made/size1"],
-        ["settings/templates/made/size2"],
-    ]
-block_names = ["1_4", "1_8", "2_8",]
 
 [scripts.hpcomp_training_run]
 n_training_steps = 50
 n_samples = 1000
 n_samples_after_training = 20000
 n_log = 5
-n_plot_rsd = 10
+n_plot_snapshot = 10
 n_plot_loss = 1
 plot_disc = true
 n_plot_disc = 2
 
 [[scripts.hpcomp_slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
-discrete = [1]
-dirs = [1]
+from_max_wgt = "re+"
+dirs = [0, 3]
 grid = [
     {start = 0, stop = 1, num = 100},
 ]

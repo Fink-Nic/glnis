@@ -4,7 +4,7 @@ import numpy as np
 from numpy.typing import NDArray, DTypeLike
 from abc import ABC, abstractmethod
 from time import perf_counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Literal, Iterable, Any
 
 from glnis.utils.helpers import Colour, error_fmter, chunks
@@ -63,15 +63,20 @@ class IntegrationResult:
     abs_real_error: float = 0
     abs_imag_central_value: float = 0
     abs_imag_error: float = 0
+    real_rsd: float = 0
+    imag_rsd: float = 0
+    abs_real_rsd: float = 0
+    abs_imag_rsd: float = 0
+    real_tvar: float = 0
+    imag_tvar: float = 0
+    abs_real_tvar: float = 0
+    abs_imag_tvar: float = 0
     total_time: float = 0
 
     def __post_init__(self: 'IntegrationResult'):
         """Calculates derived observables such as RSD and time per sample."""
         time_per_sample = 0
-        self.real_rsd = 0
-        self.imag_rsd = 0
-        self.abs_real_rsd = 0
-        self.abs_imag_rsd = 0
+        # No harm in recalculating these
         if self.n_points > 0:
             time_per_sample = self.total_time / self.n_points
             if self.real_central_value:
@@ -79,14 +84,17 @@ class IntegrationResult:
             if self.imag_central_value:
                 self.imag_rsd = self._rsd(self.imag_central_value, self.imag_error, self.n_points)
             if self.abs_real_central_value:
-                self.abs_real_rsd = self._rsd(self.abs_real_central_value, self.real_error, self.n_points)
+                self.abs_real_rsd = self._rsd(
+                    self.abs_real_central_value, self.real_error, self.n_points)
             if self.abs_imag_central_value:
-                self.abs_imag_rsd = self._rsd(self.abs_imag_central_value, self.imag_error, self.n_points)
+                self.abs_imag_rsd = self._rsd(
+                    self.abs_imag_central_value, self.imag_error, self.n_points)
 
-        self.real_tvar = self.real_rsd**2 * time_per_sample
-        self.imag_tvar = self.imag_rsd**2 * time_per_sample
-        self.abs_real_tvar = self.abs_real_rsd**2 * time_per_sample
-        self.abs_imag_tvar = self.abs_imag_rsd**2 * time_per_sample
+        # Don't want to overwrite these in case total_time is not provided
+        self.real_tvar = self.real_tvar or self.real_rsd**2 * time_per_sample
+        self.imag_tvar = self.imag_tvar or self.imag_rsd**2 * time_per_sample
+        self.abs_real_tvar = self.abs_real_tvar or self.abs_real_rsd**2 * time_per_sample
+        self.abs_imag_tvar = self.abs_imag_tvar or self.abs_imag_rsd**2 * time_per_sample
 
     def combine_with(self: 'IntegrationResult', other: 'IntegrationResult') -> None:
         def cc(s_c: float, o_c: float) -> float:
@@ -649,7 +657,7 @@ class IntegrationStatistics(AccumulatorModule):
         return "\n".join(line for line in report)
 
     def get_observables(self) -> Dict[str, Any]:
-        return self.result.__dict__.copy()
+        return asdict(self.result).copy()
 
 
 class MaxWeight(AccumulatorModule):
@@ -658,10 +666,10 @@ class MaxWeight(AccumulatorModule):
                  dtype: DTypeLike | None = None,):
         self.dtype = np.dtype(np.float64) if dtype is None else dtype
         if data is None:
-            self.real_pos_max_wgt = np.zeros(1, dtype=self.dtype)
-            self.real_neg_max_wgt = np.zeros(1, dtype=self.dtype)
-            self.imag_pos_max_wgt = np.zeros(1, dtype=self.dtype)
-            self.imag_neg_max_wgt = np.zeros(1, dtype=self.dtype)
+            self.real_pos_max_wgt: float = 0.0
+            self.real_neg_max_wgt: float = 0.0
+            self.imag_pos_max_wgt: float = 0.0
+            self.imag_neg_max_wgt: float = 0.0
             self.real_pos_max_wgt_point = None
             self.real_neg_max_wgt_point = None
             self.imag_pos_max_wgt_point = None
@@ -672,18 +680,18 @@ class MaxWeight(AccumulatorModule):
             total_wgt = data.jac[m]*data.wgt[m]*data.func_val[m]
             cont = data.continuous[m]
             disc = data.discrete[m]
-            real_pos_idx = total_wgt.real.argmax(axis=0)
+            real_pos_idx = total_wgt.real.argmax()
             self.real_pos_max_wgt = total_wgt.real[real_pos_idx][0]
-            self.real_pos_max_wgt_point = (disc[real_pos_idx][0], cont[real_pos_idx][0])
-            real_neg_idx = total_wgt.real.argmin(axis=0)
+            self.real_pos_max_wgt_point = (disc[real_pos_idx], cont[real_pos_idx])
+            real_neg_idx = total_wgt.real.argmin()
             self.real_neg_max_wgt = total_wgt.real[real_neg_idx][0]
-            self.real_neg_max_wgt_point = (disc[real_neg_idx][0], cont[real_neg_idx][0])
-            imag_pos_idx = total_wgt.imag.argmax(axis=0)
+            self.real_neg_max_wgt_point = (disc[real_neg_idx], cont[real_neg_idx])
+            imag_pos_idx = total_wgt.imag.argmax()
             self.imag_pos_max_wgt = total_wgt.imag[imag_pos_idx][0]
-            self.imag_pos_max_wgt_point = (disc[imag_pos_idx][0], cont[imag_pos_idx][0])
-            imag_neg_idx = total_wgt.imag.argmin(axis=0)
+            self.imag_pos_max_wgt_point = (disc[imag_pos_idx], cont[imag_pos_idx])
+            imag_neg_idx = total_wgt.imag.argmin()
             self.imag_neg_max_wgt = total_wgt.imag[imag_neg_idx][0]
-            self.imag_neg_max_wgt_point = (disc[imag_neg_idx][0], cont[imag_neg_idx][0])
+            self.imag_neg_max_wgt_point = (disc[imag_neg_idx], cont[imag_neg_idx])
 
     def combine_with(self: 'MaxWeight', other: 'MaxWeight') -> None:
         if other.real_pos_max_wgt_point is not None:
@@ -717,19 +725,19 @@ class MaxWeight(AccumulatorModule):
         if self.real_pos_max_wgt > 0.:
             disc_str, cont = mwp_to_discstr_cont(self.real_pos_max_wgt_point)
             report.append(
-                f"    {Colour.DARKCYAN}RE[+]{Colour.END} : {self.real_pos_max_wgt[0]:<15.12e} at {disc_str}x={cont}")
+                f"    {Colour.DARKCYAN}RE[+]{Colour.END} : {self.real_pos_max_wgt:<15.12e} at {disc_str}x={cont}")
         if self.real_neg_max_wgt < 0.:
             disc_str, cont = mwp_to_discstr_cont(self.real_neg_max_wgt_point)
             report.append(
-                f"    {Colour.DARKCYAN}RE[-]{Colour.END} : {self.real_neg_max_wgt[0]:<15.12e} at {disc_str}x={cont}")
+                f"    {Colour.DARKCYAN}RE[-]{Colour.END} : {self.real_neg_max_wgt:<15.12e} at {disc_str}x={cont}")
         if self.imag_pos_max_wgt > 0.:
             disc_str, cont = mwp_to_discstr_cont(self.imag_pos_max_wgt_point)
             report.append(
-                f"    {Colour.DARKCYAN}IM[+]{Colour.END} : {self.imag_pos_max_wgt[0]:<15.12e} at {disc_str}x={cont}")
+                f"    {Colour.DARKCYAN}IM[+]{Colour.END} : {self.imag_pos_max_wgt:<15.12e} at {disc_str}x={cont}")
         if self.imag_neg_max_wgt < 0.:
             disc_str, cont = mwp_to_discstr_cont(self.imag_neg_max_wgt_point)
             report.append(
-                f"    {Colour.DARKCYAN}IM[-]{Colour.END} : {self.imag_neg_max_wgt[0]:<15.12e} at {disc_str}x={cont}")
+                f"    {Colour.DARKCYAN}IM[-]{Colour.END} : {self.imag_neg_max_wgt:<15.12e} at {disc_str}x={cont}")
         return "\n".join(line for line in report)
 
     def get_observables(self) -> Dict[str, Any]:

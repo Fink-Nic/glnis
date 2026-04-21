@@ -166,6 +166,6 @@ n_samples_after_training = 10000000
 n_log = 20
 # Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
 # Will also output the result +- error and rsd to console
-n_plot_rsd = 100
+n_plot_snapshot = 100
 # Training steps between plotting the loss
 n_plot_loss = 2

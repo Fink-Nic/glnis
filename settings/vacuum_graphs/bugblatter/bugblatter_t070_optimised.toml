@@ -11,5 +11,5 @@ n_training_steps = 3000
 n_samples = 1000000
 n_samples_after_training = 100000000
 n_log = 20
-n_plot_rsd = 100
+n_plot_snapshot = 100
 n_plot_loss = 10

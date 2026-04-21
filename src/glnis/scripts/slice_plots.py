@@ -180,28 +180,21 @@ def run_slice_plots(
                 integrator.free()
 
         for integrator_type, state in SData.integrator_states.items():
-            itype = integrator_type.lower()
-            match itype:
-                case MADNIS_KEY.lower():
-                    Settings.settings['layered_integrator']['integrator_type'] = "madnis"
-                    integrators['madnis'] = MadnisIntegrator.from_state(integrand, state)
-                    integrators['madnis'].import_state(state)
+            match integrator_type:
+                case str(MADNIS_KEY):
+                    integrators[MADNIS_KEY] = MadnisIntegrator.from_state(state, integrand)
                     if not only_plot:
-                        shell_print(f"Imported MadNIS state.")
-                case VEGAS_KEY.lower():
-                    Settings.settings['layered_integrator']['integrator_type'] = "vegas"
-                    integrators['vegas'] = VegasIntegrator(integrand, **Settings.get_integrator_kwargs())
-                    integrators['vegas'].import_state(state)
+                        shell_print(f"Imported {MADNIS_KEY} state.")
+                case str(VEGAS_KEY):
+                    integrators[VEGAS_KEY] = VegasIntegrator.from_state(state, integrand)
                     if not only_plot:
-                        shell_print(f"Imported Vegas state.")
-
-                case HAVANA_KEY.lower():
-                    Settings.settings['layered_integrator']['integrator_type'] = "havana"
-                    integrators['havana'] = HavanaIntegrator.from_state(state)
+                        shell_print(f"Imported {VEGAS_KEY} state.")
+                case str(HAVANA_KEY):
+                    integrators[HAVANA_KEY] = HavanaIntegrator.from_state(state, integrand)
                     if not only_plot:
-                        shell_print(f"Imported Havana state.")
+                        shell_print(f"Imported {HAVANA_KEY} state.")
                     # integrators['havana'].train(10, 100000)
-                case NAIVE_KEY.lower():
+                case str(NAIVE_KEY):
                     if not only_plot:
                         shell_print(f"No point in plotting slices for 'Naive' integrator. Skipping...")
                 case _:
@@ -428,7 +421,6 @@ def plot_slices(file: str | SlicePlotData,
     if isinstance(file, SlicePlotData):
         Data = file
         directory = verify_path("outputs")
-        filename = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     else:
         file: Path = verify_path(file)
         with file.open('rb') as f:
@@ -436,12 +428,12 @@ def plot_slices(file: str | SlicePlotData,
         shell_print(f"Plotting data from '{file}'")
 
         directory = file.parent
-        filename = file.stem
 
     if force_directory is not None:
         directory = verify_path(force_directory)
 
     run_name = Data.settings.get('run_name', 'default')
+    filename = run_name.replace(' ', '_') + "_" + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     plotting_params: Dict[str, Any] = Data.settings.get(
         "scripts", dict()).get(
             "slice_plots", dict()).get(
@@ -488,7 +480,7 @@ def plot_slices(file: str | SlicePlotData,
             ax_table.axis('off')
             with np.printoptions(precision=precision, suppress=True):
                 table_data = [
-                    [r"$|<I/p|_{\mathrm{slice}}> / <I>|$", f"{true_scale:.3e}"],
+                    [r"Actual Ratio $\left<\frac{|I|}{<I> p}\right>$", f"{true_scale:.3e}"],
                     [r"$\mathrm{origin, channel}$", f"{slice.origin}, {slice.discrete}"],
                     [r"$u$", f"{slice.dirs[0]}"],
                 ]
@@ -528,7 +520,7 @@ def plot_slices(file: str | SlicePlotData,
         cmap3.set_under(color='black')  # Color for values below vmin
         cmap3.set_over(color='white')  # Color for values above vmax
 
-    data_log_titles = [r"$\frac{|I|}{<I>}$", r"$p$", r"$p \frac{<I>}{|I|}$"]
+    data_log_titles = [r"|I|", r"$p$", r"$p \frac{<I>}{|I|}$"]
 
     for i, slice in enumerate(Data.slices2d):
         slice: Slice
@@ -629,7 +621,7 @@ def plot_slices(file: str | SlicePlotData,
             ax_table.axis('off')
             with np.printoptions(precision=precision, suppress=True):
                 table_data = [
-                    [r"$|<I/p|_{\mathrm{slice}}> / <I>|$", f"{true_scale:.3e}"],
+                    [r"Actual Ratio $\left<\frac{|I|}{<I> p}\right>$", f"{true_scale:.3e}"],
                     [r"$\mathrm{origin, channel}$", f"{slice.origin}, {slice.discrete}"],
                     [r"$u$", f"{slice.dirs[0]}"],
                     [r"$v$", f"{slice.dirs[1]}"],

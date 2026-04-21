@@ -139,7 +139,6 @@ class GammaLoopIntegrand(Integrand):
 
     def __init__(self,
                  gammaloop_state_path: str,
-                 process_id: int = 0,
                  integrand_name: str = "",
                  run_commands: str | List[str] = "",
                  momentum_space: bool = True,
@@ -148,6 +147,7 @@ class GammaLoopIntegrand(Integrand):
                  use_arb_prec: bool = False,
                  minimal_output: bool = True,
                  read_only_state: bool = True,
+                 log_level_off: bool = True,
                  **kwargs):
         try:
             import gammaloop
@@ -160,8 +160,8 @@ class GammaLoopIntegrand(Integrand):
 
         self.gammaloop_state = gammaloop.GammaLoopAPI(
             gammaloop_state_path,
-            level=gammaloop.LogLevel.Off,
-            logfile_level=gammaloop.LogLevel.Off,
+            level=gammaloop.LogLevel.Off if log_level_off else gammaloop.LogLevel.Info,
+            logfile_level=gammaloop.LogLevel.Off if log_level_off else gammaloop.LogLevel.Info,
             read_only_state=read_only_state)
         if run_commands:
             if isinstance(run_commands, str):
@@ -202,7 +202,7 @@ class GammaLoopIntegrand(Integrand):
         if sample_lmbs == "summed":
             for itg_name, pid in self.outputs.items():
                 self.gammaloop_state.run(
-                    f"set process -p {pid} -i {itg_name} kv sampling.lmb_multichanneling=false")
+                    f"set process -p {pid} -i {itg_name} kv sampling.lmb_multichanneling=true")
                 self.gammaloop_state.run(
                     f"set process -p {pid} -i {itg_name} kv sampling.lmb_channels='summed'")
         elif sample_lmbs:
@@ -474,7 +474,7 @@ class ParameterisedIntegrand:
 
 
 class MPIntegrand(ParameterisedIntegrand):
-    N_UNUSED = 2
+    N_UNUSED = 1
     MAX_CHUNK_SIZE = 100_000
     MIN_CHUNK_SIZE = 10
     IDENTIFIER = "multiprocessing integrand"

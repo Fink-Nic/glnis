@@ -6,8 +6,8 @@ templates = [
     "settings/templates/transformer/size3",
 ]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "bins"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "bins"
 plot_slices = true
 blocks = [
         ["settings/templates/madnis_bins/size0"],
@@ -18,8 +18,8 @@ blocks = [
     ]
 block_names = [5, 10, 20, 50, 100]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "flow network"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "flow network"
 plot_slices = true
 blocks = [
         ["settings/templates/flow/size2"],
@@ -33,8 +33,8 @@ blocks = [
     ]
 block_names = ["2_64", "2_128", "3_128", "3_256", "4_256", "4_512", "5_512", "5_1024"]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "transformer network"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "transformer network"
 plot_slices = true
 blocks = [
         ["settings/templates/transformer/size0"],
@@ -46,8 +46,8 @@ blocks = [
     ]
 block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64", "8_3_3_128"]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "made network"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "made network"
 plot_slices = true
 blocks = [
         ["settings/templates/made/size0"],
@@ -59,8 +59,8 @@ blocks = [
     ]
 block_names = ["1_4", "1_8", "2_8", "2_16", "3_16", "3_32"]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "big flow bins"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "big flow bins"
 plot_slices = true
 blocks = [
         [
@@ -86,8 +86,8 @@ blocks = [
     ]
 block_names = ["5_1024_5", "5_1024_10", "5_1024_20", "5_1024_50", "5_1024_100"]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "fermi_mc"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "fermi_mc"
 plot_slices = true
 blocks = [
         ["settings/templates/flow/size7",
@@ -138,8 +138,8 @@ block_names = [
     "1.0_0.3", "0.5_0.3", 
 ]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "ose_mc"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "ose_mc"
 plot_slices = true
 blocks = [
         ["settings/templates/flow/size7",
@@ -213,7 +213,7 @@ n_training_steps = 1000
 n_samples = 1000000
 n_samples_after_training = 10000000
 n_log = 50
-n_plot_rsd = 100
+n_plot_snapshot = 100
 n_plot_loss = 2
 plot_disc = true
 n_plot_disc = 2
@@ -240,7 +240,7 @@ n_training_steps = 1000
 n_samples = 1000000
 n_samples_after_training = 10000000
 n_log = 20
-n_plot_rsd = 100
+n_plot_snapshot = 100
 n_plot_loss = 2
 plot_disc = true
 n_plot_disc = 2

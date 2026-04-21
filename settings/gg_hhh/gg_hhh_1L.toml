@@ -1,4 +1,5 @@
-run_name = "gg_hhh_1L"
+run_name = "gg_hhh@1L momentum space"
+output_dir = "gg_hhh/1L/kspace"
 templates = [
     "settings/templates/flow/size6",
     "settings/templates/madnis_bins/size1",
@@ -9,10 +10,9 @@ templates = [
 overwrite_lmb_heuristics = true
 
 [gammaloop_state]
-state_dir = "/home/nfink/gammaloop"
-state_name = "examples/cli/gg_hhh/1L/state"
-integration_state_name = "examples/cli/gg_hhh/1L/state/integration_workspace"
-integration_result_file = "integration_result.json"
+state = "gg_hhh/1L/state"
+integration_workspace = "gg_hhh/1L/state/integration_workspace"
+result_file = "integration_result.json"
 
 [integrator.madnis]
 batch_size = 10000
@@ -38,17 +38,14 @@ n_cores = 32
 momentum_space = true
 sample_lmbs = false
 sample_orientations = false
-use_arb_prec = false
-minimal_output = true
-read_only_state = true
 
 [scripts.sampler_comp]
 n_training_steps = 1000
 n_samples = 1000000
 n_samples_after_training = 10000000
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "bins"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "bins"
 blocks = [
         ["settings/templates/madnis_bins/size0"],
         ["settings/templates/madnis_bins/size1"],
@@ -59,8 +56,8 @@ blocks = [
     ]
 block_names = [5, 10, 20, 50, 100, 200]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "flow network"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "flow network"
 blocks = [
         ["settings/templates/flow/size0"],
         ["settings/templates/flow/size1"],
@@ -75,8 +72,8 @@ blocks = [
     ]
 block_names = ["1_16", "1_64", "2_64", "2_128", "3_128", "3_256", "4_256", "4_512", "5_512", "5_1024"]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "transformer network"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "transformer network"
 blocks = [
         ["settings/templates/transformer/size0"],
         ["settings/templates/transformer/size1"],
@@ -87,8 +84,8 @@ blocks = [
     ]
 block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64", "8_3_3_128"]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "made network"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "made network"
 blocks = [
         ["settings/templates/made/size0"],
         ["settings/templates/made/size1"],
@@ -99,8 +96,8 @@ blocks = [
     ]
 block_names = ["1_4", "1_8", "2_8", "2_16", "3_16", "3_32"]
 
-[[scripts.hyperparam_comparison]]
-comparison_name = "big flow bins"
+name[[scripts.hyperparam_comparison.comparison]]
+name = "big flow bins"
 blocks = [
         [
             "settings/templates/flow/size9",
@@ -145,5 +142,5 @@ n_training_steps = 1000
 n_samples = 1000000
 n_samples_after_training = 10000000
 n_log = 20
-n_plot_rsd = 100
+n_plot_snapshot = 100
 n_plot_loss = 2
