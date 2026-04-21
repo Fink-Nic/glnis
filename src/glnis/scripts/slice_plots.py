@@ -8,7 +8,13 @@ from pathlib import Path
 
 from glnis.utils.helpers import shell_print, verify_path
 from glnis.core.accumulator import GraphProperties, TrainingAccumulator
-from glnis.scripts.sampler_comparison import SamplerCompData
+from glnis.scripts.sampler_comparison import (
+    SamplerCompData,
+    MADNIS_KEY,
+    NAIVE_KEY,
+    VEGAS_KEY,
+    HAVANA_KEY,
+)
 
 
 @dataclass
@@ -20,6 +26,7 @@ class LinSpace:
 
 @dataclass
 class Slice:
+    name: str
     origin: NDArray
     discrete: List[int]
     dirs: List[NDArray | int]
@@ -54,7 +61,6 @@ class SlicePlotData:
 def run_slice_plots(
     file: str | SamplerCompData,
     settings_file: str = "",
-    comment: str = "",
     no_output: bool = False,
     no_plot: bool = False,
     only_plot: bool = False,
@@ -82,19 +88,10 @@ def run_slice_plots(
         file = verify_path(file)
         with file.open('rb') as f:
             SData = pickle.load(f)
-        if isinstance(SData, SamplerCompData):
-            pass
-        elif isinstance(SData, SlicePlotData):
-            plot_slices(file, comment)
-            quit()
-        else:
+        if not (isinstance(SData, SamplerCompData) or isinstance(SData, SlicePlotData)):
             raise ValueError(
                 f"Unrecognized data type in file '{file}'. Expected either SamplerCompData or SlicePlotData, but got {type(SData)}.")
         shell_print(f"Working on {file}")
-
-    if len(SData.integrator_states) == 0:
-        shell_print(f"No integrator states found in `SamplerCompData` object, exiting...")
-        quit()
 
     Settings = SettingsParser(SData.settings)
     if settings_file:
@@ -104,6 +101,16 @@ def run_slice_plots(
         Settings.settings["scripts"]["slice_plots"] = NewSettings.settings.get(
             "scripts", dict()).get("slice_plots", dict())
 
+    if isinstance(SData, SlicePlotData):
+        SData.settings = Settings.settings
+        directory = file.parent
+        plot_slices(file=SData, force_directory=directory)
+        return SData
+
+    if len(SData.integrator_states) == 0:
+        shell_print(f"No integrator states found in `SamplerCompData` object, exiting...")
+        quit()
+
     # Slice parameters
     scripts: Dict[str, Any] = Settings.settings.get("scripts", dict())
     params: Dict[str, Any] = scripts.get(subroutine, dict())
@@ -112,6 +119,7 @@ def run_slice_plots(
         slices = [slices]
     if len(slices) == 0:
         shell_print(f"No slices defined in settings, exiting...")
+        return
     EPS = params.get("EPS", 1e-6)
     seed = params.get("seed", 42)
     rng = np.random.default_rng(seed)
@@ -120,7 +128,7 @@ def run_slice_plots(
         directory = Path(force_directory)
     elif not no_output:
         OUTPUT_DIR = verify_path("outputs")
-        directory = Path(OUTPUT_DIR, Settings.settings['run_name'].replace(" ", "_"), subroutine)
+        directory = Path(OUTPUT_DIR, Settings.settings['output_dir'], subroutine)
         if not os.path.exists(str(directory)):
             os.makedirs(str(directory))
             shell_print(f"Created output folder at {directory}")
@@ -174,27 +182,26 @@ def run_slice_plots(
         for integrator_type, state in SData.integrator_states.items():
             itype = integrator_type.lower()
             match itype:
-                case "madnis":
+                case MADNIS_KEY.lower():
                     Settings.settings['layered_integrator']['integrator_type'] = "madnis"
-                    integrators['madnis'] = MadnisIntegrator(integrand, **Settings.get_integrator_kwargs())
+                    integrators['madnis'] = MadnisIntegrator.from_state(integrand, state)
                     integrators['madnis'].import_state(state)
                     if not only_plot:
                         shell_print(f"Imported MadNIS state.")
-                case "vegas":
+                case VEGAS_KEY.lower():
                     Settings.settings['layered_integrator']['integrator_type'] = "vegas"
                     integrators['vegas'] = VegasIntegrator(integrand, **Settings.get_integrator_kwargs())
                     integrators['vegas'].import_state(state)
                     if not only_plot:
                         shell_print(f"Imported Vegas state.")
 
-                case "havana":
+                case HAVANA_KEY.lower():
                     Settings.settings['layered_integrator']['integrator_type'] = "havana"
-                    integrators['havana'] = HavanaIntegrator(integrand, **Settings.get_integrator_kwargs())
-                    integrators['havana'].import_state(state)
+                    integrators['havana'] = HavanaIntegrator.from_state(state)
                     if not only_plot:
                         shell_print(f"Imported Havana state.")
                     # integrators['havana'].train(10, 100000)
-                case "naive":
+                case NAIVE_KEY.lower():
                     if not only_plot:
                         shell_print(f"No point in plotting slices for 'Naive' integrator. Skipping...")
                 case _:
@@ -210,8 +217,35 @@ def run_slice_plots(
                              itg=itg)
 
         for slice in slices:
+            slice_name = slice.get("name", "")
+            from_max_wgt: str | None = slice.get("from_max_wgt", None)
             origin: List[float] | None = slice.get("origin", None)
             discrete: List[int] | None = slice.get("discrete", None)
+            dirs = slice.get("dirs", [])
+            grid = slice.get("grid", [dict()])
+            if from_max_wgt:
+                match from_max_wgt:
+                    case "re+":
+                        discrete, origin = SData.observables.get(MADNIS_KEY, dict()).get(
+                            "real_pos_max_wgt_point", (None, None)
+                        )
+                    case "re-":
+                        discrete, origin = SData.observables.get(MADNIS_KEY, dict()).get(
+                            "real_neg_max_wgt_point", (None, None)
+                        )
+                    case "im+":
+                        discrete, origin = SData.observables.get(MADNIS_KEY, dict()).get(
+                            "imag_pos_max_wgt_point", (None, None)
+                        )
+                    case "im-":
+                        discrete, origin = SData.observables.get(MADNIS_KEY, dict()).get(
+                            "imag_neg_max_wgt_point", (None, None)
+                        )
+                    case _:
+                        shell_print(f"'from_max_wgt' must be one of 're+', 're-', 'im+', 'im-'. Skipping slice...")
+                        continue
+                discrete = [int(d) for d in discrete] if discrete is not None else None
+                origin = origin.copy() if origin is not None else None
             if origin is None:
                 origin = rng.uniform(0.05, 0.95, size=integrand.continuous_dim)
             if discrete is None:
@@ -224,11 +258,9 @@ def run_slice_plots(
                 shell_print(
                     f"Integrand has {len(integrand.discrete_dims)} discrete dimensions, but {len(discrete)} were provided. Skipping slice...")
                 continue
-            dirs = slice.get("dirs", [])
-            grid = slice.get("grid", [dict()])
             grid = [LinSpace(**ls) for ls in grid if isinstance(ls, dict)]
             if len(dirs) == 0:
-                _dir = rng.uniform(EPS, 1, size=integrand.continuous_dim)
+                _dir = rng.uniform(0, 1, size=integrand.continuous_dim)
                 dirs = [_dir / np.linalg.norm(_dir)]
             if len(grid) < len(dirs):
                 grid += [LinSpace()] * (len(dirs) - len(grid))
@@ -244,11 +276,17 @@ def run_slice_plots(
                         f"Integrand has {integrand.continuous_dim} continuous dimensions, but direction {d} has {len(d)}. Skipping slice...")
                     continue
             dirs = [np.array(d) for d in dirs]
+            new_slice = Slice(
+                name=slice_name,
+                origin=np.array(origin),
+                discrete=discrete,
+                dirs=dirs,
+                grid=grid, )
             match len(dirs):
                 case 1:
-                    Data.slices1d.append(Slice(origin=np.array(origin), discrete=discrete, dirs=dirs, grid=grid))
+                    Data.slices1d.append(new_slice)
                 case 2:
-                    Data.slices2d.append(Slice(origin=np.array(origin), discrete=discrete, dirs=dirs, grid=grid))
+                    Data.slices2d.append(new_slice)
                 case _:
                     shell_print(
                         f"Only 1D and 2D slices are supported, but {len(dirs)} were provided. Skipping slice...")
@@ -274,7 +312,7 @@ def run_slice_plots(
             grid.start = -np.min(np.divide(
                 origin, direction, out=np.full_like(origin, np.inf),
                                  where=(direction != 0))) + EPS
-            grid.end = np.min(np.divide(
+            grid.stop = np.min(np.divide(
                 1 - origin, direction, out=np.full_like(origin, np.inf),
                 where=(direction != 0))) - EPS
             grid1d = np.linspace(**asdict(grid))
@@ -351,7 +389,7 @@ def run_slice_plots(
             quit()
 
         if only_plot:
-            plot_slices(file=Data, comment=comment, force_directory=force_directory)
+            plot_slices(file=Data, force_directory=force_directory)
             return Data
 
         run_name = Data.settings.get('run_name', 'default').replace(' ', '_')
@@ -361,7 +399,7 @@ def run_slice_plots(
             pickle.dump(Data, f)
 
         if not no_plot:
-            plot_slices(file=file, comment=comment, force_directory=force_directory)
+            plot_slices(file=Data, force_directory=directory)
 
         return Data
 
@@ -381,7 +419,8 @@ def run_slice_plots(
         free_integrators()
 
 
-def plot_slices(file: str, comment: str = "", force_directory: str | None = None) -> None:
+def plot_slices(file: str | SlicePlotData,
+                force_directory: str | None = None) -> None:
     import matplotlib.pyplot as plt
     import matplotlib.colors as colors
     import numpy as np
@@ -402,26 +441,33 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
     if force_directory is not None:
         directory = verify_path(force_directory)
 
-    run_name = Data.settings.get('run_name', 'default').replace(' ', '_')
-    precision = 3  # For table printout of numpy arrays
-    cmap_name = 'plasma'
-    use_blue_green_red = True  # Whether to use a custom blue-green-red colormap for the ratio plot
+    run_name = Data.settings.get('run_name', 'default')
+    plotting_params: Dict[str, Any] = Data.settings.get(
+        "scripts", dict()).get(
+            "slice_plots", dict()).get(
+                "plotting", dict())
+    precision = plotting_params.get("table_precision", 3)  # For table printout of numpy arrays
+    cmap_name = plotting_params.get("cmap_name", 'plasma')
+    # Whether to use a custom blue-green-red colormap for the ratio plot
+    use_blue_green_red = plotting_params.get("use_blue_green_red", True)
+    high_threshold = plotting_params.get("high_threshold", 1)
+    center = plotting_params.get("center", -2)
+    low_threshold = plotting_params.get("low_threshold", -10)
+    # Ratio of alloted color space between low and high ranges in the segmented colormap
+    low_high_ratio = plotting_params.get("low_high_ratio", 0.25)
+    # Gap between low and high colors in the segmented colormap
+    low_high_gap = plotting_params.get("low_high_gap", 0.05)
     fraction = 0.062  # Default fraction for colorbar size
     padding = -0.02  # Default padding between plot and colorbar
-    high_threshold = 1
-    center = -2
-    low_threshold = -10
-    low_high_ratio = 0.25  # Ratio of low to high colors in the segmented colormap
-    low_high_gap = 0.05  # Gap between low and high colors in the segmented colormap
 
     for i, slice in enumerate(Data.slices1d):
         slice: Slice
         grid1d = np.linspace(**asdict(slice.grid[0]))
         for itype, prob in slice.prob.items():
-            fig = plt.figure(layout="constrained", figsize=(6, 10))
+            fig = plt.figure(layout="constrained", figsize=(10, 10))
             gs = fig.add_gridspec(4, 1, height_ratios=[1, 0.3, 0.3, 0.3])
             axs = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[2, 0])]
-            ax_table = fig.add_subplot(gs[3, 0])
+            ax_table = fig.add_subplot(gs[3, :])
             axs[1].sharex(axs[0])
             axs[2].sharex(axs[0])
             axs: List[plt.Axes]
@@ -447,11 +493,12 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
                     [r"$u$", f"{slice.dirs[0]}"],
                 ]
             table = ax_table.table(cellText=table_data,
-                                   cellLoc='center', loc='center', bbox=[0.2, 0.0, 0.6, 1.0])
+                                   cellLoc='center', loc='center', bbox=[0.0, 0.0, 1.0, 1.0])
             table.auto_set_font_size(False)
             table.set_fontsize(9)
 
-            fig.suptitle(f"1D Slices #{i} for {run_name} using {itype}")
+            title = f"{slice.name or f'1D Slice #{i}'} for {run_name} using {itype}"
+            fig.suptitle(title)
             plt.savefig(
                 Path(directory, filename + f"_slice1d_{itype}_{i}.png"), dpi=300, bbox_inches="tight"
             )
@@ -591,7 +638,8 @@ def plot_slices(file: str, comment: str = "", force_directory: str | None = None
                                    cellLoc='center', loc='center', bbox=[0.0, 0.0, 1.0, 1.0])
             table.auto_set_font_size(False)
             table.set_fontsize(9)
-            fig.suptitle(f"2D Slices #{i} for {run_name} using {itype}")
+            title = f"{slice.name or f'2D Slice #{i}'} for {run_name} using {itype}"
+            fig.suptitle(title)
 
             plt.savefig(
                 Path(directory, filename + f"_slice2d_{itype}_{i}.png"), dpi=300, bbox_inches="tight"

@@ -15,17 +15,38 @@ sigma = [0.5, 1.0, 2.0]
 [integrator.madnis]
 loss_type = "variance"
 
+[scripts.slice_plots]
+EPS = 0.2
+[scripts.slice_plots.plotting]
+use_blue_green_red = false
+low_high_ratio = 0.1
+low_high_gap = 0.3
+center = -3
+
 [[scripts.slice_plots.slice]]
+name = "re+"
 origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
 discrete = [1, 2]
+from_max_wgt = "re+"
 dirs = [0, 3]
 grid = [
     {start = 0, stop = 1, num = 100},
 ]
 [[scripts.slice_plots.slice]]
+name = "re-"
 origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
 discrete = [1, 0]
+from_max_wgt = "re-"
 dirs = [0, 3]
+grid = [
+    {start = 0, stop = 1, num = 100},
+]
+[[scripts.slice_plots.slice]]
+name = "re+"
+origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
+discrete = [1, 0]
+from_max_wgt = "re+"
+dirs = [0]
 grid = [
     {start = 0, stop = 1, num = 100},
 ]

@@ -53,15 +53,15 @@ def main() -> None:
     sampler_comparison.add_argument('--plotting_settings', '-p', type=str, default="",
                                     help="Use to overwrite plotting settings.")
 
-    slice_plots = subparsers.add_parser("splots")
+    slice_plots = subparsers.add_parser(
+        "splots",
+        help="Generate slice plots for the integrators in a given SamplerCompData or existing slices in a SlicePlotData file.")
     slice_plots.add_argument('--file', '-f', type=str,
                              help="File containing either SamplerCompData or SlicePlotsData.")
     slice_plots.add_argument('--settings_file', '-s', type=str, default="",
                              help="The file containing the slice plot settings.")
     slice_plots.add_argument('--state', '-t', type=str, default="no_state_file",
                              help="The file containing the madnis state data.")
-    slice_plots.add_argument('--comment', '-c', type=str, default='No comment.',
-                             help="Add a comment to the output summary file.")
     slice_plots.add_argument('--no_output', action='store_true', default=False,
                              help="Enable this flag to not save anything to disk.")
     slice_plots.add_argument('--no_plot', action='store_true', default=False,
@@ -120,12 +120,10 @@ def main() -> None:
         case "splots":
             run_slice_plots(file=args.file,
                             settings_file=args.settings_file,
-                            comment=args.comment,
                             no_output=args.no_output,
                             no_plot=args.no_plot,)
         case "mpe":
             run_multiprocessing_efficiency(file=args.file,
-                                           comment=args.comment,
                                            no_output=args.no_output,
                                            no_plot=args.no_plot,)
         case "hpcomp":

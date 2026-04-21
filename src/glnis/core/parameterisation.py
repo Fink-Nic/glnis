@@ -308,6 +308,7 @@ class LayeredParameterisation:
         self.param = param_layers[-1]
         self.continuous_dim = self.param.chain_continuous_dim_in
         self.discrete_dims = self.param.chain_discrete_dims
+        self.num_layers = len(param_layers)
 
     def parameterise(self, layer_input: LayerData) -> LayerData:
         return self.param.parameterise(layer_input)

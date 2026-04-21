@@ -391,6 +391,8 @@ class ParameterisedIntegrand:
     def eval_integrand(self, layer_input: LayerData,
                        acc_type: Literal['default', 'training'] = 'default') -> Accumulator:
         untouched_discrete = layer_input.discrete
+        if self.param.num_layers > 1:
+            untouched_continuous = layer_input.continuous
         if self.sum_channels:
             if len(self.param.discrete_dims) != 1:
                 raise ValueError(
@@ -405,7 +407,6 @@ class ParameterisedIntegrand:
                 func_val += integration_result.func_val * integration_result.jac
             layer_input.func_val = func_val
             layer_input.jac = np.ones_like(func_val, dtype=self.dtype)
-            layer_input.update('processing')
             integration_result = layer_input
         else:
             pass_disc_to_integrand = np.zeros(
@@ -422,7 +423,9 @@ class ParameterisedIntegrand:
                 parameterised.update('processing')
             integration_result = self.integrand.evaluate_batch(parameterised)
             integration_result.discrete = untouched_discrete
-            integration_result.update('processing')
+        if self.param.num_layers > 1:
+            integration_result.continuous = untouched_continuous
+        layer_input.update('processing')
         acc_kwargs = dict(
             target=self.integrand.target,
             training_phase=self.integrand.training_phase,)

@@ -9,7 +9,9 @@ n_loops = 1
 c_dim = 3*int(n_loops)
 sigma = np.array(1.0)
 sigma_disc = np.array([0.5, 1.0, 2.0])
-num_discrete = sigma_disc.size
+offsets_disc = np.array([0.0, 0.5, 1.0])
+num_sigma = sigma_disc.size
+num_offsets = offsets_disc.size
 niter = 10
 neval = 10_000
 n_integration_samples = 100_000
@@ -43,13 +45,19 @@ def multi_gaussian(sigma: NDArray, continuous: NDArray, discrete: NDArray | None
         continuous[:, start+1] = r * sin_az * np.sin(pol)
         continuous[:, start+2] = r * cos_az
 
-    if discrete is not None:
-        sig = sigma[discrete[:, 0]]
-    else:
+    if discrete is None:
         sig = sigma
+        offset = 0.0
+    elif discrete.shape[1] == 1:
+        sig = sigma[discrete[:, 0]]
+        offset = 0.0
+    else:
+        sig = sigma[discrete[:, 0]]
+        offset = offsets_disc[discrete[:, 1]][:, None]
+        jac /= num_offsets
 
     norm_factor = np.sum((2*np.pi * sigma ** 2)**(continuous.shape[1]/2))
-    res = jac * np.exp(-(continuous**2).sum(axis=1) / sig**2 / 2) / norm_factor
+    res = jac * np.exp(-((continuous-offset)**2).sum(axis=1) / sig**2 / 2) / norm_factor
     res[np.isnan(res)] = 0.0
 
     return res
@@ -58,7 +66,7 @@ def multi_gaussian(sigma: NDArray, continuous: NDArray, discrete: NDArray | None
 def eval_from_samples(samples: list[Sample], sigma: NDArray) -> NDArray:
     continuous = np.empty((len(samples), c_dim))
     d_dim = sigma.size
-    discrete = np.empty((len(samples), 1), dtype=np.uint64) if d_dim > 1 else None
+    discrete = np.empty((len(samples), len(samples[0].d)), dtype=np.uint64) if d_dim > 1 else None
     for i, sample in enumerate(samples):
         continuous[i] = sample.c
     if d_dim > 1:
@@ -97,35 +105,62 @@ if __name__ == "__main__":
     havana_single = NumericalIntegrator.continuous(c_dim, n_continuous_bins)
     havana_disc = NumericalIntegrator.discrete([
         NumericalIntegrator.continuous(c_dim, n_continuous_bins)
-        for _ in range(num_discrete)], max_prob_ratio)
+        for _ in range(num_sigma)], max_prob_ratio)
+    havana_double_disc = NumericalIntegrator.discrete([
+        NumericalIntegrator.discrete([
+            NumericalIntegrator.continuous(c_dim, n_continuous_bins)
+            for k in range(num_offsets)], max_prob_ratio)
+        for _ in range(num_sigma)], max_prob_ratio)
     havana_uniform = NumericalIntegrator.uniform(
-        [num_discrete], NumericalIntegrator.continuous(c_dim, n_continuous_bins))
+        [num_sigma], NumericalIntegrator.continuous(c_dim, n_continuous_bins))
+    havana_double_uniform = NumericalIntegrator.uniform(
+        [num_sigma, num_offsets], NumericalIntegrator.continuous(c_dim, n_continuous_bins))
     rng = RandomNumberGenerator(seed, stream_id)
 
     print("Training Havana single gaussian")
     train_sampler(havana_single, rng, sigma)
     print("Training Havana uniform grids")
     train_sampler(havana_uniform, rng, sigma_disc)
+    print("Training Havana double uniform grids")
+    train_sampler(havana_double_uniform, rng, sigma_disc)
     print("Training Havana discrete grids")
     train_sampler(havana_disc, rng, sigma_disc)
+    print("Training Havana double discrete grids")
+    train_sampler(havana_double_disc, rng, sigma_disc)
     samples = havana_single.sample(n_integration_samples, rng)
     samples_disc = havana_disc.sample(n_integration_samples, rng)
+    samples_double_disc = havana_double_disc.sample(n_integration_samples, rng)
     samples_uniform = havana_uniform.sample(n_integration_samples, rng)
+    samples_double_uniform = havana_double_uniform.sample(n_integration_samples, rng)
     wgt = np.array([s.weights[0] for s in samples])
     wgt_disc = np.array([s.weights for s in samples_disc])
+    wgt_double_disc = np.array([s.weights for s in samples_double_disc])
     wgt_uniform = np.array([s.weights[0] for s in samples_uniform])
-    print(wgt_uniform.shape)
+    wgt_double_uniform = np.array([s.weights[0] for s in samples_double_uniform])
     res = eval_from_samples(samples, sigma) * wgt
     res_disc = eval_from_samples(samples_disc, sigma_disc)
+    res_double_disc = eval_from_samples(samples_double_disc, sigma_disc)
     res_disc_disc = res_disc * wgt_disc[:, 0]
     res_disc_cont = res_disc * wgt_disc[:, 1]
     res_disc_prod = res_disc * wgt_disc.prod(axis=1)
-    res_uniform = eval_from_samples(samples_disc, sigma_disc) * wgt_uniform
+    res_double_disc_0 = res_double_disc * wgt_double_disc[:, 0]
+    res_double_disc_1 = res_double_disc * wgt_double_disc[:, 1]
+    res_double_disc_2 = res_double_disc * wgt_double_disc[:, 2]
+    res_double_disc_prod = res_double_disc * wgt_double_disc.prod(axis=1)
+    res_uniform = eval_from_samples(samples_uniform, sigma_disc) * wgt_uniform
+    res_double_uniform = eval_from_samples(samples_double_uniform, sigma_disc) * wgt_double_uniform
     print("Havana single:")
     print(f"    {res.mean():.5f} +- {res.std()/sqrn:.5f}")
     print("Havana uniform:")
     print(f"    {res_uniform.mean():.5f} +- {res_uniform.std()/sqrn:.5f}")
+    print("Havana double uniform:")
+    print(f"    {res_double_uniform.mean():.5f} +- {res_double_uniform.std()/sqrn:.5f}")
     print("Havana disc:")
     print(f"   disc wgts only: {res_disc_disc.mean():.5f} +- {res_disc_disc.std()/sqrn:.5f}")
     print(f"   cont wgts only: {res_disc_cont.mean():.5f} +- {res_disc_cont.std()/sqrn:.5f}")
     print(f"   prod of wgts  : {res_disc_prod.mean():.5f} +- {res_disc_prod.std()/sqrn:.5f}")
+    print("Havana double disc:")
+    print(f"   disc wgts 0 only: {res_double_disc_0.mean():.5f} +- {res_double_disc_0.std()/sqrn:.5f}")
+    print(f"   disc wgts 1 only: {res_double_disc_1.mean():.5f} +- {res_double_disc_1.std()/sqrn:.5f}")
+    print(f"   cont wgts only: {res_double_disc_2.mean():.5f} +- {res_double_disc_2.std()/sqrn:.5f}")
+    print(f"   prod of wgts  : {res_double_disc_prod.mean():.5f} +- {res_double_disc_prod.std()/sqrn:.5f}")

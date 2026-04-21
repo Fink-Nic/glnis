@@ -364,7 +364,7 @@ class VegasIntegrator(Integrator):
         return layer_input
 
     def _probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
-        jac_disc = np.ones((discrete.shape[0],), dtype=np.float64)
+        prob_disc = np.ones((discrete.shape[0],), dtype=np.float64)
         # For the discrete part, basically invert _cont_to_disc
         for i in range(self.num_discrete_dims):
             disc_dim = self.discrete_dims[i]
@@ -380,11 +380,11 @@ class VegasIntegrator(Integrator):
                 y_intersection = cdf[:, j]
                 x_intersection = np.interp(y_intersection, np.linspace(0, 1, len(g_disc)), g_disc)
                 disc_bins[:, j+1] = x_intersection
-            disc_jacs = np.diff(disc_bins, axis=1)
-            jac_disc *= np.take_along_axis(disc_jacs, discrete[:, [i]]).ravel()
+            probs_proposed = np.diff(disc_bins, axis=1)
+            prob_disc *= np.take_along_axis(probs_proposed, discrete[:, [i]]).ravel()
 
         if continuous is None:
-            return 1. / jac_disc
+            return prob_disc
 
         # For the continuous part, we need to go back to y-space (input space) and get the jacobian on y
         x_all = np.hstack([continuous, discrete])
@@ -393,7 +393,7 @@ class VegasIntegrator(Integrator):
         self.adaptive_map.invmap(x_all, y_all, _j)
         jac_no_disc = np.prod(self.adaptive_map.jac1d(y_all)[:, :self.continuous_dim], axis=1)
 
-        return 1.0 / jac_no_disc / jac_disc
+        return prob_disc / jac_no_disc
 
     def _export_state(self) -> 'VegasIntegrator.VegasState':
         obj_dict = self.__dict__.copy()
@@ -489,7 +489,7 @@ class HavanaIntegrator(Integrator):
                 self.discrete_learning_rate, self.continuous_learning_rate)
             self.step += 1
             self.total_training_samples += batch_size
-            rsd = err / avg * np.sqrt(batch_size) if avg != 0 else 0
+            acc.finalise()
             status = Integrator.TrainingStatus(
                 step=self.step,
                 total_samples=self.total_training_samples,
@@ -497,7 +497,7 @@ class HavanaIntegrator(Integrator):
             )
             callback(status)
             report.append(
-                f"It {itn+1:0>{n_digits}}: {avg:.6e} +- {err:.6e}, RSD={rsd:.3f}, chi={chi_sq:.3f}")
+                f"It {itn+1:0>{n_digits}}: {avg:.6e} +- {err:.6e}, chi={chi_sq:.3f}")
 
         return "\n".join(f"{line}" for line in report)
 
@@ -535,9 +535,7 @@ class HavanaIntegrator(Integrator):
                 raise e
 
         if not training:
-            wgts = np.array([s.weights for s in samples])
-            print(f"Havana weights: shape: {wgts.shape}, axis-wise means: {wgts.mean(axis=0)}")
-            # total_wgt *= np.array([s.weights[0] for s in samples])
+            total_wgt *= np.array([s.weights[0] for s in samples])
 
         layer_input.wgt = total_wgt
         layer_input.update(self.IDENTIFIER)

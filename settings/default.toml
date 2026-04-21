@@ -289,7 +289,7 @@ from_state = true
 # If from_state is false, will use this path instead
 model_path = "default"
 
-# Parameters used in the tprog subcommand
+# Parameters used in the splcomp subcommand 
 [scripts.sampler_comp]
 n_training_steps = 1000
 n_samples = 10000
@@ -300,6 +300,38 @@ n_samples_after_training = 1000000
 n_log = 20
 # Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
 # Will also output the result +- error and rsd to console
-n_plot_rsd = 100
+n_plot_snapshot = 100
 # Training steps between plotting the loss
 n_plot_loss = 10
+
+# Paramters used in the tprog subcommand
+[scripts.training_prog]
+# Same as [scripts.sampler_comp]. If none are provided, will use [scripts.sampler_comp]
+
+# Parameters used in the splots subcommand
+[scripts.slice_plots]
+EPS = 1e-6 # Offset from hcube edges to avoid invalid points
+seed = 42 # Seed used to generate missing inputs, if necessary
+
+[scripts.slice_plots.plotting]
+table_precision = 3 # For table printout of numpy arrays
+cmap_name = "plasma" # Colormap for the 2D slice plots
+use_blue_green_red = true # If false, will use cmap_name for the ratio plot as well
+high_threshold = 1 # Log threshold for overflow bin 
+center = -2 # Log center value for the plot, separates lower and upper ranges
+low_threshold = -10 # Log threshold for underflow bin
+low_high_ratio = 0.25 # Ratio of alloted color space between low and high ranges in the segmented colormap
+low_high_gap = 0.05 # Gap between low and high colors in the segmented colormap
+
+# Slice definition
+# [[scripts.slice_plots.slice]]
+# name = "re+" # Only used in plot title
+# origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1] # Continuous coordinates
+# discrete = [1, 2] # Discrete coordinates
+# from_max_wgt = "" # Can be one of "re+", "re-", "im+", "im-", will set origin and discrete to the corresponding max weight point
+# len(dirs) determines if 1D or 2D slice is taken. If entry <i> is of type int, set dirs[i] to e_i unit vector and origin[i] = 0
+# dirs = [0, 3] 
+# the slice is calculated from origin + np.linspace(**grid[i]) * dirs[i]
+# grid = [
+#     {start = 0, stop = 1, num = 100}, 
+# ]
