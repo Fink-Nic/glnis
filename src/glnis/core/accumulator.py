@@ -894,7 +894,7 @@ class TrainingData(AccumulatorModule):
                  training_phase: Literal['real', 'imag', 'abs'] = 'real',):
         self.dtype = data.dtype
         self.training_phase = training_phase
-        self.training_result: list[NDArray] | NDArray = []
+        self._training_result: list[NDArray] = []
         self.has_failures = len(data.failures) > 0
         if self.has_failures:
             data._data[~data.success] = self.FAILUREVALUE
@@ -910,14 +910,20 @@ class TrainingData(AccumulatorModule):
                 raise ValueError(
                     "Training phase must be one of 'real', 'imag' or 'abs'.")
         int_result[np.isnan(int_result)] = self.FAILUREVALUE
-        self.training_result.append(int_result)
+        self._training_result.append(int_result)
+
+    @property
+    def training_result(self: 'TrainingData') -> NDArray:
+        if len(self._training_result) > 1:
+            self.finalise()
+        return self._training_result[0]
 
     def combine_with(self: 'TrainingData', other: 'TrainingData') -> None:
         if not self.training_phase == other.training_phase:
             raise RuntimeError(
                 "Cannot combine TrainingData objects with different phase.")
         self.has_failures = self.has_failures or other.has_failures
-        self.training_result += other.training_result
+        self._training_result += other._training_result
 
     def str_report(self) -> str:
         return f"Trained on phase: {Colour.GREEN}{self.training_phase.upper()}{Colour.END}"
@@ -928,4 +934,4 @@ class TrainingData(AccumulatorModule):
         )
 
     def finalise(self) -> None:
-        self.training_result = np.vstack(self.training_result)
+        self._training_result = [np.vstack(self._training_result)]

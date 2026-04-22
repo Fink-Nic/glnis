@@ -6,7 +6,7 @@ templates = [
     "settings/templates/transformer/size3",
 ]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "bins"
 plot_slices = true
 blocks = [
@@ -18,7 +18,7 @@ blocks = [
     ]
 block_names = [5, 10, 20, 50, 100]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "flow network"
 plot_slices = true
 blocks = [
@@ -33,7 +33,7 @@ blocks = [
     ]
 block_names = ["2_64", "2_128", "3_128", "3_256", "4_256", "4_512", "5_512", "5_1024"]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "transformer network"
 plot_slices = true
 blocks = [
@@ -46,7 +46,7 @@ blocks = [
     ]
 block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64", "8_3_3_128"]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "made network"
 plot_slices = true
 blocks = [
@@ -59,7 +59,7 @@ blocks = [
     ]
 block_names = ["1_4", "1_8", "2_8", "2_16", "3_16", "3_32"]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "big flow bins"
 plot_slices = true
 blocks = [
@@ -86,7 +86,7 @@ blocks = [
     ]
 block_names = ["5_1024_5", "5_1024_10", "5_1024_20", "5_1024_50", "5_1024_100"]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "fermi_mc"
 plot_slices = true
 blocks = [
@@ -138,7 +138,7 @@ block_names = [
     "1.0_0.3", "0.5_0.3", 
 ]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "ose_mc"
 plot_slices = true
 blocks = [

@@ -171,6 +171,9 @@ class GammaLoopIntegrand(Integrand):
         self.outputs = dict()
         for o in self.gammaloop_state.list_outputs():
             self.outputs.update(o)
+        if len(self.outputs) == 0:
+            raise ValueError(
+                f"No processes found in GammaLoop state at '{gammaloop_state_path}'. Perhaps you forgot to generate it?")
         if integrand_name not in self.outputs or integrand_name == "summed":
             integrand_name = list(self.outputs)[0]
             process_id = self.outputs[integrand_name]
@@ -607,8 +610,8 @@ class MPIntegrand(ParameterisedIntegrand):
             result_sorted = n_chunks*[None]
             training_acc: TrainingData = accumulator.training_data
             for i, sorted_id in enumerate(chunk_id_return_order):
-                result_sorted[sorted_id] = training_acc.training_result[i]
-            training_acc.training_result[:] = result_sorted
+                result_sorted[sorted_id] = training_acc._training_result[i]
+            training_acc._training_result[:] = result_sorted
 
         accumulator.finalise()
 

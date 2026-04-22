@@ -6,7 +6,7 @@ import functools
 import io
 from copy import deepcopy
 from dataclasses import dataclass
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Dict, Tuple, Any, List, Callable, Literal
 from numpy.typing import NDArray
 from torch.types import Tensor
@@ -80,12 +80,21 @@ class Integrator(ABC):
         return self._get_samples(n_points, *args, **kwargs)
 
     def _get_samples(self, n_points: int, *args, **kwargs) -> LayerData:
-        layer_input = self.init_layer_data(n_points)
-        layer_input.continuous = self.rng.random((n_points, self.continuous_dim))
-        discrete = self.rng.uniform(
-            size=(n_points, len(self.discrete_dims)))
-        layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
-        layer_input.update(self.IDENTIFIER)
+        try:
+            layer_input = self.init_layer_data(n_points)
+            layer_input.continuous = self.rng.random((n_points, self.continuous_dim))
+            discrete = self.rng.uniform(
+                size=(n_points, len(self.discrete_dims)))
+            layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
+            layer_input.update(self.IDENTIFIER)
+        except KeyboardInterrupt:
+            shell_print("Sample generation interrupted by user.")
+            raise KeyboardInterrupt
+        except Exception as e:
+            shell_print(f"Error during sample generation: {e}")
+            from traceback import format_exc
+            shell_print(format_exc())
+            raise e
 
         return layer_input
 
@@ -136,6 +145,7 @@ class Integrator(ABC):
                 accumulator = self.integrand.eval_integrand(layer_input, acc_type)
             else:
                 accumulator.combine_with(self.integrand.eval_integrand(layer_input, acc_type))
+                accumulator.finalise()
             n_eval += n
             if progress_report:
                 if n_eval % 1e6 == 0 and n_samples % 1e6 == 0:
@@ -480,14 +490,12 @@ class HavanaIntegrator(Integrator):
             samples, layer_input = self.get_samples(batch_size, True, True)
             acc: TrainingAccumulator = self.integrand.eval_integrand(
                 layer_input, 'training')
-            weighted_func_val = acc.training_data.training_result
             self.havana.add_training_samples(
-                samples, weighted_func_val.ravel().tolist())
+                samples, acc.training_data.training_result.ravel().tolist())
             avg, err, chi_sq = self.havana.update(
                 self.discrete_learning_rate, self.continuous_learning_rate)
             self.step += 1
             self.total_training_samples += batch_size
-            acc.finalise()
             status = Integrator.TrainingStatus(
                 step=self.step,
                 total_samples=self.total_training_samples,
@@ -707,7 +715,16 @@ class MadnisIntegrator(Integrator):
             self.madnis.scheduler = self._get_scheduler(
                 self.madnis.step + nitn, self.scheduler_type)
         for _ in range(nitn):
-            madnis_status = self.madnis.train_step()
+            try:
+                madnis_status = self.madnis.train_step()
+            except KeyboardInterrupt:
+                shell_print("Training interrupted by user.")
+                break
+            except Exception as e:
+                shell_print(f"Error during training step: {e}")
+                from traceback import format_exc
+                shell_print(format_exc())
+                raise e
             self.step += 1
             self.total_training_samples += self.madnis.batch_size
             status = self.TrainingStatus(
@@ -750,9 +767,9 @@ class MadnisIntegrator(Integrator):
         layer_input.discrete, layer_input.continuous = self._madnis_output_to_disc_cont(x_all)
         layer_input.update(self.IDENTIFIER)
 
-        accumulated_result: TrainingAccumulator = self.integrand.eval_integrand(
+        acc: TrainingAccumulator = self.integrand.eval_integrand(
             layer_input, 'training')
-        weighted_func_val = accumulated_result.training_data.training_result.flatten()
+        weighted_func_val = acc.training_data.training_result.flatten()
 
         start = 2.0
         max_step = 1500

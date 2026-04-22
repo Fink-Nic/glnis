@@ -6,7 +6,7 @@ templates = [
     "settings/templates/transformer/size3",
 ]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "bins"
 blocks = [
         ["settings/templates/madnis_bins/size0"],
@@ -17,7 +17,7 @@ blocks = [
     ]
 block_names = [5, 10, 20, 50, 100]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "flow network"
 blocks = [
         ["settings/templates/flow/size5"],
@@ -28,7 +28,7 @@ blocks = [
     ]
 block_names = ["3_256", "4_256", "4_512", "5_512", "5_1024"]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "transformer network"
 blocks = [
         ["settings/templates/transformer/size0"],
@@ -39,7 +39,7 @@ blocks = [
     ]
 block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64"]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "made network"
 blocks = [
         ["settings/templates/made/size2"],
@@ -48,7 +48,7 @@ blocks = [
     ]
 block_names = ["2_8", "2_16", "3_16"]
 
-name[[scripts.hyperparam_comparison.comparison]]
+[[scripts.hyperparam_comparison.comparison]]
 name = "big flow bins"
 blocks = [
         [

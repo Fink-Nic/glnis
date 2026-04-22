@@ -2,11 +2,10 @@ commands = []
 
 [cli_settings]
 [cli_settings.state]
-folder = "./GL_OUTPUT/gg_hhh/1L/state/state"
+folder = "./glnis_gammaloop_examples/gg_hhh/1L/state/state"
 name = "gg_hhh_1l"
 
 [cli_settings.global.generation.compile]
-inline_asm = true
 optimization_level = "O1"
 fast_math = true
 unsafe_math = true

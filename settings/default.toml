@@ -24,7 +24,7 @@ templates = [] # Entries can be settings files, or valid TOML strings.
 
 [gammaloop]
 # Name of the glnis gammaloop examples directory. Set with 'glnis setdef -d <str>'
-state_dir = "default"
+state_dir = "/home/nic/Master/glnis/glnis_gammaloop_examples"
 # Name of the state inside state_dir. Can be absolute path to overwrite state_dir.
 state = "default"
 integrand_name = "default"
@@ -111,7 +111,6 @@ heads = 4
 mlp_units = 64
 transformer_layers = 2
 mlp_layers = 2
-mlp_units = 64
 
 [integrator.madnis.made]
 layers = 3

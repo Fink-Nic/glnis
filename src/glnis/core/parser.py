@@ -260,8 +260,11 @@ class SettingsParser:
                 default_settings = tomllib.load(f)
             if default_settings.get('gammaloop', {}).get('state_dir', "default") == "default":
                 raise ValueError(
-                    """No default gammaloop state directory specified. 
-                    You can set it using 'glnis setdef -d <path_to_gammaloop_examples>'."""
+                    """
+                    No default gammaloop state directory specified. 
+                    You can set it using 'glnis setdef -d <path_to_gammaloop_examples>'.
+                    If you want to use the glnis gammaloop examples, you should point it to '/glnis_gammaloop_exaples' inside your gammaloop folder.
+                    """
                 )
 
         for t in settings.get("templates", []):
@@ -297,9 +300,16 @@ class SettingsParser:
                 level=gammaloop.LogLevel.Off,
                 logfile_level=gammaloop.LogLevel.Off,
                 read_only_state=True)
+            self._outputs = dict()
+            for o in self.gammaloop_state.list_outputs():
+                self._outputs.update(o)
+            if len(self._outputs) == 0:
+                raise ValueError(
+                    f"No processes found in GammaLoop state at '{self.gammaloop_state_path}'. Perhaps you forgot to generate it?")
             self.dot_path = "Loaded dot from state."
         else:
             self.gammaloop_state = None
+            self._outputs = None
             self.dot_path = Path(self.settings['graph']['dot_path'])
         if self.settings['model']['from_state']:
             self.model_path = "Loaded model from state."
@@ -390,12 +400,9 @@ class SettingsParser:
 
         if self._graph_from_state:
             integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
-            outputs = dict()
-            for o in self.gammaloop_state.list_outputs():
-                outputs.update(o)
-            if integrand_name not in outputs:
-                integrand_name = list(outputs)[0]
-            process_id = outputs[integrand_name]
+            if integrand_name not in self._outputs:
+                integrand_name = list(self._outputs)[0]
+            process_id = self._outputs[integrand_name]
             iinfo = self.gammaloop_state.get_integrand_info(process_id, integrand_name)
             model_as_str = self.gammaloop_state.get_model()
             Model = ModelParser(model_as_str, from_string=True)
@@ -407,7 +414,7 @@ class SettingsParser:
             # Gammaloop indexes the externals before the internals
             n_externals = len(ext_momenta)
             graph_properties_list = []
-            for g_id, graph_group in enumerate(iinfo.graph_groups):
+            for group_id, graph_group in enumerate(iinfo.graph_groups):
                 master_id = [g.graph_id for g in graph_group.graphs if g.is_master][0]
                 graph_properties = Dot.get_graph_properties(master_id, ext_momenta)
                 lmbs = graph_group.loop_momentum_bases

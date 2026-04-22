@@ -1,22 +1,27 @@
-run_name = "scalar@box"
-output_dir = "scalar/4p1L"
+run_name = "scalar@4p6L"
+output_dir = "scalar/4p6L"
 templates = [
-    "settings/templates/flow/size7",
+    "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size4",
 ]
 
+[graph]
+momtrop_edge_weight = 0.70588235294
+
 [gammaloop]
-state = "scalar/4p1L/state"
-integration_workspace = "scalar/4p1L/state/integration_workspace"
-get_target_from_gammaloop = true
-prefer_gammaloop_over_target = true
+state = "scalar/4p6L/state"
+integration_workspace = "scalar/4p6L/state/integration_workspace"
+get_target_from_gammaloop = false
+
+[integration_target]
+real_central_value = 8.4045e-19
 
 [layered_integrator]
 integrator_type = "madnis"
 
 [integrator.madnis]
-batch_size = 2048
+batch_size = 32768
 
 [layered_integrand]
 integrand_type = "gammaloop"

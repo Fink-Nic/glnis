@@ -2,15 +2,15 @@ commands = []
 
 [cli_settings]
 [cli_settings.state]
-folder = "./glnis_gammaloop_examples/scalar/4p1L/state"
-name = "scalar_box"
+folder = "./glnis_gammaloop_examples/scalar/2p4L/state"
+name = "scalar_2_point_4_loop"
 
 [[command_blocks]]
 name = "generate"
 commands = [
   "import model ./glnis_gammaloop_examples/models/scalars.json",
   "remove processes",
-  "import graphs ./glnis_gammaloop_examples/dot_files/scalar_4_point_1_loop.dot",
+  "import graphs ./glnis_gammaloop_examples/dot_files/scalar_2_point_4_loop.dot",
   "generate",
   "save dot",
   "save state -o",
@@ -20,7 +20,7 @@ name = "integrate"
 commands = [
   "set process kv integrator.n_start=1000000 integrator.n_max=10000000",
   """
-  integrate  --n-cores 10
+  integrate  --n-cores 10 
     --restart
   """,
 ]
@@ -72,37 +72,16 @@ integrate = 10
 type = "constant"
 
 [default_runtime_settings.kinematics]
-e_cm = 0.2
+e_cm = 1.0
 
 [default_runtime_settings.kinematics.externals.data]
 momenta = [
     [
-        0.1,
         0.0,
         0.0,
-        0.1,
-    ],
-    [
-        0.1,
         0.0,
-        0.0,
-        -0.1,
-    ],
-    [
-        0.09903067841547669,
-        0.03734458315384239,
-        0.06393671561700484,
-        -0.0657613394982612,
+        1.0,
     ],
 	"dependent",
 ]
-helicities = [1, 1, 1, 1]
-
-[default_runtime_settings.integrator]
-seed = 42
-n_increase = 100000
-n_start = 100000
-n_max = 10000000
-discrete_dim_learning_rate = 1.5
-continuous_dim_learning_rate = 1.5
-max_prob_ratio = 0.01
+helicities = [1, 1]

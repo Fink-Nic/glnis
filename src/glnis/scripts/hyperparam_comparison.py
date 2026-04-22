@@ -162,6 +162,8 @@ def run_hyperparam_comparison(
         if not len(blocks) == len(block_names):
             block_names = [f"noname{i}" for i in range(len(blocks))]
 
+        failed_comparisons = dict()
+
         for block_name, templates in zip(block_names, blocks):
             block_name = str(block_name)
             if Data.check_if_done(comp_name, block_name):
@@ -209,7 +211,7 @@ def run_hyperparam_comparison(
                     result=run_result, save=not no_output)
 
                 gc.collect()
-                fd_after_gc = _open_fd_count()
+                fd_after_slices = _open_fd_count()
 
                 shell_print(hline)
                 shell_print(hline)
@@ -221,16 +223,24 @@ def run_hyperparam_comparison(
                     delta = fd_after_run - (fd_before if fd_before is not None else fd_after_run)
                     limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
                     shell_print(f"FD diagnostic after run: {fd_after_run}{limit_msg} (delta={delta:+d})")
-                if fd_after_gc is not None:
-                    delta = fd_after_gc - (fd_before if fd_before is not None else fd_after_gc)
+                if fd_after_slices is not None:
+                    delta = fd_after_slices - (fd_before if fd_before is not None else fd_after_slices)
                     limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
-                    shell_print(f"FD diagnostic after gc.collect(): {fd_after_gc}{limit_msg} (delta={delta:+d})")
+                    shell_print(f"FD diagnostic after slices: {fd_after_slices}{limit_msg} (delta={delta:+d})")
 
             except Exception as e:
                 shell_print(f"Error during comparison '{comp_name}' and block '{block_name}': {e}")
                 from traceback import print_exc
                 print_exc()
+                failed_comparisons[comp_name] = (block_name, e)
                 continue
+
+        if len(failed_comparisons) > 0:
+            shell_print(f"Failed {len(failed_comparisons)} comparisons:")
+            for comp, (block, error) in failed_comparisons.items():
+                shell_print(f"  Comparison '{comp}' and block '{block}' with error: {error}")
+        else:
+            shell_print(f"All comparisons finished successfully!")
 
     if no_output:
         return Data
