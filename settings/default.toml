@@ -78,7 +78,7 @@ discrete_learning_rate = 1.5
 continuous_learning_rate = 1.5
 
 [integrator.madnis]
-batch_size = 1024
+batch_size = 1000
 learning_rate = 1e-3
 discrete_model = "transformer"
 use_scheduler = true
@@ -229,6 +229,8 @@ exponent = 2.0
 
 # Used to evaluate x-space integrands. Set automatically if integrand.momentum_space = true
 [parameterisation.identity]
+seed = 42 # rng only used in case of uniform_continuous 
+uniform_continuous = false # enable to to generate uniform continuous output, to effectively disable learning of continuous input
 
 [graph]
 from_state = true # If true, will attempt to get the dot graph from the gammaloop state

@@ -186,11 +186,17 @@ class GammaLoopIntegrand(Integrand):
         self.discrete_dims = []
         self._discrete_types: List[str] = []
         self._gl_discrete_types: Dict[str, int] = dict(graph=0)
+        if self.momentum_space:
+            for itg_name, pid in self.outputs.items():
+                self.gammaloop_state.run(
+                    f"set process -p {pid} -i {itg_name} kv sampling.coordinate_system='momentum_space'")
         if self.sample_graphs:
             self.discrete_dims.append(len(self.graph_properties))
             self._discrete_types.append("graph")
         if sample_orientations:
             for itg_name, pid in self.outputs.items():
+                self.gammaloop_state.run(
+                    f"set process -p {pid} -i {itg_name} kv sampling.graphs='monte_carlo'")
                 self.gammaloop_state.run(
                     f"set process -p {pid} -i {itg_name} kv sampling.orientations='monte_carlo'")
             n_orientations = max([gp.n_orientations for gp in self.graph_properties])

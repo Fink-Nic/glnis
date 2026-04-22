@@ -1,6 +1,7 @@
 run_name = "scalar@triangle"
 output_dir = "scalar/3p1L"
 templates = [
+    "settings/scalar/base",
     "settings/templates/flow/size7",
     "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size4",
@@ -12,23 +13,8 @@ momtrop_edge_weight = 0.83333333333
 [gammaloop]
 state = "scalar/3p1L/state"
 integration_workspace = "scalar/3p1L/state/integration_workspace"
-get_target_from_gammaloop = false
+get_target_from_gammaloop = true
+prefer_gammaloop_over_target = true
 
 [integration_target]
 real_central_value = 9.76546e-5
-
-[layered_integrator]
-integrator_type = "madnis"
-
-[integrator.madnis]
-batch_size = 2048
-
-[layered_integrand]
-integrand_type = "gammaloop"
-training_phase = "real"
-n_cores = 32
-
-[scripts.sampler_comp]
-n_training_steps = 500
-n_samples = 100000
-n_samples_after_training = 1000000

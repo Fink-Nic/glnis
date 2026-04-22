@@ -1,0 +1,11 @@
+[graph]
+overwrite_lmb_heuristics = false
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "spherical"
+conformal_scale = 1.0
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "ose"
+ose_exponent = 1.0

@@ -777,8 +777,19 @@ class SParameterisation(Parameterisation):
 class IdentityParameterisation(Parameterisation):
     IDENTIFIER = "identity param"
 
+    def __init__(self,
+                 seed: int = 42,
+                 uniform_continuous: bool = False,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.seed = seed
+        self.uniform_continuous = uniform_continuous
+        self.rng = np.random.default_rng(seed)
+
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray) -> ParamOutput:
         jac = np.ones((continuous.shape[0], 1), dtype=continuous.dtype)
+        if self.uniform_continuous:
+            self.rng.random(size=continuous.shape, out=continuous)
         return jac, continuous, discrete
 
 
