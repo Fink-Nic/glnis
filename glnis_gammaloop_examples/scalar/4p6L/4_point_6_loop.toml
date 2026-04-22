@@ -20,7 +20,7 @@ name = "integrate"
 commands = [
   "set process kv integrator.n_start=1000000 integrator.n_max=10000000",
   """
-  integrate  --n-cores 10 --target 8.4045-19 0.0
+  integrate  --n-cores 10 --target 8.4045e-19 0.0
     --restart
   """,
 ]

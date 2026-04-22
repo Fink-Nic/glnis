@@ -12,9 +12,6 @@ def run_settings_test(file: str) -> None:
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
         Settings = SettingsParser(file)
-        if not Settings.gammaloop_state_path.exists():
-            raise NotADirectoryError(
-                f"""No GammaLoop state at {Settings.gammaloop_state_path}""")
 
         # Initialize the integrand and integrator
         torch.set_default_dtype(torch.float64)
@@ -23,6 +20,8 @@ def run_settings_test(file: str) -> None:
         integrator = Integrator.from_settings(Settings.settings)
         shell_print(f"""Initializing the Integrand and Integrator took {
             - time_last + (time_last := time()):.2f}s""")
+
+        print(integrator.integrand.graph_properties)
 
         # Training parameters
         nitn = 1

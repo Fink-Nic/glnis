@@ -426,6 +426,8 @@ def plot_hyperparam_comparison(file: str) -> None:
         if n_d > 0:
             fig_disc, axs_disc = plt.subplots(
                 n_d, 1, sharex=True, layout="constrained", figsize=(8, 1.5*n_d+0.3))
+            if n_d == 1:
+                axs_disc = [axs_disc]
             axs_disc: List[plt.Axes]
             for i in range(n_d):
                 n_show = 3

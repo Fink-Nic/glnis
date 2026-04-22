@@ -161,7 +161,7 @@ class GammaLoopIntegrand(Integrand):
         self.gammaloop_state = gammaloop.GammaLoopAPI(
             gammaloop_state_path,
             level=gammaloop.LogLevel.Off if log_level_off else gammaloop.LogLevel.Info,
-            logfile_level=gammaloop.LogLevel.Off if log_level_off else gammaloop.LogLevel.Info,
+            logfile_level=gammaloop.LogLevel.Off if log_level_off or read_only_state else gammaloop.LogLevel.Info,
             read_only_state=read_only_state)
         if run_commands:
             if isinstance(run_commands, str):
@@ -403,8 +403,8 @@ class ParameterisedIntegrand:
             func_val = np.zeros((layer_input.n_points, 1), dtype=np.complex128)
             for ch in range(self.param.discrete_dims[0]):
                 channels = np.full((layer_input.n_points, 1), ch, dtype=np.uint64)
-                jac, mom, _ = self.param.param._layer_parameterise(layer_input.continuous, channels)
-                layer_input.jac, layer_input.momenta = jac, mom
+                layer_input.jac, layer_input.momenta = self.param.param._layer_parameterise(
+                    layer_input.continuous, channels)
                 layer_input.update(self.param.IDENTIFIER)
                 integration_result = self.integrand.evaluate_batch(layer_input)
                 func_val += integration_result.func_val * integration_result.jac

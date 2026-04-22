@@ -9,10 +9,11 @@ templates = [
 [graph]
 overwrite_lmb_heuristics = true
 
-[gammalooop]
+[gammaloop]
 state = "gg_hhh/1L/state"
 integration_workspace = "gg_hhh/1L/state/integration_workspace"
 result_file = "integration_result.json"
+get_target_from_gammaloop = true
 
 [integrator.madnis]
 batch_size = 10000
@@ -22,7 +23,7 @@ scheduler_type = "cosineannealing"
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "spherical"
-conformal_scale = 0.0
+conformal_scale = 1.0
 
 [layered_parameterisation.layer_1]
 parameterisation_type = "mc_layer"

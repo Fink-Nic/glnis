@@ -434,6 +434,8 @@ def plot_sampler_comp(file: str,
     if plot_discrete:
         fig_discrete, axs_discrete = plt.subplots(
             n_spl, 1, sharex=True, layout="constrained", figsize=(10, n_spl*3 + 0.5))
+        if n_spl == 1:
+            axs_discrete = [axs_discrete]
         axs_discrete: list[plt.Axes]
         # Create secondary x-axis on top of axs_snapshot[0] with training steps
         axs_discrete[-1].set_xlabel("Training Samples")

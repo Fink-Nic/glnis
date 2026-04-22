@@ -2,7 +2,7 @@ commands = []
 
 [cli_settings]
 [cli_settings.state]
-folder = "./glnis_gammaloop_examples/gg_hhh/1L/state/state"
+folder = "./glnis_gammaloop_examples/gg_hhh/1L/state"
 name = "gg_hhh_1l"
 
 [cli_settings.global.generation.compile]
@@ -52,7 +52,7 @@ commands = [
            --numerator-grouping only_detect_zeroes
            --select-graphs GL15
            --loop-momentum-bases GL15=8
-           --global-prefactor-projector '1𝑖 * gammalooprs::ϵ(0,spenso::mink(4,gammalooprs::hedge(0)))
+           --global-prefactor-projector 'gammalooprs::ϵ(0,spenso::mink(4,gammalooprs::hedge(0)))
                                            * gammalooprs::ϵ(1,spenso::mink(4,gammalooprs::hedge(1)))
                                            * (1/8)*spenso::g(spenso::coad(8,gammalooprs::hedge(0)),spenso::coad(8,gammalooprs::hedge(1)))'
            -p gg_hhh
@@ -116,7 +116,6 @@ commands = [
   "set process -p gg_hhh -i 1L kv integrator.n_start=100000 integrator.n_max=10000000",
   """integrate --process gg_hhh -i 1L --n-cores 10
         --target 1.89203604685291554e-6 -5.46603099163412881e-6
-        --workspace-path ./GL_OUTPUT/gg_hhh/1L/state/integration_workspace
         --restart
     """,
 ]

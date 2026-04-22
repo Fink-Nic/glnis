@@ -101,14 +101,14 @@ class DotParser:
         dmi = dependent_momentum_index
         dm_sig = ext_sigs[dmi]
         dependent_momentum = 4*[0.]
-        exclusive_external_sigs = ext_sigs[:dmi] + ext_sigs[dmi+1:]
-        for momentum, sig in zip(ext_momenta, exclusive_external_sigs):
+        for momentum, sig in zip(ext_momenta, ext_sigs):
+            if momentum == 'dependent':
+                continue
             dependent_momentum[0] -= dm_sig*sig*momentum[0]
             dependent_momentum[1] -= dm_sig*sig*momentum[1]
             dependent_momentum[2] -= dm_sig*sig*momentum[2]
             dependent_momentum[3] -= dm_sig*sig*momentum[3]
-        ext_momenta = ext_momenta[:dmi] + \
-            [dependent_momentum] + ext_momenta[dmi:]
+        ext_momenta[dmi] = dependent_momentum
 
         return ext_momenta
 
@@ -280,7 +280,6 @@ class SettingsParser:
                         f"Template '{t}' is neither a valid path to a .toml file nor a valid TOML string.")
             default_settings = overwrite_settings(
                 default_settings, template)
-        # if _from_existing, default_settings = settings and hence this overwrite does nothing
         self.settings: Dict[str, Any] = overwrite_settings(
             default_settings, settings,
             always_overwrite=['layered_parameterisation', 'templates'])
@@ -299,7 +298,7 @@ class SettingsParser:
                 self.gammaloop_state_path,
                 level=gammaloop.LogLevel.Off,
                 logfile_level=gammaloop.LogLevel.Off,
-                read_only_state=True)
+                read_only_state=self.settings['integrand']['gammaloop']['read_only_state'])
             self._outputs = dict()
             for o in self.gammaloop_state.list_outputs():
                 self._outputs.update(o)
@@ -344,24 +343,31 @@ class SettingsParser:
         if not self.settings['gammaloop']['get_target_from_gammaloop'] or gammaloop_result is None:
             return IntegrationResult(**self.settings.get('integration_target', {}))
         try:
-            itg_name = self.settings['integrand']['gammaloop']['integrand_name']
+            integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
+            if integrand_name not in self._outputs:
+                integrand_name = list(self._outputs)[0]
             slots = gammaloop_result['slots']
             candidates = [slot for slot in slots
-                          if slot['integrand'] == itg_name]
+                          if slot['integrand'] == integrand_name]
             if len(candidates) == 0:
                 raise ValueError("No matching slots found in GammaLoop result.")
             candidate = candidates[0]
-            if self.settings['gammaloop']['prefer_gammaloop_over_target']:
-                target = candidate.get('integral') or candidate.get('target')
-            else:
-                target = candidate.get('target') or candidate.get('integral')
-
+            gl_res = candidate.get('integral')
+            target = candidate.get('target')
+            if self.settings['gammaloop']['prefer_gammaloop_over_target'] or target is None:
+                if gl_res is not None:
+                    return IntegrationResult(
+                        n_points=gl_res['neval'],
+                        real_central_value=gl_res['result']['re'],
+                        imag_central_value=gl_res['result']['im'],
+                        real_error=gl_res['error']['re'],
+                        imag_error=gl_res['error']['im'],
+                    )
+            if target is None:
+                raise ValueError("No target found in GammaLoop result.")
             return IntegrationResult(
-                n_points=target['neval'],
-                real_central_value=target['result']['re'],
-                imag_central_value=target['result']['im'],
-                real_error=target['error']['re'],
-                imag_error=target['error']['im'],
+                real_central_value=target['re'],
+                imag_central_value=target['im'],
             )
         except:
             return IntegrationResult(**self.settings.get('integration_target', {}))

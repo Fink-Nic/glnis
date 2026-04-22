@@ -80,21 +80,12 @@ class Integrator(ABC):
         return self._get_samples(n_points, *args, **kwargs)
 
     def _get_samples(self, n_points: int, *args, **kwargs) -> LayerData:
-        try:
-            layer_input = self.init_layer_data(n_points)
-            layer_input.continuous = self.rng.random((n_points, self.continuous_dim))
-            discrete = self.rng.uniform(
-                size=(n_points, len(self.discrete_dims)))
-            layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
-            layer_input.update(self.IDENTIFIER)
-        except KeyboardInterrupt:
-            shell_print("Sample generation interrupted by user.")
-            raise KeyboardInterrupt
-        except Exception as e:
-            shell_print(f"Error during sample generation: {e}")
-            from traceback import format_exc
-            shell_print(format_exc())
-            raise e
+        layer_input = self.init_layer_data(n_points)
+        layer_input.continuous = self.rng.random((n_points, self.continuous_dim))
+        discrete = self.rng.uniform(
+            size=(n_points, len(self.discrete_dims)))
+        layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
+        layer_input.update(self.IDENTIFIER)
 
         return layer_input
 
@@ -708,31 +699,37 @@ class MadnisIntegrator(Integrator):
     @_block_if_ended
     def train(self, nitn: int = 10, batch_size: int | None = None,
               callback: Callable[['MadnisIntegrator.TrainingStatus'], None] | None = None) -> str:
+        import signal
+
         if batch_size is not None:
             self.madnis.batch_size = batch_size
         callback = callback or self._default_callback
         if self.use_scheduler:
             self.madnis.scheduler = self._get_scheduler(
                 self.madnis.step + nitn, self.scheduler_type)
-        for _ in range(nitn):
-            try:
+
+        interrupted = False
+
+        def handler(sig, frame):
+            nonlocal interrupted
+            interrupted = True
+
+        old_handler = signal.signal(signal.SIGINT, handler)
+        try:
+            for _ in range(nitn):
                 madnis_status = self.madnis.train_step()
-            except KeyboardInterrupt:
-                shell_print("Training interrupted by user.")
-                break
-            except Exception as e:
-                shell_print(f"Error during training step: {e}")
-                from traceback import format_exc
-                shell_print(format_exc())
-                raise e
-            self.step += 1
-            self.total_training_samples += self.madnis.batch_size
-            status = self.TrainingStatus(
-                step=self.step,
-                total_samples=self.total_training_samples,
-                madnis_status=madnis_status,
-            )
-            callback(status)
+                if interrupted:
+                    break
+                self.step += 1
+                self.total_training_samples += self.madnis.batch_size
+                status = self.TrainingStatus(
+                    step=self.step,
+                    total_samples=self.total_training_samples,
+                    madnis_status=madnis_status,
+                )
+                callback(status)
+        finally:
+            signal.signal(signal.SIGINT, old_handler)
 
     def _get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)
