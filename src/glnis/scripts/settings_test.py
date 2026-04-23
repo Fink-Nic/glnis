@@ -2,13 +2,14 @@
 import torch
 import signal
 from time import time
+from dataclasses import asdict
 
 from glnis.core.integrator import Integrator
 from glnis.core.parser import SettingsParser
 from glnis.utils.helpers import shell_print
 
 
-def run_settings_test(file: str) -> None:
+def run_settings_test(file: str, show_graph_properties: bool = False) -> None:
     signal.signal(signal.SIGINT, signal.default_int_handler)
     try:
         Settings = SettingsParser(file)
@@ -21,7 +22,11 @@ def run_settings_test(file: str) -> None:
         shell_print(f"""Initializing the Integrand and Integrator took {
             - time_last + (time_last := time()):.2f}s""")
 
-        print(integrator.integrand.graph_properties)
+        if show_graph_properties:
+            from glnis.utils.helpers import Colour
+            shell_print("Graph properties:")
+            for key, value in asdict(integrator.integrand.param.param.graph_properties).items():
+                shell_print(f"{Colour.CYAN}{key}{Colour.END}: {value}")
 
         # Training parameters
         nitn = 1
@@ -29,10 +34,10 @@ def run_settings_test(file: str) -> None:
 
         shell_print("Attempting training step.")
         integrator.train(nitn, batch_size)
+        shell_print(f"Training step successfully completed!")
 
         shell_print("Attempting integration.")
         integrator.integrate(batch_size)
-
         shell_print(f"Test successfully completed!")
 
     except KeyboardInterrupt:

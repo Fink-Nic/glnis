@@ -11,7 +11,7 @@ templates = [
 [integration_target]
 # chem potential 0.0138889
 # no chem potential 0.0373264
-real_central_value = 0.0373264
+real_mean = 0.0373264
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "rkaapo"

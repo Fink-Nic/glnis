@@ -7,7 +7,7 @@ templates = [
 
 [integration_target]
 n_points = 290000000
-real_central_value = -0.00000624159212391007
+real_mean = -0.00000624159212391007
 real_error = 0.0000000179007098142485
 
 [graph]

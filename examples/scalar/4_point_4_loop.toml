@@ -15,7 +15,7 @@ integration_workspace = "scalar/4p4L/state/integration_workspace"
 get_target_from_gammaloop = false
 
 [integration_target]
-real_central_value = 2.6919e-14
+real_mean = 2.6919e-14
 
 [layered_integrator]
 integrator_type = "madnis"

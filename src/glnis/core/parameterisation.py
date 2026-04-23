@@ -305,7 +305,7 @@ class LayeredParameterisation:
                     is_first_layer=True,)
             )
 
-        self.param = param_layers[-1]
+        self.param: Parameterisation = param_layers[-1]
         self.continuous_dim = self.param.chain_continuous_dim_in
         self.discrete_dims = self.param.chain_discrete_dims
         self.num_layers = len(param_layers)
@@ -789,7 +789,7 @@ class IdentityParameterisation(Parameterisation):
     def _layer_parameterise(self, continuous: NDArray, discrete: NDArray) -> ParamOutput:
         jac = np.ones((continuous.shape[0], 1), dtype=continuous.dtype)
         if self.uniform_continuous:
-            self.rng.random(size=continuous.shape, out=continuous)
+            return jac, self.rng.random(size=continuous.shape), discrete
         return jac, continuous, discrete
 
 

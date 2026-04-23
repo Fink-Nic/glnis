@@ -154,17 +154,17 @@ def run_slice_plots(
         madnis_obs = SData.result.get("MadNIS", None)
         match integrand.training_phase:
             case "real":
-                tgt = integrand.target.real_central_value
+                tgt = integrand.target.real_mean
                 if tgt:
                     itg = tgt
                 elif madnis_obs is not None:
-                    itg = madnis_obs.real_central_value
+                    itg = madnis_obs.real_mean
             case "imag":
-                tgt = integrand.target.imag_central_value
+                tgt = integrand.target.imag_mean
                 if tgt:
                     itg = tgt
                 elif madnis_obs is not None:
-                    itg = madnis_obs.imag_central_value
+                    itg = madnis_obs.imag_mean
 
         if itg is not None and not only_plot:
             shell_print(f"Using integral estimate {itg:.4e} to normalize function values.")

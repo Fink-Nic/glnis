@@ -358,16 +358,16 @@ class SettingsParser:
                 if gl_res is not None:
                     return IntegrationResult(
                         n_points=gl_res['neval'],
-                        real_central_value=gl_res['result']['re'],
-                        imag_central_value=gl_res['result']['im'],
+                        real_mean=gl_res['result']['re'],
+                        imag_mean=gl_res['result']['im'],
                         real_error=gl_res['error']['re'],
                         imag_error=gl_res['error']['im'],
                     )
             if target is None:
                 raise ValueError("No target found in GammaLoop result.")
             return IntegrationResult(
-                real_central_value=target['re'],
-                imag_central_value=target['im'],
+                real_mean=target['re'],
+                imag_mean=target['im'],
             )
         except:
             return IntegrationResult(**self.settings.get('integration_target', {}))
@@ -429,7 +429,11 @@ class SettingsParser:
                     active_lmbs = lmbs
                 else:
                     active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]
-                generation_basis_id = [lmb.matches_generation_basis for lmb in lmbs].index(True)
+                    active_lmbs = active_lmbs if len(active_lmbs) > 0 else lmbs
+                try:
+                    generation_basis_id = [lmb.matches_generation_basis for lmb in lmbs].index(True)
+                except:
+                    generation_basis_id = 0
                 generation_channel_id = active_lmbs.index(lmbs[generation_basis_id])
                 graph_properties.lmb_array = [[e_id-n_externals for e_id in lmb.edge_ids] for lmb in active_lmbs]
                 graph_properties.orientation_ids = [o.orientation_id for o in graph_group.orientations]

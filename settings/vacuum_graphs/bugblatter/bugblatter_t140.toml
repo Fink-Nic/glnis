@@ -6,7 +6,7 @@ templates = [
 
 [integration_target]
 n_points = 290000000
-real_central_value = 0.00000284519002379118
+real_mean = 0.00000284519002379118
 real_error = 0.0000000199447762054874
 
 [layered_integrand]

@@ -369,12 +369,12 @@ def plot_sampler_comp(file: str,
         )
         f.write(f"Learned phase: {Data.integrand_kwargs['training_phase'].upper()}\n")
         f.write(f"Target:")
-        if Data.target.real_central_value:
-            f.write(f"\n    RE : {Data.target.real_central_value:.8e}")
+        if Data.target.real_mean:
+            f.write(f"\n    RE : {Data.target.real_mean:.8e}")
             if Data.target.real_error:
                 f.write(f" +- {Data.target.real_error:.8e}, RSD = {Data.target.real_rsd:.3f}")
-        if Data.target.imag_central_value:
-            f.write(f"\n    IM : {Data.target.imag_central_value:.8e}")
+        if Data.target.imag_mean:
+            f.write(f"\n    IM : {Data.target.imag_mean:.8e}")
             if Data.target.imag_error:
                 f.write(f" +- {Data.target.imag_error:.8e}, RSD = {Data.target.imag_rsd:.3f}")
 
@@ -383,10 +383,10 @@ def plot_sampler_comp(file: str,
             f.write(f"{f' {identifier} Results ':{'#'}^{width}}\n")
             if obs.real_error:
                 f.write(
-                    f"    RE : {obs.real_central_value:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}\n")
+                    f"    RE : {obs.real_mean:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}\n")
             if obs.imag_error:
                 f.write(
-                    f"    IM : {obs.imag_central_value:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
+                    f"    IM : {obs.imag_mean:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
             f.write(f"Relative Time-Variance: ")
             if obs.real_tvar:
                 f.write(f"RE = {obs.real_tvar:.3e}  ")
@@ -529,13 +529,13 @@ def plot_sampler_comp(file: str,
 
         tgt_line_len = n_spl - 1
         tgt = Data.target
-        if tgt.real_central_value:
-            axs[0, 0].hlines(tgt.real_central_value, 0, tgt_line_len, color='red')
+        if tgt.real_mean:
+            axs[0, 0].hlines(tgt.real_mean, 0, tgt_line_len, color='red')
         if tgt.real_error:
             axs[0, 0].fill_between(
                 [0, tgt_line_len],
-                [tgt.real_central_value - tgt.real_error],
-                [tgt.real_central_value + tgt.real_error],
+                [tgt.real_mean - tgt.real_error],
+                [tgt.real_mean + tgt.real_error],
                 color='red', alpha=0.3
             )
         if tgt.real_rsd:
@@ -545,13 +545,13 @@ def plot_sampler_comp(file: str,
         if tgt.abs_real_tvar:
             axs[3, 0].hlines(tgt.abs_real_tvar, 0, tgt_line_len, color='red')
 
-        if tgt.imag_central_value:
-            axs[0, 1].hlines(tgt.imag_central_value, 0, tgt_line_len, color='red')
+        if tgt.imag_mean:
+            axs[0, 1].hlines(tgt.imag_mean, 0, tgt_line_len, color='red')
         if tgt.imag_error:
             axs[0, 1].fill_between(
                 [0, tgt_line_len],
-                [tgt.imag_central_value - tgt.imag_error],
-                [tgt.imag_central_value + tgt.imag_error],
+                [tgt.imag_mean - tgt.imag_error],
+                [tgt.imag_mean + tgt.imag_error],
                 color='red', alpha=0.3
             )
         if tgt.imag_rsd:
@@ -563,13 +563,13 @@ def plot_sampler_comp(file: str,
 
         for i, obs in enumerate(Data.result.values()):
             if obs.real_error > 0:
-                axs[0, 0].errorbar(i, obs.real_central_value, yerr=obs.real_error,
+                axs[0, 0].errorbar(i, obs.real_mean, yerr=obs.real_error,
                                    marker='o', markersize=5, capsize=5, color='black')
                 axs[1, 0].scatter(i, obs.real_rsd, color='black')
                 axs[2, 0].scatter(i, obs.real_tvar, color='black')
                 axs[3, 0].scatter(i, obs.abs_real_tvar, color='black')
             if obs.imag_error > 0:
-                axs[0, 1].errorbar(i, obs.imag_central_value, yerr=obs.imag_error,
+                axs[0, 1].errorbar(i, obs.imag_mean, yerr=obs.imag_error,
                                    marker='o', markersize=5, capsize=5, color='black')
                 axs[1, 1].scatter(i, obs.imag_rsd, color='black')
                 axs[2, 1].scatter(i, obs.imag_tvar, color='black')

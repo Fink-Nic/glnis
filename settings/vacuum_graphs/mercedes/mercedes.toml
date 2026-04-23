@@ -3,7 +3,7 @@ run_name = "mercedes"
 [integration_target]
 # chem potential 0.0290399
 # no chem potential 0.714390
-real_central_value = 0.0290399
+real_mean = 0.0290399
 
 [graph]
 from_state = false

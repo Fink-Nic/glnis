@@ -314,13 +314,13 @@ def plot_hyperparam_comparison(file: str) -> None:
             axs2[3, i].set_yscale("log")
 
         tgt_line_len = n_blocks - 1
-        if target.real_central_value:
-            axs2[0, 0].hlines(target.real_central_value, 0, tgt_line_len, color='red')
+        if target.real_mean:
+            axs2[0, 0].hlines(target.real_mean, 0, tgt_line_len, color='red')
             if target.real_error:
                 axs2[0, 0].fill_between(
                     [0, tgt_line_len],
-                    target.real_central_value - target.real_error,
-                    target.real_central_value + target.real_error,
+                    target.real_mean - target.real_error,
+                    target.real_mean + target.real_error,
                     color='red', alpha=0.3
                 )
         if target.real_rsd:
@@ -330,13 +330,13 @@ def plot_hyperparam_comparison(file: str) -> None:
         if target.abs_real_tvar:
             axs2[3, 0].hlines(target.abs_real_tvar, 0, tgt_line_len, color='red')
 
-        if target.imag_central_value:
-            axs2[0, 1].hlines(target.imag_central_value, 0, tgt_line_len, color='red')
+        if target.imag_mean:
+            axs2[0, 1].hlines(target.imag_mean, 0, tgt_line_len, color='red')
             if target.imag_error:
                 axs2[0, 1].fill_between(
                     [0, tgt_line_len],
-                    target.imag_central_value - target.imag_error,
-                    target.imag_central_value + target.imag_error,
+                    target.imag_mean - target.imag_error,
+                    target.imag_mean + target.imag_error,
                     color='red', alpha=0.3
                 )
         if target.imag_rsd:
@@ -372,13 +372,13 @@ def plot_hyperparam_comparison(file: str) -> None:
             # Final integration results
             obs = run_data.observables
             if obs['real_error'] > 0:
-                axs2[0, 0].errorbar(i, obs['real_central_value'], yerr=obs['real_error'],
+                axs2[0, 0].errorbar(i, obs['real_mean'], yerr=obs['real_error'],
                                     marker='o', markersize=5, capsize=5, color='black')
                 axs2[1, 0].scatter(i, obs['real_rsd'], color='black')
                 axs2[2, 0].scatter(i, obs['real_tvar'], color='black')
                 axs2[3, 0].scatter(i, obs['abs_real_tvar'], color='black')
             if obs['imag_error'] > 0:
-                axs2[0, 1].errorbar(i, obs['imag_central_value'], yerr=obs['imag_error'],
+                axs2[0, 1].errorbar(i, obs['imag_mean'], yerr=obs['imag_error'],
                                     marker='o', markersize=5, capsize=5, color='black')
                 axs2[1, 1].scatter(i, obs['imag_rsd'], color='black')
                 axs2[2, 1].scatter(i, obs['imag_tvar'], color='black')

@@ -38,13 +38,13 @@ prefer_gammaloop_over_target = false
 
 [integration_target]
 n_points = 0
-real_central_value = 0
+real_mean = 0
 real_error = 0
-imag_central_value = 0
+imag_mean = 0
 imag_error = 0
-abs_real_central_value = 0
+abs_real_mean = 0
 abs_real_error = 0
-abs_imag_central_value = 0
+abs_imag_mean = 0
 abs_imag_error = 0
 total_time = 0
 
@@ -315,7 +315,7 @@ low_high_gap = 0.05 # Gap between low and high colors in the segmented colormap
 name = "Reals"
 log_scale = true
 include = [
-    "real_central_value",
+    "real_mean",
     "real_error",
     "real_rsd",
     "real_tvar",
@@ -325,7 +325,7 @@ include = [
 name = "Imags"
 log_scale = true
 include = [
-    "imag_central_value",
+    "imag_mean",
     "imag_error",
     "imag_rsd",
     "imag_tvar",

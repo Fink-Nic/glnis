@@ -14,7 +14,7 @@ is_vacuum = true
 overwrite_graph_properties = true
 
 [integration_target]
-real_central_value = 1.0
+real_mean = 1.0
 
 [graph.graph_properties]
 edge_src_dst_vertices = [

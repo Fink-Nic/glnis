@@ -50,12 +50,15 @@ class Integrand(ABC):
     def evaluate_batch(self, layer_input: LayerData) -> LayerData:
         n_failed = layer_input.n_points - layer_input.success.sum()
         if n_failed > 0:
-            warnings.warn(f"{n_failed} failed points detected in integrand evaluation.", RuntimeWarning)
+            warnings.warn(f"{n_failed} failed points detected before integrand evaluation.", RuntimeWarning)
             f = np.zeros(layer_input.n_points, dtype=np.complex128)
             f[layer_input.success.ravel()] = self._evaluate_batch(
                 layer_input.momenta[layer_input.success.ravel()],
                 layer_input.discrete[layer_input.success.ravel()]).ravel()
             layer_input.func_val = f
+            layer_input.update(self.IDENTIFIER)
+            print(layer_input._data[~layer_input.success.ravel()])
+            layer_input._data[~layer_input.success.ravel()] = 0
         else:
             layer_input.func_val = self._evaluate_batch(
                 layer_input.momenta, layer_input.discrete)
@@ -112,7 +115,7 @@ class TestIntegrand(Integrand):
         self.sigma = np.array(sigma)
         self.const_f = const_f
         if not self.const_f:
-            self.target = IntegrationResult(real_central_value=1)
+            self.target = IntegrationResult(real_mean=1)
         if self.sigma.size > 1:
             self.discrete_dims.append(self.sigma.size)
 

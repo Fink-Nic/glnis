@@ -22,6 +22,8 @@ commands = [
   set process kv
   integrator.n_increase=0 integrator.n_start=1000000
   integrator.n_max=10000000
+  integrator.continuous_dim_learning_rate=0.0
+  integrator.discrete_dim_learning_rate=0.0
   integrator.seed=1337
 	""",
   """

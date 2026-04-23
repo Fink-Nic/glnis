@@ -1,7 +1,6 @@
 run_name = "scalar@triangle"
 output_dir = "scalar/3p1L"
 templates = [
-    "settings/scalar/base",
     "settings/templates/flow/size7",
     "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size4",
@@ -9,6 +8,7 @@ templates = [
 
 [graph]
 momtrop_edge_weight = 0.83333333333
+overwrite_lmb_heuristics = true
 
 [gammaloop]
 state = "scalar/3p1L/state"
@@ -17,4 +17,95 @@ get_target_from_gammaloop = true
 prefer_gammaloop_over_target = true
 
 [integration_target]
-real_central_value = 9.76546e-5
+real_mean = 9.76546e-5
+
+[layered_integrator]
+integrator_type = "madnis"
+
+[integrator.madnis]
+batch_size = 10000
+
+[layered_integrand]
+integrand_type = "gammaloop"
+training_phase = "real"
+n_cores = 32
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "momtrop"
+
+[integrand.gammaloop]
+integrand_name = "default"
+run_commands = []
+momentum_space = true
+sample_lmbs = false 
+sample_orientations = false
+use_arb_prec = false
+minimal_output = true
+read_only_state = true
+log_level_off = true
+
+[parameterisation.momtrop]
+overwrite_edge_weight = false
+sample_discrete = true
+mask_redundant = true
+
+[scripts.sampler_comp]
+n_training_steps = 500
+n_samples = 1000000
+n_samples_after_training = 10000000
+nitn = 10 
+n_log = 20 
+n_plot_snapshot = 50 
+n_plot_loss = 1 # Training steps between plotting the loss
+n_plot_disc = 5
+plot_disc = true 
+
+[[scripts.hyperparam_comparison.comparison]]
+name = "parameterisations"
+blocks = [ 
+    ["""
+    [layered_parameterisation.layer_0]
+    parameterisation_type = "momtrop"
+    sample_discrete = false
+    """],
+    ["""
+    [layered_parameterisation.layer_0]
+    parameterisation_type = "momtrop"
+    sample_discrete = true
+    [layered_parameterisation.layer_1]
+    parameterisation_type = "identity"
+    uniform_continuous = true
+    """],
+    ["""
+    [layered_parameterisation.layer_0]
+    parameterisation_type = "momtrop"
+    sample_discrete = true
+    mask_redundant = false
+    """],
+    ["""
+    [layered_parameterisation.layer_0]
+    parameterisation_type = "momtrop"
+    sample_discrete = true
+    mask_redundant = true
+    """],
+    ["settings/templates/parameterisation/mc_lmb_spherical_no_heur"],
+]
+block_names = [
+    "momtrop_cont_only", 
+    "momtrop_disc_only", 
+    "momtrop_both_redundant_c", 
+    "momtrop_both", 
+    "lmb_mc",
+]
+plot_slices = false
+
+[scripts.hpcomp_training_run]
+n_training_steps = 500
+n_samples = 1000000
+n_samples_after_training = 10000000
+nitn = 10 
+n_log = 20 
+n_plot_snapshot = 50 
+n_plot_loss = 1 # Training steps between plotting the loss
+n_plot_disc = 5
+plot_disc = true 

@@ -9,7 +9,7 @@ templates = [
 
 [graph]
 from_state = true
-overwrite_lmb_heuristics = false
+overwrite_lmb_heuristics = true
 
 [gammaloop]
 state = "scalar_base_settings_not_for_direct_use"
@@ -60,7 +60,6 @@ plot_disc = true
 
 [[scripts.hyperparam_comparison.comparison]]
 name = "parameterisations"
-Each entry in blocks may define any number of templates (same rules apply)
 blocks = [ 
     ["""
     [layered_parameterisation.layer_0]

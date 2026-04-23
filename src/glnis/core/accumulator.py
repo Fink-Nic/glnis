@@ -55,13 +55,13 @@ class GraphProperties:
 @dataclass
 class IntegrationResult:
     n_points: int = 0
-    real_central_value: float = 0
+    real_mean: float = 0
     real_error: float = 0
-    imag_central_value: float = 0
+    imag_mean: float = 0
     imag_error: float = 0
-    abs_real_central_value: float = 0
+    abs_real_mean: float = 0
     abs_real_error: float = 0
-    abs_imag_central_value: float = 0
+    abs_imag_mean: float = 0
     abs_imag_error: float = 0
     real_rsd: float = 0
     imag_rsd: float = 0
@@ -79,34 +79,35 @@ class IntegrationResult:
         # No harm in recalculating these
         if self.n_points > 0:
             time_per_sample = self.total_time / self.n_points
-            if self.real_central_value:
-                self.real_rsd = self._rsd(self.real_central_value, self.real_error, self.n_points)
-            if self.imag_central_value:
-                self.imag_rsd = self._rsd(self.imag_central_value, self.imag_error, self.n_points)
-            if self.abs_real_central_value:
+            if self.real_mean:
+                self.real_rsd = self._rsd(self.real_mean, self.real_error, self.n_points)
+            if self.imag_mean:
+                self.imag_rsd = self._rsd(self.imag_mean, self.imag_error, self.n_points)
+            if self.abs_real_mean:
                 self.abs_real_rsd = self._rsd(
-                    self.abs_real_central_value, self.real_error, self.n_points)
-            if self.abs_imag_central_value:
+                    self.abs_real_mean, self.real_error, self.n_points)
+            if self.abs_imag_mean:
                 self.abs_imag_rsd = self._rsd(
-                    self.abs_imag_central_value, self.imag_error, self.n_points)
+                    self.abs_imag_mean, self.imag_error, self.n_points)
 
         # Don't want to overwrite these in case total_time is not provided
-        self.real_tvar = self.real_tvar or self.real_rsd**2 * time_per_sample
-        self.imag_tvar = self.imag_tvar or self.imag_rsd**2 * time_per_sample
-        self.abs_real_tvar = self.abs_real_tvar or self.abs_real_rsd**2 * time_per_sample
-        self.abs_imag_tvar = self.abs_imag_tvar or self.abs_imag_rsd**2 * time_per_sample
+        if time_per_sample > 0:
+            self.real_tvar = self.real_rsd**2 * time_per_sample
+            self.imag_tvar = self.imag_rsd**2 * time_per_sample
+            self.abs_real_tvar = self.abs_real_rsd**2 * time_per_sample
+            self.abs_imag_tvar = self.abs_imag_rsd**2 * time_per_sample
 
     def combine_with(self: 'IntegrationResult', other: 'IntegrationResult') -> None:
         def cc(s_c: float, o_c: float) -> float:
-            return self._combine_central_value(self.n_points, other.n_points, s_c, o_c)
+            return self._combine_mean(self.n_points, other.n_points, s_c, o_c)
 
         def ce(s_e: float, o_e: float) -> float:
             return self._combine_error(self.n_points, other.n_points, s_e, o_e)
 
-        self.real_central_value = cc(self.real_central_value, other.real_central_value)
-        self.imag_central_value = cc(self.imag_central_value, other.imag_central_value)
-        self.abs_real_central_value = cc(self.abs_real_central_value, other.abs_real_central_value)
-        self.abs_imag_central_value = cc(self.abs_imag_central_value, other.abs_imag_central_value)
+        self.real_mean = cc(self.real_mean, other.real_mean)
+        self.imag_mean = cc(self.imag_mean, other.imag_mean)
+        self.abs_real_mean = cc(self.abs_real_mean, other.abs_real_mean)
+        self.abs_imag_mean = cc(self.abs_imag_mean, other.abs_imag_mean)
         self.real_error = ce(self.real_error, other.real_error)
         self.imag_error = ce(self.imag_error, other.imag_error)
         self.abs_real_error = ce(self.abs_real_error, other.abs_real_error)
@@ -118,9 +119,9 @@ class IntegrationResult:
 
     def str_report(self: 'IntegrationResult') -> str:
         return f"""Real: {
-            self.real_central_value: .5f}  ± {
+            self.real_mean: .5f}  ± {
             self.real_error: .5f}, Imag: {
-            self.imag_central_value: .5f}  ± {
+            self.imag_mean: .5f}  ± {
             self.imag_error: .5f} """
 
     @staticmethod
@@ -130,7 +131,7 @@ class IntegrationResult:
         return err / np.abs(mean) * np.sqrt(n_points)
 
     @staticmethod
-    def _combine_central_value(s_n: float, o_n: float, s_c: float, o_c: float) -> float:
+    def _combine_mean(s_n: float, o_n: float, s_c: float, o_c: float) -> float:
         return (s_n * s_c + o_n * o_c) / (s_n + o_n)
 
     @staticmethod
@@ -525,10 +526,11 @@ class TrainingAccumulator(DefaultAccumulator):
         sqrtn = np.sqrt(n_points)
         self.training_mean = self.training_data.training_result.mean()
         self.training_err = self.training_data.training_result.std() / sqrtn
-        self.training_rsd = abs(self.training_err / self.training_mean) * sqrtn if self.training_mean != 0 else 0
+        self.training_rsd = IntegrationResult._rsd(self.training_mean, self.training_err, n_points)
         abs_res = np.abs(self.training_data.training_result)
         abs_res_mean = abs_res.mean()
-        self.training_abs_rsd = abs(abs_res.std() / abs_res_mean) if abs_res_mean != 0 else 0
+        self.training_abs_err = abs_res.std() / sqrtn
+        self.training_abs_rsd = IntegrationResult._rsd(abs_res_mean, self.training_abs_err, n_points)
         self.training_tvar = self.training_rsd**2 * time_per_sample
         self.training_abs_tvar = self.training_abs_rsd**2 * time_per_sample
 
@@ -562,13 +564,13 @@ class IntegrationStatistics(AccumulatorModule):
             total_time = data.get_processing_times().get('total_time', 0)
             self.result = IntegrationResult(
                 n_points=data.n_points,
-                real_central_value=total_wgt.real.mean(),
+                real_mean=total_wgt.real.mean(),
                 real_error=total_wgt.real.std() / np.sqrt(data.n_points),
-                imag_central_value=total_wgt.imag.mean(),
+                imag_mean=total_wgt.imag.mean(),
                 imag_error=total_wgt.imag.std() / np.sqrt(data.n_points),
-                abs_real_central_value=abs_real_total_wgt.mean(),
+                abs_real_mean=abs_real_total_wgt.mean(),
                 abs_real_error=abs_real_total_wgt.std() / np.sqrt(data.n_points),
-                abs_imag_central_value=abs_imag_total_wgt.mean(),
+                abs_imag_mean=abs_imag_total_wgt.mean(),
                 abs_imag_error=abs_imag_total_wgt.std() / np.sqrt(data.n_points),
                 total_time=total_time,
             )
@@ -582,9 +584,10 @@ class IntegrationStatistics(AccumulatorModule):
             f"Integration Result after {Colour.GREEN}{self.result.n_points}{Colour.END} evaluations:")
         if self.result.real_error > 0:
             report.append(f"""    {Colour.DARKCYAN}RE{Colour.END} : {
-                error_fmter(self.result.real_central_value, self.result.real_error, self.precision)}""")
-            err_rel = abs(self.result.real_error / self.result.real_central_value)
-            err_col = Colour.GREEN if err_rel < 0.01 else Colour.RED
+                error_fmter(self.result.real_mean, self.result.real_error, self.precision)}""")
+            err_rel = abs(self.result.real_error / self.result.real_mean)
+            err_col = Colour.GREEN if err_rel < 0.01 else (
+                Colour.YELLOW if err_rel < 0.05 else Colour.RED)
             rsd = self.result.real_rsd
             tvar = self.result.real_tvar
             atvar = self.result.abs_real_tvar
@@ -595,18 +598,22 @@ class IntegrationStatistics(AccumulatorModule):
                 report[-1] += f", TVAR={tvar:.3e}"
             if atvar > 0:
                 report[-1] += f", ATVAR={atvar:.3e}"
-            if self.target.real_central_value != 0:
-                diff = self.result.real_central_value - self.target.real_central_value
-                rel_diff = abs(diff / self.target.real_central_value)
+            if self.target.real_mean != 0:
+                diff = self.result.real_mean - self.target.real_mean
+                sigma_diff = diff / self.result.real_error if self.result.real_error > 0 else 0
+                rel_diff = abs(diff / self.target.real_mean)
                 if self.target.real_error > 0:
-                    target_str = error_fmter(self.target.real_central_value, self.target.real_error, self.precision)
+                    target_str = error_fmter(self.target.real_mean, self.target.real_error, self.precision)
                 else:
-                    target_str = f"{self.target.real_central_value:<+25.16e}"
+                    target_str = f"{self.target.real_mean:<+25.16e}"
 
                 report.append(
                     f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
                 diff_col = Colour.GREEN if rel_diff < 0.01 else Colour.RED
+                sigma_col = Colour.GREEN if abs(sigma_diff) < 1 else (
+                    Colour.YELLOW if abs(sigma_diff) < 2 else Colour.RED)
                 report[-1] += f" ({diff_col}{rel_diff:.3%}{Colour.END})"
+                report[-1] += f", {sigma_col}{sigma_diff:.2f}{Colour.END}σ" if sigma_diff > 0 else ""
                 rsd = self.target.real_rsd
                 tvar = self.target.real_tvar
                 atvar = self.target.abs_real_tvar
@@ -619,9 +626,10 @@ class IntegrationStatistics(AccumulatorModule):
 
         if not self.result.imag_error <= 0:
             report.append(f"    {Colour.DARKCYAN}IM{Colour.END} : {
-                error_fmter(self.result.imag_central_value, self.result.imag_error, self.precision)}")
-            err_rel = abs(self.result.imag_error / self.result.imag_central_value)
-            err_col = Colour.GREEN if err_rel < 0.01 else Colour.RED
+                error_fmter(self.result.imag_mean, self.result.imag_error, self.precision)}")
+            err_rel = abs(self.result.imag_error / self.result.imag_mean)
+            err_col = Colour.GREEN if err_rel < 0.01 else (
+                Colour.YELLOW if err_rel < 0.05 else Colour.RED)
             rsd = self.result.imag_rsd
             tvar = self.result.imag_tvar
             atvar = self.result.abs_imag_tvar
@@ -632,18 +640,23 @@ class IntegrationStatistics(AccumulatorModule):
                 report[-1] += f", TVAR={tvar:.3e}"
             if atvar > 0:
                 report[-1] += f", ATVAR={atvar:.3e}"
-            if self.target.imag_central_value != 0:
-                diff = self.result.imag_central_value - self.target.imag_central_value
-                rel_diff = abs(diff / self.target.imag_central_value)
+            if self.target.imag_mean != 0:
+                diff = self.result.imag_mean - self.target.imag_mean
+                sigma_diff = abs(diff / self.result.imag_error) if self.result.imag_error > 0 else 0
+                rel_diff = abs(diff / self.target.imag_mean)
                 if self.target.imag_error > 0:
-                    target_str = error_fmter(self.target.imag_central_value, self.target.imag_error, self.precision)
+                    target_str = error_fmter(self.target.imag_mean, self.target.imag_error, self.precision)
                 else:
-                    target_str = f"{self.target.imag_central_value:<+25.16e}"
+                    target_str = f"{self.target.imag_mean:<+25.16e}"
 
                 report.append(
                     f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
-                diff_col = Colour.GREEN if rel_diff < 0.01 else Colour.RED
+                diff_col = Colour.GREEN if rel_diff < 0.01 else (
+                    Colour.YELLOW if rel_diff < 0.05 else Colour.RED)
+                sigma_col = Colour.GREEN if sigma_diff < 1 else (
+                    Colour.YELLOW if sigma_diff < 2 else Colour.RED)
                 report[-1] += f" ({diff_col}{rel_diff:.3%}{Colour.END})"
+                report[-1] += f", {sigma_col}{sigma_diff:.2f}{Colour.END}σ" if sigma_diff > 0 else ""
                 rsd = self.target.imag_rsd
                 tvar = self.target.imag_tvar
                 atvar = self.target.abs_imag_tvar
@@ -858,8 +871,9 @@ class FailuresMonitor(AccumulatorModule):
 
     def str_report(self) -> str:
         if self.n_points == self.n_success:
-            return f"""{Colour.GREEN}No Failures, successfully evaluated all {
-                self.n_points}/{self.n_points} points!{Colour.END}"""
+            return ""
+            # return f"""{Colour.GREEN}No Failures, successfully evaluated all {
+            #     self.n_points}/{self.n_points} points!{Colour.END}"""
 
         n_failures = self.n_points - self.n_success
         report = [

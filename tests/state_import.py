@@ -53,10 +53,10 @@ def run_state_import(
             shell_print(f"Result before exporting, using {n_points} samples:")
             if obs.real_error:
                 shell_print(
-                    f"    RE : {obs.real_central_value:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}\n")
+                    f"    RE : {obs.real_mean:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}\n")
             if obs.imag_error:
                 shell_print(
-                    f"    IM : {obs.imag_central_value:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
+                    f"    IM : {obs.imag_mean:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
             for i in range(2):
                 shell_print(f"type of integrator: {type(integrator)}")
                 shell_print(f"Successfully imported {name} state")
@@ -65,10 +65,10 @@ def run_state_import(
                 shell_print(f"Result for {name} after importing, run {i + 1}:")
                 if obs.real_error:
                     shell_print(
-                        f"    RE : {obs.real_central_value:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}\n")
+                        f"    RE : {obs.real_mean:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}\n")
                 if obs.imag_error:
                     shell_print(
-                        f"    IM : {obs.imag_central_value:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
+                        f"    IM : {obs.imag_mean:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
                 try:
                     integrator.import_state(state)
                 except Exception as e:

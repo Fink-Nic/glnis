@@ -14,6 +14,8 @@ def main() -> None:
         "stest", help="Tests a settings file by running a single training step and integrating 10k samples.")
     state_test.add_argument('--file', '-f', type=str,
                             help="The settings .toml file.")
+    state_test.add_argument('--graph_properties', '-g', action='store_true', default=False,
+                            help="Enable this flag to print the graph properties of the integrand.")
 
     training_prog = subparsers.add_parser("tprog", help="Run and analyze a MadNIS training program.")
     training_prog.add_argument('--file', '-f', type=str,
@@ -93,7 +95,8 @@ def main() -> None:
             run_set_default_gl_path(path=args.directory,)
         case "stest":
             from glnis.scripts.settings_test import run_settings_test
-            run_settings_test(file=args.file,)
+            run_settings_test(file=args.file,
+                              show_graph_properties=args.graph_properties,)
         case "tprog":
             from glnis.scripts.training_prog import run_training_prog
             run_training_prog(file=args.file,
