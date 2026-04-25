@@ -1,6 +1,7 @@
 run_name = "scalar@4p6L"
 output_dir = "scalar/4p6L"
 templates = [
+    "settings/scalar/base",
     "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size4",
@@ -12,23 +13,17 @@ momtrop_edge_weight = 0.70588235294
 [gammaloop]
 state = "scalar/4p6L/state"
 integration_workspace = "scalar/4p6L/state/integration_workspace"
-get_target_from_gammaloop = false
 
 [integration_target]
 real_mean = 8.4045e-19
 
-[layered_integrator]
-integrator_type = "madnis"
-
 [integrator.madnis]
-batch_size = 32768
+batch_size = 30000
 
-[layered_integrand]
-integrand_type = "gammaloop"
-training_phase = "real"
-n_cores = 32
+[integrand.gammaloop]
+sample_orientations = true
 
 [scripts.sampler_comp]
-n_training_steps = 500
-n_samples = 100000
+n_training_steps = 1000
+n_samples = 1000000
 n_samples_after_training = 1000000

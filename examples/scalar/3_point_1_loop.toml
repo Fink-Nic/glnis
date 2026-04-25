@@ -13,8 +13,7 @@ overwrite_lmb_heuristics = true
 [gammaloop]
 state = "scalar/3p1L/state"
 integration_workspace = "scalar/3p1L/state/integration_workspace"
-get_target_from_gammaloop = true
-prefer_gammaloop_over_target = true
+get_target_from_gammaloop = false
 
 [integration_target]
 real_mean = 9.76546e-5
@@ -61,7 +60,8 @@ n_plot_disc = 5
 plot_disc = true 
 
 [[scripts.hyperparam_comparison.comparison]]
-name = "parameterisations"
+name = "param"
+plot_slices = false
 blocks = [ 
     ["""
     [layered_parameterisation.layer_0]
@@ -91,13 +91,40 @@ blocks = [
     ["settings/templates/parameterisation/mc_lmb_spherical_no_heur"],
 ]
 block_names = [
-    "momtrop_cont_only", 
-    "momtrop_disc_only", 
-    "momtrop_both_redundant_c", 
-    "momtrop_both", 
+    "cont", 
+    "disc", 
+    "both_red_c", 
+    "both", 
     "lmb_mc",
 ]
+[[scripts.hyperparam_comparison.comparison]]
+name = "transformer network"
 plot_slices = false
+blocks = [
+    ["settings/templates/transformer/size0"],
+    ["settings/templates/transformer/size1"],
+    ["settings/templates/transformer/size2"],
+    ["settings/templates/transformer/size3"],
+    ["settings/templates/transformer/size4"],
+    ["settings/templates/transformer/size5"],
+]
+block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64", "8_3_3_128"]
+[[scripts.hyperparam_comparison.comparison]]
+name = "flow network"
+plot_slices = false
+blocks = [
+    ["settings/templates/flow/size0"],
+    ["settings/templates/flow/size1"],
+    ["settings/templates/flow/size2"],
+    ["settings/templates/flow/size3"],
+    ["settings/templates/flow/size4"],
+    ["settings/templates/flow/size5"],
+    ["settings/templates/flow/size6"],
+    ["settings/templates/flow/size7"],
+    ["settings/templates/flow/size8"],
+    ["settings/templates/flow/size9"],
+]
+block_names = ["1_16", "1_64", "2_64", "2_128", "3_128", "3_256", "4_256", "4_512", "5_512", "5_1024"]
 
 [scripts.hpcomp_training_run]
 n_training_steps = 500

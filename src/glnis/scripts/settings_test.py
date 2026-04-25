@@ -28,6 +28,8 @@ def run_settings_test(file: str, show_graph_properties: bool = False) -> None:
             for key, value in asdict(integrator.integrand.param.param.graph_properties).items():
                 shell_print(f"{Colour.CYAN}{key}{Colour.END}: {value}")
 
+        integrator.display_info()
+
         # Training parameters
         nitn = 1
         batch_size = 10_000

@@ -262,10 +262,11 @@ class Integrator(ABC):
 
     @_block_if_ended
     def display_info(self) -> None:
+        from glnis.utils.helpers import Colour
         info = self.get_info()
         shell_print("Integrator information:")
         for key, value in info.items():
-            shell_print(f"    {key}: {value}")
+            shell_print(f"    {Colour.CYAN}{key}{Colour.END}: {value}")
 
     def free(self) -> None:
         """Performs any necessary cleanup after integration is done."""
@@ -518,18 +519,7 @@ class HavanaIntegrator(Integrator):
 
         layer_input.continuous = continuous
         layer_input.discrete = discrete
-        total_wgt = np.full((n_points), 1.0/self._discrete_prod, dtype=self.integrand.dtype)
-        for i in range(self.num_discrete_dims):
-            try:
-                discrete_wgt = np.take_along_axis(
-                    self.integrand.discrete_prior_prob_function(
-                        discrete[:, :i], i),
-                    discrete[:, [i]]).ravel()
-                total_wgt /= discrete_wgt
-            except Exception as e:
-                shell_print(f"Error computing discrete weight for dimension {i}: {e}")
-                shell_print(f"Discrete samples for this dimension: {discrete[:, i]}")
-                raise e
+        total_wgt = self.integrand.apply_prior_to_discrete(discrete)
 
         if not training:
             total_wgt *= np.array([s.weights[0] for s in samples])
@@ -550,6 +540,8 @@ class HavanaIntegrator(Integrator):
         prob = 1. / np.array([
             self.havana.probe(Probe.discrete(d, c)) for d, c in zip(discrete, continuous)
         ])
+        if discrete.shape[1] > 0:
+            prob *= self.integrand.apply_prior_to_discrete(discrete)
 
         return prob
 

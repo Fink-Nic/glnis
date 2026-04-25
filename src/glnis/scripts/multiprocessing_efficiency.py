@@ -31,9 +31,11 @@ def run_multiprocessing_efficiency(
     no_plot: bool = False,
     subroutine: str = "multiprocessing_efficiency",
     use_naive: bool = False,
+    use_cpu: bool = False,
 ) -> MPEfficiencyData | None:
     import os
     import signal
+    import torch
 
     from glnis.core.integrator import Integrator
     from glnis.core.parser import SettingsParser
@@ -43,6 +45,7 @@ def run_multiprocessing_efficiency(
     signal.signal(signal.SIGINT, signal.default_int_handler)
 
     file = verify_path(file)
+    use_cpu = use_cpu and not use_naive
     try:
         Settings = SettingsParser(file)
         SData = None
@@ -87,7 +90,8 @@ def run_multiprocessing_efficiency(
 
         Settings.settings["layered_integrand"]["n_cores"] = max_cores
         Settings.settings["layered_integrator"]["integrator_type"] = "naive" if use_naive else "madnis"
-        Settings.settings["layered_integrator"]["pretrain_c_flow"] = False
+        Settings.settings["integrator"]["madnis"]["pretrain_c_flow"] = False
+        Settings.settings["integrator"]["madnis"]["use_gpu"] = not use_cpu
         integrator: Integrator = Integrator.from_settings(
             Settings.settings
         )
@@ -103,6 +107,8 @@ def run_multiprocessing_efficiency(
 
         for cores in n_cores:
             integrator.integrand.n_cores = cores
+            if use_cpu:
+                torch.set_num_threads = cores
 
             for samples in n_samples:
                 if samples / cores > max_samples_per_core:
@@ -123,6 +129,10 @@ def run_multiprocessing_efficiency(
             quit()
 
         run_name = Settings.settings.get('run_name', 'default').replace(' ', '_')
+        if use_cpu:
+            run_name += "_cpu"
+        if use_naive:
+            run_name += "_naive"
         filename = run_name + "_mpe_" + datetime.now().strftime("%Y_%m_%d-%H_%M_%S") + ".pkl"
         file = Path(directory, filename)
         with file.open("wb") as f:

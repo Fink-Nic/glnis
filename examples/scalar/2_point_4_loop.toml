@@ -13,7 +13,6 @@ momtrop_edge_weight = 0.7777777777777
 [gammaloop]
 state = "scalar/2p4L/state"
 integration_workspace = "scalar/2p4L/state/integration_workspace"
-get_target_from_gammaloop = false
 
 [integration_target]
 imag_mean = 8.36515e-8
@@ -23,7 +22,5 @@ batch_size = 20000
 learning_rate = 4e-4
 
 [layered_integrand]
-integrand_type = "gammaloop"
 training_phase = "imag"
-n_cores = 32
 use_f128 = true

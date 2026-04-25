@@ -469,8 +469,7 @@ class Accumulator:
     def str_report(self) -> str:
         line = 125*"="
         report = [line]
-        for module in self.modules:
-            report.append(module.str_report())
+        report.extend([m.str_report() for m in self.modules if m.str_report()])
         report.append(line)
 
         return "\n".join(report)
@@ -600,7 +599,7 @@ class IntegrationStatistics(AccumulatorModule):
                 report[-1] += f", ATVAR={atvar:.3e}"
             if self.target.real_mean != 0:
                 diff = self.result.real_mean - self.target.real_mean
-                sigma_diff = diff / self.result.real_error if self.result.real_error > 0 else 0
+                sigma_diff = abs(diff) / self.result.real_error if self.result.real_error > 0 else 0
                 rel_diff = abs(diff / self.target.real_mean)
                 if self.target.real_error > 0:
                     target_str = error_fmter(self.target.real_mean, self.target.real_error, self.precision)
@@ -642,7 +641,7 @@ class IntegrationStatistics(AccumulatorModule):
                 report[-1] += f", ATVAR={atvar:.3e}"
             if self.target.imag_mean != 0:
                 diff = self.result.imag_mean - self.target.imag_mean
-                sigma_diff = abs(diff / self.result.imag_error) if self.result.imag_error > 0 else 0
+                sigma_diff = abs(diff) / self.result.imag_error if self.result.imag_error > 0 else 0
                 rel_diff = abs(diff / self.target.imag_mean)
                 if self.target.imag_error > 0:
                     target_str = error_fmter(self.target.imag_mean, self.target.imag_error, self.precision)

@@ -211,6 +211,9 @@ def run_sampler_comp(
             all_channels = np.array(
                 np.meshgrid(*[range(dim) for dim in madnis_integrator.integrand.discrete_dims])
             ).T.reshape(-1, len(madnis_integrator.integrand.discrete_dims))
+            # Discard the ones with zero prior probability
+            prior = madnis_integrator.integrand.apply_prior_to_discrete(all_channels)
+            all_channels = all_channels[prior > 0]
             for tp in Data.training_progress.values():
                 tp.all_channels = all_channels
 
@@ -523,9 +526,6 @@ def plot_sampler_comp(file: str,
         axs[3, 0].set_ylabel("ATVAR")
         for i in range(2):
             axs[3, i].set_xticks(range(n_spl), list(Data.observables.keys()), rotation=45)
-            axs[1, i].set_yscale("log")
-            axs[2, i].set_yscale("log")
-            axs[3, i].set_yscale("log")
 
         tgt_line_len = n_spl - 1
         tgt = Data.target
@@ -568,12 +568,16 @@ def plot_sampler_comp(file: str,
                 axs[1, 0].scatter(i, obs.real_rsd, color='black')
                 axs[2, 0].scatter(i, obs.real_tvar, color='black')
                 axs[3, 0].scatter(i, obs.abs_real_tvar, color='black')
+                for j in range(1, 4):
+                    axs[j, 0].set_yscale("log")
             if obs.imag_error > 0:
                 axs[0, 1].errorbar(i, obs.imag_mean, yerr=obs.imag_error,
                                    marker='o', markersize=5, capsize=5, color='black')
                 axs[1, 1].scatter(i, obs.imag_rsd, color='black')
                 axs[2, 1].scatter(i, obs.imag_tvar, color='black')
                 axs[3, 1].scatter(i, obs.abs_imag_tvar, color='black')
+                for j in range(1, 4):
+                    axs[j, 1].set_yscale("log")
         fig.suptitle(f"Integration results for {run_name}")
         fig.savefig(
             Path(directory, filename + "_integration_result.png"), dpi=300, bbox_inches="tight"

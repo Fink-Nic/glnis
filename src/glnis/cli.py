@@ -70,7 +70,9 @@ def main() -> None:
     mp_efficiency.add_argument('--no_plot', action='store_true', default=False,
                                help="Enable this flag to not output the plot file.")
     mp_efficiency.add_argument('--use_naive', action='store_true', default=False,
-                               help="Enable this flag to use the naive integrator.")
+                               help="Enable this flag to use the naive integrator.",)
+    mp_efficiency.add_argument('--cpu', action='store_true', default=False,
+                               help="Enable this flag to run MadNIS on CPU.")
 
     hp_comp = subparsers.add_parser(
         "hpcomp", help="Compare the performance of different hyperparameter configurations.")
@@ -125,7 +127,8 @@ def main() -> None:
             run_multiprocessing_efficiency(file=args.file,
                                            no_output=args.no_output,
                                            no_plot=args.no_plot,
-                                           use_naive=args.use_naive)
+                                           use_naive=args.use_naive,
+                                           use_cpu=args.cpu,)
         case "hpcomp":
             from glnis.scripts.hyperparam_comparison import run_hyperparam_comparison
             run_hyperparam_comparison(file=args.file,

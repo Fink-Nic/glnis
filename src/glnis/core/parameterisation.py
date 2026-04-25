@@ -387,16 +387,31 @@ class MomtropParameterisation(Parameterisation):
         Returns:
             List of shape (n_edges,) that appends the as-yet unforced edges to edges_removed
         """
-        n_edges = self.layer_num_discrete_dims
+        n_edges = self.graph_properties.n_edges
+        n_points, k = edges_removed.shape
         full_graph = np.arange(n_edges)
         if edges_removed is None:
             return [full_graph.tolist()]
+        if k > n_edges:
+            raise ValueError(f"Too many edges removed: {k} > {n_edges}")
 
         edges_removed = edges_removed.astype(np.uint64)
-        n_points = edges_removed.shape[0]
 
-        if edges_removed.shape[1] == 0:
+        if k == 0:
             return np.tile(full_graph, (n_points, 1))
+
+        result = np.empty((n_points, n_edges), dtype=np.uint64)
+        result[:, :k] = edges_removed
+        # Check if edges_removed contains duplicates, replace with arange, prior will be zero anyways
+        duplicate_mask = np.any(np.diff(np.sort(edges_removed, axis=1), axis=1).reshape(n_points, -1) == 0, axis=1)
+        if np.any(duplicate_mask):
+            edges_removed[duplicate_mask] = np.arange(k)
+
+        # If only one edge is left, we can directly return the result without masking (which is more expensive)
+        if k == n_edges - 1:
+            valid_sum = n_edges * (n_edges - 1) / 2
+            result[:, -1] = valid_sum - np.sum(edges_removed, axis=1)
+            return result
 
         # mask[i, j] == True ⇔ edge j is still available for sample i
         mask = np.ones((n_points, n_edges), dtype=bool)
@@ -404,15 +419,12 @@ class MomtropParameterisation(Parameterisation):
 
         # shape: (n, n_edges - k)
         remaining = np.nonzero(mask)[1].reshape(n_points, -1)
-
-        result = np.empty((n_points, n_edges), dtype=np.uint64)
-        k = edges_removed.shape[1]
-        result[:, :k] = edges_removed
         result[:, k:] = remaining
 
         return result.tolist()
 
     def _layer_prior_prob_function(self, indices: NDArray) -> NDArray:
+        #
         rust_result = self.momtrop_sampler.predict_discrete_probs(
             indices.tolist())
 
@@ -427,6 +439,8 @@ class MomtropParameterisation(Parameterisation):
         if not self.sample_discrete:
             return []
         n_edges = self.graph_properties.n_edges
+        if self.mask_redundant:
+            return (n_edges - 1) * [n_edges]
         return n_edges * [n_edges]
 
 

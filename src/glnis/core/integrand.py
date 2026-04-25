@@ -466,6 +466,24 @@ class ParameterisedIntegrand:
 
         return prior2(indices, dim)
 
+    def apply_prior_to_discrete(self, discrete: NDArray) -> NDArray:
+        disc_prod = np.array(self.discrete_dims, dtype=np.float64).prod()
+        total_wgt = np.full((discrete.shape[0]), 1.0/disc_prod, dtype=self.dtype)
+        for i in range(discrete.shape[1]):
+            try:
+                disc_prior = self.discrete_prior_prob_function(discrete[:, :i], i)
+                disc_prior /= np.sum(disc_prior, axis=1, keepdims=True)
+                prior_wgt = np.take_along_axis(
+                    disc_prior,
+                    discrete[:, [i]]).ravel()
+                total_wgt = np.divide(total_wgt, prior_wgt, out=np.zeros_like(total_wgt), where=prior_wgt != 0)
+            except Exception as e:
+                shell_print(f"Error computing discrete weight for dimension {i}: {e}")
+                shell_print(f"Discrete samples for this dimension: {discrete[:, i]}")
+                raise e
+
+        return total_wgt
+
     def _get_discrete_dims(self) -> List[int]:
         if self.sum_channels:
             return self.integrand.discrete_dims
