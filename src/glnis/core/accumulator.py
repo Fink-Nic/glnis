@@ -289,6 +289,7 @@ class LayerData:
                 self.failures[identifier+"_"] = caused_failures
             else:
                 self.failures[identifier] = caused_failures
+            self._data[new_failures_mask] = 0
 
         # Converting from iter to list allows us to remove items during loop
         for name in list(self._pending_data.keys()):

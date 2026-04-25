@@ -1,4 +1,4 @@
-run_name = "bugblatter"
+run_name = "bugblatter@base"
 
 [graph]
 from_state = false
@@ -170,22 +170,6 @@ lmb_array = [
 [model]
 from_state = false
 
-[layered_integrator]
-integrator_type = "madnis"
-batch_size = 1000
-learning_rate = 1e-3
-use_scheduler = true
-discrete_model = "transformer"
-loss_type = "kl_divergence_softclip"
-
-[integrator.madnis.transformer]
-embedding_dim  = 64
-feedforward_dim = 256
-heads = 8
-transformer_layers = 3
-mlp_layers = 3
-mlp_units = 256
-
 [layered_parameterisation.layer_0]
 parameterisation_type = "rkaapo"
 # chem potential [3.141592653589793, 3.141592653589793, 3.141592653589793, 3.141592653589793, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -203,12 +187,14 @@ fermi_exponent = 1.0
 [layered_integrand]
 integrand_type = "kaapo"
 path_to_example = "thermal_integrand_examples/bugblatterPQ"
-# chem potential [6.283185307179586, 3.141592653589793, 1.0]
-# no chem potential [6.283185307179586, 0.0, 1.0] 
-params = [6.283185307179586, 3.141592653589793, 1.0]
 use_prec = true
 use_f128 = true
 n_cores = 128
+
+[integrand.kaapo]
+# chem potential [6.283185307179586, 3.141592653589793, 1.0]
+# no chem potential [6.283185307179586, 0.0, 1.0] 
+params = [6.283185307179586, 3.141592653589793, 1.0]
 
 [integrand.kaapo.symbolica_integrand_kwargs]
 rotation_seed = 42
@@ -233,33 +219,12 @@ sum_orientations = true
 runtime_summation = false
 
 [scripts.sampler_comp]
-n_training_steps = 2000
-n_samples = 1000
-nitn = 10
-# Number of samples drawn after the training to compute the final result
-n_samples_after_training = 1000000
-# Training steps between callback of loss to console
-n_log = 20
-# Training steps between drawing n_samples samples to calculate the rel. std. (rsd)
-# Will also output the result +- error and rsd to console
-n_plot_snapshot = 100
-# Training steps between plotting the loss
-n_plot_loss = 10
-
-[scripts.training_prog]
-n_training_steps = 2000
-n_samples = 1000000
-nitn = 10
-n_log = 20
-n_plot_snapshot = 100
-n_plot_loss = 10
-
-[scripts.slice_plots]
-n_samples_2d = 400
-slice_dims_2d = [[4, 5], [5, 8]] # [[0, 1], [3, 6], [4, 5], [4, 7], [5, 8]]
-
-[scripts.multiprocessing_efficiency]
-n_cores = [1, 4, 16, 32, 64, 128]
-n_samples = [1000, 10000, 100000, 1000000, 10000000]
-max_samples_per_core = 100000
-EPS = 1e-2
+n_training_steps = 1000 # Number of MadNIS training steps
+nitn = 20 # Number of Vegas / Havana training steps (total training samples are equal to MadNIS)
+n_samples = 1000000 # Number of samples to compute the snapshot with
+n_samples_after_training = 10000000 # Number of samples drawn after the training to compute the final result
+n_log = 20 # Training steps between callback of loss to console
+n_plot_snapshot = 100 # Training steps between drawing n_samples samples for a snapshot
+n_plot_loss = 2 # Training steps between plotting the loss
+n_plot_disc = 2 # Training steps between plotting the discrete probabilities
+plot_disc = true 

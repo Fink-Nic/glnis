@@ -1,0 +1,83 @@
+run_name = "test@base"
+output_dir = "test/base"
+
+templates = [
+    "settings/templates/flow/size1",
+    "settings/templates/madnis_bins/size1",
+    "settings/templates/transformer/size1",
+]
+
+[graph]
+from_state = false
+momtrop_edge_weight = 0.75
+is_vacuum = true
+overwrite_graph_properties = true
+
+[integration_target]
+real_mean = 1.0
+
+[graph.graph_properties]
+edge_src_dst_vertices=[[0, 1], [1, 2], [2, 0]]
+edge_masses=[0.0, 0.0, 0.0]
+edge_momentum_shifts=[[-9.0, -11.0, -13.0], [0.0, 0.0, 0.0], [-3.0, -4.0, -5.0]]
+graph_external_vertices=[0, 1, 2]
+graph_signature=[[1], [1], [1]]
+momtrop_edge_weight=[0.83333333333, 0.83333333333, 0.83333333333]
+lmb_array=[[2],[1],[0]]
+edge_external_sigs=[[-1.0, 1.0, 0.0], [0.0, 0.0, 0.0], [-1.0, 0.0, 0.0]]
+external_momenta=[[1.0, 3.0, 4.0, 5.0], [-1.0, -6.0, -7.0, -8.0], [2.0, 9.0, 11.0, 13.0]]
+orientation_ids=[0, 1, 2, 3, 4, 5]
+orientation_signatures=[[0, 0, 0, -1, 1, 1], [0, 0, 0, 1, -1, 1], [0, 0, 0, -1, -1, 1], [0, 0, 0, 1, 1, -1], [0, 0, 0, -1, 1, -1], [0, 0, 0, 1, -1, -1]]
+generation_channel_id=1
+e_cm=1.0
+
+[model]
+from_state = false
+
+[layered_integrator]
+integrator_type = "madnis"
+
+[integrator.madnis]
+batch_size = 1000
+learning_rate = 1e-3
+use_scheduler = true
+pretrain_c_flow = false
+
+[layered_integrand]
+integrand_type = "test"
+n_cores = 1
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "momtrop_edge_weights"
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "momtrop"
+compensate_edge_weights = false
+
+[parameterisation.momtrop]
+mask_redundant = true
+
+[scripts.sampler_comp]
+n_training_steps = 50
+n_samples = 1000
+n_samples_after_training = 20000
+n_log = 5
+n_plot_snapshot = 10
+n_plot_loss = 1
+plot_disc = true
+n_plot_disc = 2
+
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
+discrete = []
+dirs = [0, 3]
+grid = [
+    {start = 0, stop = 1, num = 100},
+]
+[[scripts.slice_plots.slice]]
+origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
+discrete = []
+dirs = [0, 3]
+grid = [
+    {start = 0, stop = 1, num = 100},
+]

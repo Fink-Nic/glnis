@@ -1,6 +1,7 @@
-run_name = "mercedes_optimised_nos"
+run_name = "mercedes@optimised"
+output_dir = "mercedes"
 templates = [
-    "settings/vacuum_graphs/mercedes/mercedes_base",
+    "settings/vacuum_graphs/mercedes/base",
     "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size3",

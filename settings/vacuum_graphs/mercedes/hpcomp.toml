@@ -1,6 +1,7 @@
-run_name = "mercedes_hpcomp"
+run_name = "mercedes"
+output_dir = "mercedes/hpcomp"
 templates = [
-    "settings/vacuum_graphs/mercedes/mercedes_base",
+    "settings/vacuum_graphs/mercedes/base",
     "settings/templates/flow/size7",
     "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size3",
@@ -209,7 +210,7 @@ block_names = [
 ]
 
 [scripts.hpcomp_training_run]
-n_training_steps = 1000
+n_training_steps = 500
 n_samples = 1000000
 n_samples_after_training = 10000000
 n_log = 50

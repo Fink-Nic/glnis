@@ -1,24 +1,25 @@
-run_name = "bugblatter_hpcomp"
+run_name = "bugblatter@t030"
+output_dir = "bugblatter/t030"
+
 templates = [
-    "settings/vacuum_graphs/bugblatter/bugblatter_t070_base",
-    "settings/templates/flow/size5",
-    "settings/templates/madnis_bins/size3",
+    "settings/vacuum_graphs/bugblatter/base",
+    "settings/vacuum_graphs/bugblatter/tseries_param",
+    "settings/templates/flow/size8",
+    "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size3",
 ]
 
-[[scripts.hyperparam_comparison.comparison]]
-name = "bins"
-blocks = [
-        ["settings/templates/madnis_bins/size0"],
-        ["settings/templates/madnis_bins/size1"],
-        ["settings/templates/madnis_bins/size2"],
-        ["settings/templates/madnis_bins/size3"],
-        ["settings/templates/madnis_bins/size4"],
-    ]
-block_names = [5, 10, 20, 50, 100]
+[integration_target]
+n_points = 416000000
+real_mean = -0.00000688441782011863
+real_error = 0.0000000200846984630986
+
+[integrand.kaapo]
+params = [0.190270777045349, 1.0, 33.0223348259205]
 
 [[scripts.hyperparam_comparison.comparison]]
 name = "flow network"
+plot_slices = true
 blocks = [
         ["settings/templates/flow/size5"],
         ["settings/templates/flow/size6"],
@@ -30,8 +31,8 @@ block_names = ["3_256", "4_256", "4_512", "5_512", "5_1024"]
 
 [[scripts.hyperparam_comparison.comparison]]
 name = "transformer network"
+plot_slices = true
 blocks = [
-        ["settings/templates/transformer/size0"],
         ["settings/templates/transformer/size1"],
         ["settings/templates/transformer/size2"],
         ["settings/templates/transformer/size3"],
@@ -39,17 +40,10 @@ blocks = [
     ]
 block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64"]
 
-[[scripts.hyperparam_comparison.comparison]]
-name = "made network"
-blocks = [
-        ["settings/templates/made/size2"],
-        ["settings/templates/made/size3"],
-        ["settings/templates/made/size4"],
-    ]
-block_names = ["2_8", "2_16", "3_16"]
 
 [[scripts.hyperparam_comparison.comparison]]
 name = "big flow bins"
+plot_slices = true
 blocks = [
         [
             "settings/templates/flow/size9",
@@ -81,3 +75,20 @@ n_samples_after_training = 10000000
 n_log = 20
 n_plot_snapshot = 100
 n_plot_loss = 2
+n_plot_disc = 2
+plot_disc = true
+
+[[scripts.slice_plots.slice]]
+name = "re+"
+from_max_wgt = "re+" 
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 1000}, 
+]
+[[scripts.slice_plots.slice]]
+name = "re-"
+from_max_wgt = "re-" 
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 1000}, 
+]

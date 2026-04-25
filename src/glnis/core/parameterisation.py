@@ -169,7 +169,7 @@ class Parameterisation(ABC):
             disc_param = np.hstack([disc_param, disc_pass])
 
         # Update the data
-        layer_input.jac *= jac_param
+        layer_input.jac *= jac_param.reshape(-1, 1)
         if self.next_param is None:
             layer_input.momenta = cont_param
         else:
@@ -269,6 +269,8 @@ class LayeredParameterisation:
             match param_type.lower():
                 case "momtrop":
                     p = MomtropParameterisation(**kwargs)
+                case "momtrop_edge_weights":
+                    p = MomtropEdgeWeightsParameterisation(**kwargs)
                 case "spherical":
                     p = SphericalParameterisation(**kwargs)
                 case "inv_spherical":
@@ -323,9 +325,11 @@ class MomtropParameterisation(Parameterisation):
     def __init__(self, overwrite_edge_weight: float | List[float] | bool = False,
                  sample_discrete: bool = True,
                  mask_redundant: bool = True,
+                 compensate_edge_weights: bool = True,
                  **kwargs: Dict[str, Any]):
         self.sample_discrete = sample_discrete
         self.mask_redundant = mask_redundant and sample_discrete
+        self.compensate_edge_weights = compensate_edge_weights
         self.graph_properties: GraphProperties = kwargs["graph_properties"]
         match overwrite_edge_weight:
             case bool():
@@ -367,13 +371,20 @@ class MomtropParameterisation(Parameterisation):
             ])
         if discrete.size == 0:
             samples = self.momtrop_sampler.sample_batch(
-                continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings)
+                continuous, self.momtrop_edge_data, self.momtrop_sampler_settings, None, )  # self.compensate_edge_weights)
+            # samples = self.momtrop_sampler.sample_batch(
+            #     continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings)
         else:
             samples = self.momtrop_sampler.sample_batch(
-                continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings,
-                self._get_graph_from_edges_removed(discrete))
+                continuous, self.momtrop_edge_data, self.momtrop_sampler_settings,
+                self._get_graph_from_edges_removed(discrete), )  # self.compensate_edge_weights,)
+            # samples = self.momtrop_sampler.sample_batch(
+            #     continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings,
+            #     self._get_graph_from_edges_removed(discrete))
 
+        # jac = samples.jacobians_array
         jac = np.array(samples.jacobians, dtype=continuous.dtype).reshape(-1, 1)
+        # momentum = samples.loop_momenta_array
         momentum = np.array(
             samples.loop_momenta, dtype=continuous.dtype).reshape(len(continuous), -1)
 
@@ -421,7 +432,7 @@ class MomtropParameterisation(Parameterisation):
         remaining = np.nonzero(mask)[1].reshape(n_points, -1)
         result[:, k:] = remaining
 
-        return result.tolist()
+        return result
 
     def _layer_prior_prob_function(self, indices: NDArray) -> NDArray:
         #
@@ -442,6 +453,28 @@ class MomtropParameterisation(Parameterisation):
         if self.mask_redundant:
             return (n_edges - 1) * [n_edges]
         return n_edges * [n_edges]
+
+
+class MomtropEdgeWeightsParameterisation(Parameterisation):
+    IDENTIFIER = "edge weights param"
+
+    def __init__(self,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self._signature = np.array(self.graph_properties.graph_signature)
+        self._shifts = np.array(self.graph_properties.edge_momentum_shifts)
+
+    def _layer_parameterise(self, continuous: NDArray, discrete: NDArray,
+                            ) -> ParamOutput:
+        jac = np.ones((continuous.shape[0]), dtype=continuous.dtype)
+        momenta = continuous.reshape(-1, self.graph_properties.n_loops, 3)
+        for i in range(self.graph_properties.n_edges):
+            m2 = self.graph_properties.edge_masses[i]**2
+            edge_momentum: NDArray = np.einsum('j, ijk->ik', self._signature[i], momenta) + self._shifts[i]
+            jac *= (np.einsum('ij,ij->i', edge_momentum,
+                    edge_momentum) + m2)**(self.graph_properties.momtrop_edge_weight[i])
+
+        return jac, continuous, discrete
 
 
 class SphericalParameterisation(Parameterisation):

@@ -120,9 +120,9 @@ class DotParser:
         for edge in edges:
             src_split = edge.get_source().split(':')
             dst_split = edge.get_destination().split(':')
-            if edge.get('source') is None:
+            if len(src_split) == 1:
                 ext_sigs[int(dst_split[1])] = 1
-            elif edge.get('sink') is None:
+            elif len(dst_split) == 1:
                 ext_sigs[int(src_split[1])] = -1
         ext_sigs = [sig for sig in ext_sigs if sig is not None]
 
@@ -146,7 +146,7 @@ class DotParser:
 
         # Filter out the external vertices
         for vert in vertices:
-            if vert.get('num') is not None:
+            if vert.get('int_id') is not None:
                 VERTICES.append(vert)
 
         # Add vertex ID for momtrop
@@ -164,11 +164,11 @@ class DotParser:
             if edge.get('lmb_id') is not None:
                 LMB_EDGES.append(edge)
 
-            if edge.get('source') is None:
+            if len(src_split) == 1:
                 # Incoming external momentum
                 EXT_VERTICES.add(graph.get_node(edge.get("dst"))[0])
                 EXT_SIGNATURES.append(1)
-            elif edge.get('sink') is None:
+            elif len(dst_split) == 1:
                 # Outgoing external momentum
                 EXT_VERTICES.add(graph.get_node(edge.get("src"))[0])
                 EXT_SIGNATURES.append(-1)

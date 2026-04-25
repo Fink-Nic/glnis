@@ -1,4 +1,4 @@
-run_name = "mercedes_base"
+run_name = "mercedes@base"
 templates = [
     "settings/templates/flow/size2",
     "settings/templates/madnis_bins/size2",

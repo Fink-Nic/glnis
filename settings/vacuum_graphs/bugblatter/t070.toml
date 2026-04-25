@@ -1,0 +1,18 @@
+run_name = "bugblatter@t070"
+output_dir = "bugblatter/t070"
+
+templates = [
+    "settings/vacuum_graphs/bugblatter/base",
+    "settings/vacuum_graphs/bugblatter/tseries_param",
+    "settings/templates/flow/size8",
+    "settings/templates/madnis_bins/size1",
+    "settings/templates/transformer/size3",
+]
+
+[integration_target]
+n_points = 290000000
+real_mean = -0.00000624159212391007
+real_error = 0.0000000179007098142485
+
+[integrand.kaapo]
+params = [0.46390258023886, 1.0, 13.5441913341902]
