@@ -33,12 +33,11 @@ block_names = ["3_256", "4_256", "4_512", "5_512", "5_1024"]
 name = "transformer network"
 plot_slices = true
 blocks = [
-        ["settings/templates/transformer/size1"],
         ["settings/templates/transformer/size2"],
         ["settings/templates/transformer/size3"],
         ["settings/templates/transformer/size4"],
     ]
-block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64"]
+block_names = ["1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64"]
 
 
 [[scripts.hyperparam_comparison.comparison]]
@@ -69,10 +68,10 @@ blocks = [
 block_names = ["5_1024_5", "5_1024_10", "5_1024_20", "5_1024_50", "5_1024_100"]
 
 [scripts.hpcomp_training_run]
-n_training_steps = 1000
+n_training_steps = 600
 n_samples = 1000000
 n_samples_after_training = 10000000
-n_log = 20
+n_log = 50
 n_plot_snapshot = 100
 n_plot_loss = 2
 n_plot_disc = 2
@@ -83,12 +82,12 @@ name = "re+"
 from_max_wgt = "re+" 
 dirs = [0, 1] 
 grid = [
-    {start = 0, stop = 1, num = 1000}, 
+    {start = 0, stop = 1, num = 400}, 
 ]
 [[scripts.slice_plots.slice]]
 name = "re-"
 from_max_wgt = "re-" 
 dirs = [0, 1] 
 grid = [
-    {start = 0, stop = 1, num = 1000}, 
+    {start = 0, stop = 1, num = 400}, 
 ]

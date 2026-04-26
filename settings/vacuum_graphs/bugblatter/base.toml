@@ -184,6 +184,11 @@ subtype = "fermi"
 ose_exponent = 6.0
 fermi_exponent = 1.0
 
+[integrator.madnis]
+batch_size = 20000
+learning_rate = 5e-4
+scheduler_type = "cosineannealing"
+
 [layered_integrand]
 integrand_type = "kaapo"
 path_to_example = "thermal_integrand_examples/bugblatterPQ"

@@ -336,13 +336,14 @@ class VegasIntegrator(Integrator):
             res = acc.training_mean
             err = acc.training_err
             rsd = acc.training_rsd
+            arsd = acc.training_abs_rsd
             status = Integrator.TrainingStatus(
                 step=self.step,
                 total_samples=self.total_training_samples,
                 acc=acc
             )
             callback(status)
-            report.append(f"itn {itn+1}: {error_fmter(res, err)}, RSD={rsd:.3f}")
+            report.append(f"itn {itn+1}: {error_fmter(res, err)}, RSD={rsd:.3f}, ARSD={arsd:.3f}")
 
         return "\n".join(f"{line}" for line in report)
 
@@ -484,7 +485,7 @@ class HavanaIntegrator(Integrator):
                 layer_input, 'training')
             self.havana.add_training_samples(
                 samples, acc.training_data.training_result.ravel().tolist())
-            avg, err, chi_sq = self.havana.update(
+            res, err, chi_sq = self.havana.update(
                 self.discrete_learning_rate, self.continuous_learning_rate)
             self.step += 1
             self.total_training_samples += batch_size
@@ -495,7 +496,7 @@ class HavanaIntegrator(Integrator):
             )
             callback(status)
             report.append(
-                f"It {itn+1:0>{n_digits}}: {avg:.6e} +- {err:.6e}, chi={chi_sq:.3f}")
+                f"It {itn+1:0>{n_digits}}: {error_fmter(res, err)}, χ²={chi_sq:.3f}")
 
         return "\n".join(f"{line}" for line in report)
 
@@ -760,13 +761,13 @@ class MadnisIntegrator(Integrator):
             layer_input, 'training')
         weighted_func_val = acc.training_data.training_result.flatten()
 
-        start = 2.0
-        max_step = 1500
-        highlight_peaks = False
-        if highlight_peaks:
-            exponent = start + self.madnis.step * (1.0 - start) / max_step
-            exponent = max(exponent, 1.0)
-            np.power(np.abs(weighted_func_val), exponent, out=weighted_func_val)
+        # start = 2.0
+        # max_step = 1500
+        # highlight_peaks = False
+        # if highlight_peaks:
+        #     exponent = start + self.madnis.step * (1.0 - start) / max_step
+        #     exponent = max(exponent, 1.0)
+        #     np.power(np.abs(weighted_func_val), exponent, out=weighted_func_val)
 
         torch_output = torch.from_numpy(
             weighted_func_val.astype(np.float64)).to(self.device)
@@ -782,7 +783,7 @@ class MadnisIntegrator(Integrator):
             x_all = np.hstack([continuous, discrete])
         prob = np.empty((n_samples,), dtype=np.float64)
         x_all = torch.as_tensor(
-            x_all,
+            x_all.astype(np.float64),
             device=self.madnis.dummy.device,
             dtype=self.madnis.dummy.dtype if continuous.shape[1] > 0 else torch.int64,
         )

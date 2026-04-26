@@ -102,9 +102,7 @@ def run_slice_plots(
             "scripts", dict()).get("slice_plots", dict())
 
     if isinstance(SData, SlicePlotData):
-        SData.settings = Settings.settings
-        directory = file.parent
-        plot_slices(file=SData, force_directory=directory)
+        plot_slices(file=file, force_directory=force_directory)
         return SData
 
     if len(SData.integrator_states) == 0:
@@ -135,6 +133,12 @@ def run_slice_plots(
         shell_print(f"Output will be at {directory}")
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
+
+    integrators: Dict[str, Integrator] = dict()
+
+    def free_integrators():
+        for integrator in integrators.values():
+            integrator.free()
     try:
         # Initialize the integrand to be shared across integrators
         graph_properties = Settings.get_graph_properties()
@@ -167,18 +171,13 @@ def run_slice_plots(
                     itg = madnis_obs.imag_mean
 
         if itg is not None and not only_plot:
-            shell_print(f"Using integral estimate {itg:.4e} to normalize function values.")
+            if not only_plot:
+                shell_print(f"Using integral estimate {itg:.4e} to normalize function values.")
         else:
             if not only_plot:
                 shell_print(f"No integral estimate found. Function values will not be normalized.")
 
         # Initialize the integrators
-        integrators: Dict[str, Integrator] = dict()
-
-        def free_integrators():
-            for integrator in integrators.values():
-                integrator.free()
-
         for integrator_type, state in SData.integrator_states.items():
             match integrator_type:
                 case str(MADNIS_KEY):
@@ -289,12 +288,14 @@ def run_slice_plots(
             shell_print(f"No valid slices defined in settings, exiting...")
             quit()
 
+        if not only_plot:
+            shell_print(
+                f"Found valid configs for {len(Data.slices1d)} 1D slices and {len(Data.slices2d)} 2D slices to plot.")
+
         # Generate the grids
-        slices1d: List[Tuple[Slice, Tuple[NDArray, NDArray]]] = []
-        for s1d in Data.slices1d:
+        for i_1d, s1d in enumerate(Data.slices1d):
             grid = s1d.grid[0]
             n_samples_1d = grid.num
-            # Sample a random discrete point
             if s1d.discrete:
                 discrete = np.tile(np.array(s1d.discrete, dtype=np.uint64), (n_samples_1d, 1))
             else:
@@ -302,31 +303,33 @@ def run_slice_plots(
             # Sample a random direction in the continuous space
             origin = s1d.origin
             direction = s1d.dirs[0]
-            grid.start = -np.min(np.divide(
-                origin, direction, out=np.full_like(origin, np.inf),
-                                 where=(direction != 0))) + EPS
-            grid.stop = np.min(np.divide(
-                1 - origin, direction, out=np.full_like(origin, np.inf),
-                where=(direction != 0))) - EPS
             grid1d = np.linspace(**asdict(grid))
-            continuous = origin[None, :] + direction[None, :] * grid1d.reshape(-1, 1)
-            slices1d.append((s1d, (discrete, continuous)))
+            continuous = origin + direction[None, :] * grid1d.reshape(-1, 1)
+            inside_hcube_mask = np.all((continuous >= Data.EPS) & (continuous <= 1.0 - Data.EPS), axis=-1)
             layer_input = LayerData(
-                n_samples_1d,
+                int(np.sum(inside_hcube_mask)),
                 n_mom=3*graph_properties.n_loops,
                 n_cont=integrand.continuous_dim,
                 n_disc=len(integrand.discrete_dims),)
-            layer_input.discrete, layer_input.continuous = discrete, continuous
+            layer_input.discrete = discrete[inside_hcube_mask]
+            layer_input.continuous = continuous[inside_hcube_mask]
             acc: TrainingAccumulator = integrand.eval_integrand(layer_input, "training")
-            func_val = acc.training_data.training_result.ravel()
+            func_val = np.full(n_samples_1d, np.nan)
+            func_val[inside_hcube_mask] = acc.training_data.training_result.ravel()
             if itg:
                 func_val /= itg
             s1d.func_val = func_val
-        if len(slices1d) > 0 and not only_plot:
-            shell_print(f"Generated 1D grids and populated func_vals.")
 
-        slices2d: List[Tuple[Slice, Tuple[NDArray, NDArray]]] = []
-        for s2d in Data.slices2d:
+            integrator_probs = dict()
+            for itype, integrator in integrators.items():
+                prob = np.full(n_samples_1d, np.nan)
+                prob[inside_hcube_mask] = integrator.probe_prob(layer_input.discrete, layer_input.continuous)
+                integrator_probs[itype] = prob.ravel()
+            s1d.prob = integrator_probs
+            if not only_plot:
+                shell_print(f"Generated 1D slice {s1d.name or i_1d}.")
+
+        for i_2d, s2d in enumerate(Data.slices2d):
             n_samples_2d = s2d.grid[0].num * s2d.grid[1].num
             # Sample a random discrete point
             if s2d.discrete:
@@ -349,33 +352,21 @@ def run_slice_plots(
             layer_input.continuous = continuous[inside_hcube_mask]
             layer_input.discrete = discrete[inside_hcube_mask]
             acc: TrainingAccumulator = integrand.eval_integrand(layer_input, "training")
-            func_val = np.zeros(n_samples_2d)
+            func_val = np.full(n_samples_2d, np.nan)
             func_val[inside_hcube_mask] = acc.training_data.training_result.ravel()
             if itg:
                 func_val /= itg
             s2d.func_val = func_val.reshape(s2d.grid[0].num, s2d.grid[1].num)
-            slices2d.append((s2d, (discrete, continuous)))
-        if len(slices2d) > 0 and not only_plot:
-            shell_print(f"Generated 2D grids and populated func_vals.")
 
-        for s1d, (discrete, continuous) in slices1d:
             integrator_probs = dict()
             for itype, integrator in integrators.items():
-                prob: NDArray = integrator.probe_prob(discrete, continuous)
-                integrator_probs[itype] = prob.ravel()
-            s1d.prob = integrator_probs
-        if len(slices1d) > 0 and not only_plot:
-            shell_print(f"Populated probs for 1D slices.")
-
-        for s2d, (discrete, continuous) in slices2d:
-            integrator_probs = dict()
-            for itype, integrator in integrators.items():
-                prob: NDArray = integrator.probe_prob(discrete, continuous)
+                prob = np.full(n_samples_2d, np.nan)
+                prob[inside_hcube_mask] = integrator.probe_prob(layer_input.discrete, layer_input.continuous)
                 integrator_probs[itype] = prob.reshape(s2d.func_val.shape)
             s2d.prob = integrator_probs
-        if len(slices2d) > 0 and not only_plot:
-            shell_print(f"Populated probs for 2D slices.")
-        # IMPORTANT: close the worker functions, or your script will hang
+            if not only_plot:
+                shell_print(f"Generated 2D slice {s2d.name or i_2d}.")
+
         free_integrators()
 
         if no_output:
@@ -386,13 +377,13 @@ def run_slice_plots(
             return Data
 
         run_name = Data.settings.get('run_name', 'default').replace(' ', '_')
-        filename = run_name + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
+        filename = run_name + "_" + datetime.now().strftime("%Y_%m_%d-%H_%M_%S") + ".pkl"
         file = Path(directory, filename)
         with file.open("wb") as f:
             pickle.dump(Data, f)
 
         if not no_plot:
-            plot_slices(file=Data, force_directory=directory)
+            plot_slices(file=file, force_directory=directory)
 
         return Data
 
@@ -421,6 +412,8 @@ def plot_slices(file: str | SlicePlotData,
     if isinstance(file, SlicePlotData):
         Data = file
         directory = verify_path("outputs")
+        run_name = Data.settings.get('run_name', 'default')
+        filename = run_name.replace(' ', '_') + "_" + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     else:
         file: Path = verify_path(file)
         with file.open('rb') as f:
@@ -428,12 +421,12 @@ def plot_slices(file: str | SlicePlotData,
         shell_print(f"Plotting data from '{file}'")
 
         directory = file.parent
+        filename = file.stem
+        run_name = Data.settings.get('run_name', 'default')
 
     if force_directory is not None:
         directory = verify_path(force_directory)
 
-    run_name = Data.settings.get('run_name', 'default')
-    filename = run_name.replace(' ', '_') + "_" + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     plotting_params: Dict[str, Any] = Data.settings.get(
         "scripts", dict()).get(
             "slice_plots", dict()).get(
@@ -525,6 +518,7 @@ def plot_slices(file: str | SlicePlotData,
     for i, slice in enumerate(Data.slices2d):
         slice: Slice
         extent = [slice.grid[0].start, slice.grid[0].stop, slice.grid[1].start, slice.grid[1].stop]
+        aspect_ratio = abs((slice.grid[0].stop - slice.grid[0].start) / (slice.grid[1].stop - slice.grid[1].start))
         for itype, prob in slice.prob.items():
             data_log = [np.abs(slice.func_val), prob]
             data_log = [d / np.nanmean(d) for d in data_log]  # Normalize by mean for better color scaling
@@ -549,6 +543,11 @@ def plot_slices(file: str | SlicePlotData,
             ax3.sharey(ax1)
             ax4.sharex(ax1)
             ax4.sharey(ax1)
+            ax1.tick_params(bottom=False, labelbottom=False)
+            ax2.tick_params(bottom=False, left=False, labelbottom=False, labelleft=False)
+            ax4.tick_params(left=False, labelleft=False)
+            axh1.tick_params(left=False, labelleft=False, right=True, labelright=True)
+            axh2.tick_params(left=False, labelleft=False, right=True, labelright=True)
             axh1.set_box_aspect(1)
             axh2.set_box_aspect(1)
 
@@ -558,7 +557,7 @@ def plot_slices(file: str | SlicePlotData,
                 # vmax = data.max(where=(~np.isnan(data)), initial=-np.inf)
                 ax: plt.Axes
                 im = ax.imshow(data, norm=norm12, cmap=cmap_segmented,
-                               origin='lower', extent=extent)
+                               origin='lower', extent=extent, aspect=aspect_ratio)
                 imgs.append(im)
                 ax.set_title(f"Normalized {title}")
                 cb12 = fig.colorbar(im, ax=ax, fraction=fraction, pad=padding, extend='both')
@@ -566,8 +565,8 @@ def plot_slices(file: str | SlicePlotData,
                                labels=[f"e{low_threshold:+.0f}", f"e{center:+.0f}", f"e{high_threshold:+.0f}"])
             # data3 /= np.nanmean(data3)  # Normalize by mean for better color scaling
             # data3 = np.log10(data3, out=np.full_like(data3, np.nan, dtype=np.float64), where=(data3 > 0))
-            im = ax3.imshow(data3, cmap=cmap3, extent=extent,
-                            norm=norm3, origin='lower')
+            im = ax3.imshow(data3, norm=norm3, cmap=cmap3,
+                            origin='lower', extent=extent, aspect=aspect_ratio)
             ax3.set_title(f"Oversampling {data_log_titles[-1]}")
             cb3 = fig.colorbar(im, ax=ax3, fraction=fraction, pad=padding, extend='both')
             cb3.set_ticks(ticks=[-high_threshold, 0, high_threshold],
@@ -577,8 +576,8 @@ def plot_slices(file: str | SlicePlotData,
             bounds = [-1.5, -0.5, 0.5, 1.5]
             discrete_norm = colors.BoundaryNorm(bounds, discrete_cmap.N)
             ax4: plt.Axes
-            im4 = ax4.imshow(data_discrete, cmap=discrete_cmap, norm=discrete_norm,
-                             origin='lower', extent=extent)
+            im4 = ax4.imshow(data_discrete, norm=discrete_norm, cmap=discrete_cmap,
+                             origin='lower', extent=extent, aspect=aspect_ratio)
             ax4.set_title("sgn(I)")
 
             cbar_disc = fig.colorbar(im4, ax=ax4, fraction=fraction, pad=padding)
@@ -614,7 +613,7 @@ def plot_slices(file: str | SlicePlotData,
             axh2.hist(data3.ravel(), bins=axh2_bins,
                       density=True, histtype='step', alpha=0.75, linewidth=1.5, color='purple')
             # axh2.legend()
-            axh2.set_title(f"Weighted oversampling {data_log_titles[-1]}.")
+            axh2.set_title(f"Oversampling {data_log_titles[-1]}.")
             axh2.set_xticks(ticks=[-high_threshold, 0, high_threshold],
                             labels=[f"e{-high_threshold:+.0f}", "1", f"e{high_threshold:+.0f}"])
 

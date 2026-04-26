@@ -86,16 +86,35 @@ plot_disc = true
 n_plot_disc = 2
 
 [[scripts.slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
-discrete = []
-dirs = [0, 3]
+name = "re+ radial"
+from_max_wgt = "re+"
+dirs = [0]
 grid = [
-    {start = 0, stop = 1, num = 100},
+    {start = 0.1, stop = 0.9, num = 100},
 ]
 [[scripts.slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965, 0.1, 0.1, 0.1]
-discrete = []
-dirs = [0, 3]
+name = "re+ angular"
+from_max_wgt = "re+"
+dirs = [1]
 grid = [
-    {start = 0, stop = 1, num = 100},
+    {start = -0.1, stop = 1.1, num = 100},
+]
+[[scripts.slice_plots.slice]]
+name = "re+"
+from_max_wgt = "re+"
+dirs = [0, 1]
+grid = [
+    {start = 0.1, stop = 0.9, num = 100},
+    {start = 0, stop = 1.5, num = 100},
+]
+[[scripts.slice_plots.slice]]
+name = "re+ skewed dirs"
+from_max_wgt = "re+"
+dirs = [
+    [0.5, 0.3, 0.0, 0.0, 0.0, 0.0],
+    [0.0, 0.05, 0.0, 1.5, 0.0, 0.0]
+]
+grid = [
+    {start = -0.1, stop = 0.3, num = 100},
+    {start = -0.3, stop = 0.8, num = 100},
 ]

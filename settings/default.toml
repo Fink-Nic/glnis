@@ -316,20 +316,18 @@ name = "Reals"
 log_scale = true
 include = [
     "real_mean",
-    "real_error",
     "real_rsd",
+    "abs_real_rsd",
     "real_tvar",
-    "abs_real_tvar",
 ]
 [[scripts.hyperparam_comparison.summary]]
 name = "Imags"
 log_scale = true
 include = [
     "imag_mean",
-    "imag_error",
     "imag_rsd",
+    "abs_imag_rsd",
     "imag_tvar",
-    "abs_imag_tvar",
 ]
 [[scripts.hyperparam_comparison.summary]]
 name = "Max Weights"

@@ -291,8 +291,8 @@ def plot_hyperparam_comparison(file: str) -> None:
         axs1: list[plt.Axes]
         axs1[0].set_ylabel("loss")
         axs1[1].set_ylabel("RSD")
-        axs1[2].set_ylabel("TVAR")
-        axs1[3].set_ylabel("ATVAR")
+        axs1[2].set_ylabel("ARSD")
+        axs1[3].set_ylabel("TVAR")
         axs1[3].set_xlabel("Training steps")
         for ax in axs1:
             ax.set_yscale("log")
@@ -305,8 +305,8 @@ def plot_hyperparam_comparison(file: str) -> None:
         # Row labels
         axs2[0, 0].set_ylabel("I(f)")
         axs2[1, 0].set_ylabel("RSD")
-        axs2[2, 0].set_ylabel("TVAR")
-        axs2[3, 0].set_ylabel("ATVAR")
+        axs2[2, 0].set_ylabel("ARSD")
+        axs2[3, 0].set_ylabel("TVAR")
         for i in range(2):
             axs2[3, i].set_xticks(range(n_blocks), block_ticks, rotation=45)
             axs2[1, i].set_yscale("log")
@@ -360,14 +360,14 @@ def plot_hyperparam_comparison(file: str) -> None:
             rsds, steps_snapshot = np.array(
                 run_data.training_progress.rsds), np.array(
                 run_data.training_progress.steps_snapshot)
-            tvars, atvars = np.array(run_data.training_progress.tvars), np.array(run_data.training_progress.abs_tvars)
+            arsds, tvars = np.array(run_data.training_progress.abs_rsds), np.array(run_data.training_progress.tvars)
 
             # Training progression data
             if len(steps_losses) and len(steps_snapshot):
                 axs1[0].plot(steps_losses, losses, label=block_name, color=cols[i])
                 axs1[1].scatter(steps_snapshot, rsds, label=block_name, color=cols[i])
-                axs1[2].scatter(steps_snapshot, tvars, label=block_name, color=cols[i])
-                axs1[3].scatter(steps_snapshot, atvars, label=block_name, color=cols[i])
+                axs1[2].scatter(steps_snapshot, arsds, label=block_name, color=cols[i])
+                axs1[3].scatter(steps_snapshot, tvars, label=block_name, color=cols[i])
 
             # Final integration results
             obs = run_data.observables
@@ -375,14 +375,14 @@ def plot_hyperparam_comparison(file: str) -> None:
                 axs2[0, 0].errorbar(i, obs['real_mean'], yerr=obs['real_error'],
                                     marker='o', markersize=5, capsize=5, color='black')
                 axs2[1, 0].scatter(i, obs['real_rsd'], color='black')
-                axs2[2, 0].scatter(i, obs['real_tvar'], color='black')
-                axs2[3, 0].scatter(i, obs['abs_real_tvar'], color='black')
+                axs2[2, 0].scatter(i, obs['abs_real_rsd'], color='black')
+                axs2[3, 0].scatter(i, obs['real_tvar'], color='black')
             if obs['imag_error'] > 0:
                 axs2[0, 1].errorbar(i, obs['imag_mean'], yerr=obs['imag_error'],
                                     marker='o', markersize=5, capsize=5, color='black')
                 axs2[1, 1].scatter(i, obs['imag_rsd'], color='black')
-                axs2[2, 1].scatter(i, obs['imag_tvar'], color='black')
-                axs2[3, 1].scatter(i, obs['abs_imag_tvar'], color='black')
+                axs2[2, 1].scatter(i, obs['abs_imag_rsd'], color='black')
+                axs2[3, 1].scatter(i, obs['imag_tvar'], color='black')
 
             # Additional observables
             num_param_discrete = run_data.madnis_info.get('discrete flow total parameters', 0)

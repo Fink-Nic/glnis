@@ -7,3 +7,4 @@ outputs/*
 thermal_integrand_examples/*/build/
 flake.lock
 *code-workspace
+tests/

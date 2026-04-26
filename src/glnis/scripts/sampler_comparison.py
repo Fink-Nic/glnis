@@ -27,6 +27,7 @@ HAVANA_KEY = "Havana"
 class TrainingProgress:
     losses: List[float] | None = field(default_factory=list)
     rsds: List[float] = field(default_factory=list)
+    abs_rsds: List[float] = field(default_factory=list)
     tvars: List[float] = field(default_factory=list)
     abs_tvars: List[float] = field(default_factory=list)
     steps_losses: List[int] = field(default_factory=list)
@@ -223,6 +224,7 @@ def run_sampler_comp(
             tp.means.append(acc.training_mean)
             tp.errors.append(acc.training_err)
             tp.rsds.append(acc.training_rsd)
+            tp.abs_rsds.append(acc.training_abs_rsd)
             tp.tvars.append(acc.training_tvar)
             tp.abs_tvars.append(acc.training_abs_tvar)
             tp.steps_snapshot.append(itg.step)
@@ -314,7 +316,7 @@ def run_sampler_comp(
             return Data
 
         run_name: str = Data.settings.get('run_name', 'default').replace(' ', '_')
-        filename = run_name + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
+        filename = run_name + "_" + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")+".pkl"
         file: Path = Path(directory, filename)
         with file.open("wb") as f:
             pickle.dump(Data, f)
@@ -354,8 +356,8 @@ def plot_sampler_comp(file: str,
     width = 60
     line = width * sep + "\n"
     directory = file.parent
+    filename = file.stem
     run_name = Data.settings.get('run_name', 'default')
-    filename = run_name.replace(' ', '_') + "_" + datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     madnis_tprog = Data.training_progress[MADNIS_KEY]
 
     with Path(directory, filename + "_summary.txt").open("w") as f:
@@ -386,10 +388,10 @@ def plot_sampler_comp(file: str,
             f.write(f"{f' {identifier} Results ':{'#'}^{width}}\n")
             if obs.real_error:
                 f.write(
-                    f"    RE : {obs.real_mean:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}\n")
+                    f"    RE : {obs.real_mean:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}, ARSD = {obs.abs_real_rsd:.3f}\n")
             if obs.imag_error:
                 f.write(
-                    f"    IM : {obs.imag_mean:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}\n")
+                    f"    IM : {obs.imag_mean:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}, ARSD = {obs.abs_imag_rsd:.3f}\n")
             f.write(f"Relative Time-Variance: ")
             if obs.real_tvar:
                 f.write(f"RE = {obs.real_tvar:.3e}  ")
@@ -419,8 +421,8 @@ def plot_sampler_comp(file: str,
     axs_snapshot: list[plt.Axes]
     axs_snapshot[0].set_ylabel("loss")
     axs_snapshot[1].set_ylabel("RSD")
-    axs_snapshot[2].set_ylabel("TVAR")
-    axs_snapshot[3].set_ylabel("ATVAR")
+    axs_snapshot[2].set_ylabel("ARSD")
+    axs_snapshot[3].set_ylabel("TVAR")
     axs_snapshot[3].set_xlabel("Training Samples")
     for ax in axs_snapshot:
         ax.set_yscale("log")
@@ -452,15 +454,15 @@ def plot_sampler_comp(file: str,
 
     for i, (KEY, tp) in enumerate(Data.training_progress.items()):
         c = COLS.get(KEY) or "black"
-        rsds, tvars, atvars = np.array(tp.rsds), np.array(tp.tvars), np.array(tp.abs_tvars)
+        rsds, arsds, tvars = np.array(tp.rsds), np.array(tp.abs_rsds), np.array(tp.tvars)
         nspl_snapshot = np.array(tp.nspl_snapshot)
         discrete_probs = np.array(tp.discrete_probs)
         nspl_discrete = np.array(tp.nspl_discrete)
         if KEY == MADNIS_KEY:
             axs_snapshot[0].plot(np.array(tp.nspl_losses), np.array(tp.losses), color=c, label=KEY)
         axs_snapshot[1].scatter(nspl_snapshot, rsds, color=c, label=KEY)
-        axs_snapshot[2].scatter(nspl_snapshot, tvars, color=c, label=KEY)
-        axs_snapshot[3].scatter(nspl_snapshot, atvars, color=c, label=KEY)
+        axs_snapshot[2].scatter(nspl_snapshot, arsds, color=c, label=KEY)
+        axs_snapshot[3].scatter(nspl_snapshot, tvars, color=c, label=KEY)
 
         if len(discrete_probs) > 0:
             sorted_indices = np.argsort(discrete_probs[-1])[::-1]
@@ -522,8 +524,8 @@ def plot_sampler_comp(file: str,
         # Row labels
         axs[0, 0].set_ylabel("I(f)")
         axs[1, 0].set_ylabel("RSD")
-        axs[2, 0].set_ylabel("TVAR")
-        axs[3, 0].set_ylabel("ATVAR")
+        axs[2, 0].set_ylabel("ARSD")
+        axs[3, 0].set_ylabel("TVAR")
         for i in range(2):
             axs[3, i].set_xticks(range(n_spl), list(Data.observables.keys()), rotation=45)
 
@@ -540,10 +542,10 @@ def plot_sampler_comp(file: str,
             )
         if tgt.real_rsd:
             axs[1, 0].hlines(tgt.real_rsd, 0, tgt_line_len, color='red')
+        if tgt.abs_real_rsd:
+            axs[2, 0].hlines(tgt.abs_real_rsd, 0, tgt_line_len, color='red')
         if tgt.real_tvar:
-            axs[2, 0].hlines(tgt.real_tvar, 0, tgt_line_len, color='red')
-        if tgt.abs_real_tvar:
-            axs[3, 0].hlines(tgt.abs_real_tvar, 0, tgt_line_len, color='red')
+            axs[3, 0].hlines(tgt.real_tvar, 0, tgt_line_len, color='red')
 
         if tgt.imag_mean:
             axs[0, 1].hlines(tgt.imag_mean, 0, tgt_line_len, color='red')
@@ -556,26 +558,26 @@ def plot_sampler_comp(file: str,
             )
         if tgt.imag_rsd:
             axs[1, 1].hlines(tgt.imag_rsd, 0, tgt_line_len, color='red')
+        if tgt.abs_imag_rsd:
+            axs[2, 1].hlines(tgt.abs_imag_rsd, 0, tgt_line_len, color='red')
         if tgt.imag_tvar:
-            axs[2, 1].hlines(tgt.imag_tvar, 0, tgt_line_len, color='red')
-        if tgt.abs_imag_tvar:
-            axs[3, 1].hlines(tgt.abs_imag_tvar, 0, tgt_line_len, color='red')
+            axs[3, 1].hlines(tgt.imag_tvar, 0, tgt_line_len, color='red')
 
         for i, obs in enumerate(Data.result.values()):
             if obs.real_error > 0:
                 axs[0, 0].errorbar(i, obs.real_mean, yerr=obs.real_error,
                                    marker='o', markersize=5, capsize=5, color='black')
                 axs[1, 0].scatter(i, obs.real_rsd, color='black')
-                axs[2, 0].scatter(i, obs.real_tvar, color='black')
-                axs[3, 0].scatter(i, obs.abs_real_tvar, color='black')
+                axs[2, 0].scatter(i, obs.abs_real_rsd, color='black')
+                axs[3, 0].scatter(i, obs.real_tvar, color='black')
                 for j in range(1, 4):
                     axs[j, 0].set_yscale("log")
             if obs.imag_error > 0:
                 axs[0, 1].errorbar(i, obs.imag_mean, yerr=obs.imag_error,
                                    marker='o', markersize=5, capsize=5, color='black')
                 axs[1, 1].scatter(i, obs.imag_rsd, color='black')
-                axs[2, 1].scatter(i, obs.imag_tvar, color='black')
-                axs[3, 1].scatter(i, obs.abs_imag_tvar, color='black')
+                axs[2, 1].scatter(i, obs.abs_imag_rsd, color='black')
+                axs[3, 1].scatter(i, obs.imag_tvar, color='black')
                 for j in range(1, 4):
                     axs[j, 1].set_yscale("log")
         fig.suptitle(f"Integration results for {run_name}")

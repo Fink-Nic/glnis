@@ -289,7 +289,6 @@ class LayerData:
                 self.failures[identifier+"_"] = caused_failures
             else:
                 self.failures[identifier] = caused_failures
-            self._data[new_failures_mask] = 0
 
         # Converting from iter to list allows us to remove items during loop
         for name in list(self._pending_data.keys()):
@@ -299,6 +298,8 @@ class LayerData:
             dim = value.shape[1]
             self._active_structure[idx] = dim
             self._data[:, offset:offset+dim] = value
+
+        self._data[~self.success] = 0
 
         # Update processing times according to time since last update
         self._update_processing_times(identifier)
@@ -589,11 +590,14 @@ class IntegrationStatistics(AccumulatorModule):
             err_col = Colour.GREEN if err_rel < 0.01 else (
                 Colour.YELLOW if err_rel < 0.05 else Colour.RED)
             rsd = self.result.real_rsd
+            arsd = self.result.abs_real_rsd
             tvar = self.result.real_tvar
             atvar = self.result.abs_real_tvar
             report[-1] += f" ({err_col}{err_rel:.3%}{Colour.END})"
             if rsd > 0:
                 report[-1] += f", RSD={rsd:.3f}"
+            if arsd > 0:
+                report[-1] += f", ARSD={arsd:.3f}"
             if tvar > 0:
                 report[-1] += f", TVAR={tvar:.3e}"
             if atvar > 0:
@@ -615,10 +619,13 @@ class IntegrationStatistics(AccumulatorModule):
                 report[-1] += f" ({diff_col}{rel_diff:.3%}{Colour.END})"
                 report[-1] += f", {sigma_col}{sigma_diff:.2f}{Colour.END}σ" if sigma_diff > 0 else ""
                 rsd = self.target.real_rsd
+                arsd = self.target.abs_real_rsd
                 tvar = self.target.real_tvar
                 atvar = self.target.abs_real_tvar
                 if rsd > 0:
                     report[-1] += f", RSD={rsd:.3f}"
+                if arsd > 0:
+                    report[-1] += f", ARSD={arsd:.3f}"
                 if tvar > 0:
                     report[-1] += f", TVAR={tvar:.3e}"
                 if atvar > 0:
@@ -631,11 +638,14 @@ class IntegrationStatistics(AccumulatorModule):
             err_col = Colour.GREEN if err_rel < 0.01 else (
                 Colour.YELLOW if err_rel < 0.05 else Colour.RED)
             rsd = self.result.imag_rsd
+            arsd = self.result.abs_imag_rsd
             tvar = self.result.imag_tvar
             atvar = self.result.abs_imag_tvar
             report[-1] += f" ({err_col}{err_rel:.3%}{Colour.END})"
             if rsd > 0:
                 report[-1] += f", RSD={rsd:.3f}"
+            if arsd > 0:
+                report[-1] += f", ARSD={arsd:.3f}"
             if tvar > 0:
                 report[-1] += f", TVAR={tvar:.3e}"
             if atvar > 0:
@@ -658,10 +668,13 @@ class IntegrationStatistics(AccumulatorModule):
                 report[-1] += f" ({diff_col}{rel_diff:.3%}{Colour.END})"
                 report[-1] += f", {sigma_col}{sigma_diff:.2f}{Colour.END}σ" if sigma_diff > 0 else ""
                 rsd = self.target.imag_rsd
+                arsd = self.target.abs_imag_rsd
                 tvar = self.target.imag_tvar
                 atvar = self.target.abs_imag_tvar
                 if rsd > 0:
                     report[-1] += f", RSD={rsd:.3f}"
+                if arsd > 0:
+                    report[-1] += f", ARSD={arsd:.3f}"
                 if tvar > 0:
                     report[-1] += f", TVAR={tvar:.3e}"
                 if atvar > 0:
