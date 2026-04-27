@@ -88,6 +88,8 @@ class Integrand(ABC):
         match integrand_type:
             case 'test':
                 return TestIntegrand(**integrand_kwargs)
+            case 'cosine':
+                return CosineIntegrand(**integrand_kwargs)
             case 'gammaloop':
                 return GammaLoopIntegrand(**integrand_kwargs)
             case 'kaapo':
@@ -131,6 +133,26 @@ class TestIntegrand(Integrand):
         norm_factor = np.sum((2*np.pi * self.sigma ** 2)**(continuous.shape[1]/2))
 
         return np.exp(-(continuous**2).sum(axis=1) / sigma**2 / 2) / norm_factor
+
+
+class CosineIntegrand(Integrand):
+    IDENTIFIER = "cosine integrand"
+
+    def __init__(self,
+                 omega: int = 1,
+                 n_cosines: int = 1,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.omega = int(omega) or 1
+        self.continuous_dim = n_cosines - 3*self.graph_properties[0].n_loops
+        self.momentum_space = False
+        self.target = IntegrationResult(real_mean=0.0)
+
+    def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
+        # Simple cartesian parameterisation
+        # momenta = np.log(continuous / (1 - continuous))
+        # jac = np.prod(1 / (continuous * (1 - continuous)), axis=1, keepdims=True)
+        return np.mean(np.cos(2*np.pi*self.omega * continuous), axis=1, keepdims=True)  # * jac
 
 
 class GammaLoopIntegrand(Integrand):
@@ -273,14 +295,20 @@ class GammaLoopIntegrand(Integrand):
                 prior = np.ones((len(indices), n_graphs), dtype=np.float64)
             case "orientation":
                 max_orientations = self.discrete_dims[num_disc_input]
-                n_or_arr = np.array([gp.n_orientations for gp in self.graph_properties])
-                n_per_graph = n_or_arr[indices[:, 0]]
-                prior = (np.arange(max_orientations) < n_per_graph[:, None]).astype(np.float64)
+                if self.sample_graphs:
+                    n_or_arr = np.array([gp.n_orientations for gp in self.graph_properties])
+                    n_per_graph = n_or_arr[indices[:, 0]]
+                    prior = (np.arange(max_orientations) < n_per_graph[:, None]).astype(np.float64)
+                else:
+                    prior = np.ones((len(indices), max_orientations), dtype=np.float64)
             case "lmb_channel":
                 max_channels = self.discrete_dims[num_disc_input]
-                n_ch_arr = np.array([gp.n_channels for gp in self.graph_properties])
-                n_per_graph = n_ch_arr[indices[:, 0]]
-                prior = (np.arange(max_channels) < n_per_graph[:, None]).astype(np.float64)
+                if self.sample_graphs:
+                    n_ch_arr = np.array([gp.n_channels for gp in self.graph_properties])
+                    n_per_graph = n_ch_arr[indices[:, 0]]
+                    prior = (np.arange(max_channels) < n_per_graph[:, None]).astype(np.float64)
+                else:
+                    prior = np.ones((len(indices), max_channels), dtype=np.float64)
             case _:
                 raise ValueError(
                     f"Invalid type of discrete input dimensions: {disc_type}. Expected one of {self._discrete_types}.")
@@ -383,7 +411,7 @@ class ParameterisedIntegrand:
         self.graph_properties = graph_properties if isinstance(graph_properties, list) else [graph_properties]
         self.param_kwargs = param_kwargs
         self.integrand_kwargs = integrand_kwargs
-        self.condition_integrand_first = integrand_kwargs.pop('condition_integrand_first', False)
+        self.condition_integrand_first = integrand_kwargs.get('condition_integrand_first', False)
         self.sum_channels = integrand_kwargs.get('sum_channels', False)
 
         self.integrand = Integrand.get_integrand_instance(self.graph_properties, self.integrand_kwargs)
@@ -395,6 +423,8 @@ class ParameterisedIntegrand:
         self.dtype = self.integrand.dtype
         self.continuous_dim = self._get_continuous_dims()
         self.discrete_dims = self._get_discrete_dims()
+        if self.param.param.IDENTIFIER == "identity param":
+            self.param.param.chain_continuous_dim_in = self.continuous_dim
 
         self.training_phase = self.integrand.training_phase
         self.target = self.integrand.target
@@ -460,10 +490,7 @@ class ParameterisedIntegrand:
         if dim < n_dim:
             return prior1(indices, dim)
 
-        indices = indices[:, n_dim:]
-        dim -= n_dim
-
-        return prior2(indices, dim)
+        return prior2(indices[:, n_dim:], dim - n_dim)
 
     def apply_prior_to_discrete(self, discrete: NDArray) -> NDArray:
         disc_prod = np.array(self.discrete_dims, dtype=np.float64).prod()

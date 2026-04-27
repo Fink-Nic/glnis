@@ -161,8 +161,7 @@ class Parameterisation(ABC):
         n_disc = layer_input._active_structure[layer_input.POSITIONS['discrete']]
 
         if n_cont > self.layer_continuous_dim_in:
-            cont_pass = layer_input.continuous[:,
-                                               self.layer_continuous_dim_in:]
+            cont_pass = layer_input.continuous[:, self.layer_continuous_dim_in:]
             cont_param = np.hstack([cont_param, cont_pass])
         if n_disc > self.layer_num_discrete_dims:
             disc_pass = layer_input.discrete[:, self.layer_num_discrete_dims:]

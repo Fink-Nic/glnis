@@ -1,4 +1,5 @@
-run_name = "epem_a_ttxh_LO_semi_inclusive"
+run_name = "epem_a_ttxh@LO_semi_inclusive"
+output_dir = "epem_a_ttxh/LO_semi_inclusive"
 templates = [
     "settings/epem_a_ttxh/epem_a_ttxh_LO",
     "settings/templates/flow/size7",

@@ -173,6 +173,8 @@ class DotParser:
                 EXT_VERTICES.add(graph.get_node(edge.get("src"))[0])
                 EXT_SIGNATURES.append(-1)
             else:
+                if not "K" in (edge.get('lmb_rep') or ""):
+                    continue
                 INT_EDGES.append(edge)
                 particle_name = edge.get('particle')[1:-1]
                 edge.set('mass', self.Model.get_particle_mass_from_name(
@@ -417,8 +419,6 @@ class SettingsParser:
             kinematics = self.gammaloop_state.get_default_runtime_settings().kinematics
             e_cm = kinematics.e_cm
             ext_momenta = kinematics.externals.data.momenta.to_dict()
-            # Gammaloop indexes the externals before the internals
-            n_externals = len(ext_momenta)
             graph_properties_list = []
             for group_id, graph_group in enumerate(iinfo.graph_groups):
                 master_id = [g.graph_id for g in graph_group.graphs if g.is_master][0]
@@ -435,7 +435,17 @@ class SettingsParser:
                 except:
                     generation_basis_id = 0
                 generation_channel_id = active_lmbs.index(lmbs[generation_basis_id])
-                graph_properties.lmb_array = [[e_id-n_externals for e_id in lmb.edge_ids] for lmb in active_lmbs]
+                # Map edge_ids to {0, ..., n_edges-1}
+                gl_internal_edge_ids = set(e_id for lmb in lmbs for e_id in lmb.edge_ids)
+                if not len(gl_internal_edge_ids) == graph_properties.n_edges:
+                    raise ValueError(
+                        """Number of internal edges inferred from the dot file does not match the number of internal edges in the GammaLoop state. 
+                        This should not happen, please report this issue.""")
+                e_id_map: Dict[int, int] = dict()
+                for my_e_id, gl_e_id in enumerate(gl_internal_edge_ids):
+                    e_id_map[gl_e_id] = my_e_id
+                graph_properties.lmb_array = [[e_id_map[e_id] for e_id in lmb.edge_ids] for lmb in active_lmbs]
+
                 graph_properties.orientation_ids = [o.orientation_id for o in graph_group.orientations]
                 graph_properties.orientation_signatures = [o.signature for o in graph_group.orientations]
                 graph_properties.generation_channel_id = generation_channel_id

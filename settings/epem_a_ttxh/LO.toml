@@ -1,15 +1,15 @@
-run_name = "epem_a_ttxh_LO"
+run_name = "epem_a_ttxh@LO"
+output_dir = "epem_a_ttxh/LO"
 templates = [
     "settings/templates/flow/size7",
     "settings/templates/madnis_bins/size2",
     "settings/templates/transformer/size4",
 ]
 
-[gammaloop_state]
-state_dir = "/home/nfink/gammaloop"
-state_name = "examples/cli/epem_a_ttxh/LO/state"
-integration_state_name = "examples/cli/epem_a_ttxh/LO/state/integration_workspace"
-integration_result_file = "integration_result.json"
+[gammaloop]
+state = "epem_a_ttxh/LO/state"
+integration_workspace = "examples/cli/epem_a_ttxh/LO/state/integration_workspace"
+integrand_name = "LO"
 
 [integrator.madnis]
 batch_size = 10000
@@ -22,7 +22,7 @@ max_prob_ratio = 10
 
 [layered_integrand]
 integrand_type = "gammaloop"
-training_phase = "real"
+training_phase = "imag"
 n_cores = 64
 
 [integrand.gammaloop]

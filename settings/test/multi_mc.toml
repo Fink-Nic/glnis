@@ -22,7 +22,8 @@ discrete = [1, 2]
 from_max_wgt = "re+"
 dirs = [0, 3]
 grid = [
-    {start = 0, stop = 1, num = 100},
+    {start = 0, stop = 2, num = 100},
+    {start = 0, stop = 1, num = 150},
 ]
 [[scripts.slice_plots.slice]]
 name = "re-"
@@ -32,6 +33,7 @@ from_max_wgt = "re-"
 dirs = [0, 3]
 grid = [
     {start = 0, stop = 1, num = 100},
+    {start = 0, stop = 1.5, num = 300},
 ]
 [[scripts.slice_plots.slice]]
 name = "re+"

@@ -1,0 +1,37 @@
+run_name = "epem_a_tth@NLO"
+output_dir = "epem_a_tth/NLO"
+templates = [
+    "settings/templates/flow/size8",
+    "settings/templates/madnis_bins/size1",
+    "settings/templates/transformer/size3",
+    "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
+]
+
+[gammaloop]
+state = "epem_a_ttxh/NLO/state"
+integration_workspace = "epem_a_ttxh/NLO/state/integration_workspace"
+get_target_from_gammaloop = false
+integrand_name = "NLO"
+
+[integration_target]
+imag_mean = -1.47653e-04
+
+[integrator.madnis]
+batch_size = 20000
+learning_rate = 4e-4
+
+[layered_integrand]
+integrand_type = "gammaloop"
+training_phase = "imag"
+n_cores = 32
+
+[integrand.gammaloop]
+momentum_space = true
+sample_lmbs = false
+sample_orientations = false
+integrand_name = "NLO"
+
+[scripts.sampler_comp]
+n_training_steps = 1000
+n_samples = 100000
+n_samples_after_training = 10000000

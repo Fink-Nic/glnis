@@ -215,6 +215,10 @@ def run_slice_plots(
             discrete: List[int] | None = slice.get("discrete", None)
             dirs = slice.get("dirs", [])
             grid = slice.get("grid", [dict()])
+            if len(dirs) > 2:
+                shell_print("Only 1D and 2D slices are supported, skipping slice...")
+                continue
+
             if from_max_wgt:
                 match from_max_wgt:
                     case "re+":
@@ -254,8 +258,10 @@ def run_slice_plots(
             if len(dirs) == 0:
                 _dir = rng.uniform(0, 1, size=integrand.continuous_dim)
                 dirs = [_dir / np.linalg.norm(_dir)]
+            if len(grid) == 0:
+                grid = len(dirs) * [LinSpace()]
             if len(grid) < len(dirs):
-                grid += [LinSpace()] * (len(dirs) - len(grid))
+                grid += [grid[0]] * (len(dirs) - len(grid))
             grid = grid[:len(dirs)]
             for d in dirs:
                 if isinstance(d, int):
@@ -279,10 +285,6 @@ def run_slice_plots(
                     Data.slices1d.append(new_slice)
                 case 2:
                     Data.slices2d.append(new_slice)
-                case _:
-                    shell_print(
-                        f"Only 1D and 2D slices are supported, but {len(dirs)} were provided. Skipping slice...")
-                    continue
 
         if len(Data.slices1d) == 0 and len(Data.slices2d) == 0:
             shell_print(f"No valid slices defined in settings, exiting...")
@@ -300,11 +302,10 @@ def run_slice_plots(
                 discrete = np.tile(np.array(s1d.discrete, dtype=np.uint64), (n_samples_1d, 1))
             else:
                 discrete = np.empty((n_samples_1d, 0), dtype=np.uint64)
-            # Sample a random direction in the continuous space
             origin = s1d.origin
             direction = s1d.dirs[0]
             grid1d = np.linspace(**asdict(grid))
-            continuous = origin + direction[None, :] * grid1d.reshape(-1, 1)
+            continuous = origin + direction * grid1d.reshape(-1, 1)
             inside_hcube_mask = np.all((continuous >= Data.EPS) & (continuous <= 1.0 - Data.EPS), axis=-1)
             layer_input = LayerData(
                 int(np.sum(inside_hcube_mask)),
@@ -331,18 +332,16 @@ def run_slice_plots(
 
         for i_2d, s2d in enumerate(Data.slices2d):
             n_samples_2d = s2d.grid[0].num * s2d.grid[1].num
-            # Sample a random discrete point
             if s2d.discrete:
                 discrete = np.tile(np.array(s2d.discrete, dtype=np.uint64), (n_samples_2d, 1))
             else:
                 discrete = np.empty((n_samples_2d, 0), dtype=np.uint64)
             # Sample a random point and create a grid in the 2 selected dimensions
             origin = s2d.origin
-            grid_2d = np.stack(arrays=np.meshgrid(
+            t0, t1 = np.meshgrid(
                 np.linspace(**asdict(s2d.grid[0])),
-                np.linspace(**asdict(s2d.grid[1]))),
-                axis=-1).reshape(-1, 2)
-            continuous = origin + grid_2d[:, [0]] * s2d.dirs[0] + grid_2d[:, [1]] * s2d.dirs[1]
+                np.linspace(**asdict(s2d.grid[1])))
+            continuous = origin + t0.reshape(-1, 1) * s2d.dirs[0] + t1.reshape(-1, 1) * s2d.dirs[1]
             inside_hcube_mask = np.all((continuous >= Data.EPS) & (continuous <= 1.0 - Data.EPS), axis=-1)
             layer_input = LayerData(
                 int(np.sum(inside_hcube_mask)),
@@ -356,7 +355,9 @@ def run_slice_plots(
             func_val[inside_hcube_mask] = acc.training_data.training_result.ravel()
             if itg:
                 func_val /= itg
-            s2d.func_val = func_val.reshape(s2d.grid[0].num, s2d.grid[1].num)
+
+            # imshow plots data.shape[0] rows, data.shape[1] cols
+            s2d.func_val = func_val.reshape(s2d.grid[1].num, s2d.grid[0].num)
 
             integrator_probs = dict()
             for itype, integrator in integrators.items():
@@ -516,10 +517,12 @@ def plot_slices(file: str | SlicePlotData,
     data_log_titles = [r"|I|", r"$p$", r"$p \frac{<I>}{|I|}$"]
 
     for i, slice in enumerate(Data.slices2d):
+        print(f"{slice.func_val.shape=}")
         slice: Slice
         extent = [slice.grid[0].start, slice.grid[0].stop, slice.grid[1].start, slice.grid[1].stop]
         aspect_ratio = abs((slice.grid[0].stop - slice.grid[0].start) / (slice.grid[1].stop - slice.grid[1].start))
         for itype, prob in slice.prob.items():
+            print(f"{itype=} : {prob.shape=}")
             data_log = [np.abs(slice.func_val), prob]
             data_log = [d / np.nanmean(d) for d in data_log]  # Normalize by mean for better color scaling
             data_log = [np.log10(d, out=np.full_like(d, np.nan, dtype=np.float64), where=(d > 0)) for d in data_log]
@@ -551,20 +554,17 @@ def plot_slices(file: str | SlicePlotData,
             axh1.set_box_aspect(1)
             axh2.set_box_aspect(1)
 
-            imgs = []
+            # func_val and prob plots, normalized
             for ax, data, title in zip([ax1, ax2], data_log, data_log_titles):
-                # vmin = data.min(where=(~np.isnan(data)), initial=np.inf)
-                # vmax = data.max(where=(~np.isnan(data)), initial=-np.inf)
                 ax: plt.Axes
                 im = ax.imshow(data, norm=norm12, cmap=cmap_segmented,
                                origin='lower', extent=extent, aspect=aspect_ratio)
-                imgs.append(im)
                 ax.set_title(f"Normalized {title}")
                 cb12 = fig.colorbar(im, ax=ax, fraction=fraction, pad=padding, extend='both')
                 cb12.set_ticks(ticks=[low_threshold, center, high_threshold],
                                labels=[f"e{low_threshold:+.0f}", f"e{center:+.0f}", f"e{high_threshold:+.0f}"])
-            # data3 /= np.nanmean(data3)  # Normalize by mean for better color scaling
-            # data3 = np.log10(data3, out=np.full_like(data3, np.nan, dtype=np.float64), where=(data3 > 0))
+
+            # ratio plot, not normalized
             im = ax3.imshow(data3, norm=norm3, cmap=cmap3,
                             origin='lower', extent=extent, aspect=aspect_ratio)
             ax3.set_title(f"Oversampling {data_log_titles[-1]}")
@@ -572,6 +572,7 @@ def plot_slices(file: str | SlicePlotData,
             cb3.set_ticks(ticks=[-high_threshold, 0, high_threshold],
                           labels=[f"e{-high_threshold:+.0f}", "1", f"e{high_threshold:+.0f}"])
 
+            # sgn plot
             discrete_cmap = colors.ListedColormap(['#e74c3c', '#ecf0f1', '#2ecc71'])  # Red, Grey, Green, italian
             bounds = [-1.5, -0.5, 0.5, 1.5]
             discrete_norm = colors.BoundaryNorm(bounds, discrete_cmap.N)
@@ -581,7 +582,6 @@ def plot_slices(file: str | SlicePlotData,
             ax4.set_title("sgn(I)")
 
             cbar_disc = fig.colorbar(im4, ax=ax4, fraction=fraction, pad=padding)
-            # cbar_disc.set_label('Sign')
             cbar_disc.set_ticks(ticks=[-1, 0, 1], labels=['-', '0', '+'])
 
             # Simple histograms to visualize variance
@@ -612,7 +612,6 @@ def plot_slices(file: str | SlicePlotData,
             ))
             axh2.hist(data3.ravel(), bins=axh2_bins,
                       density=True, histtype='step', alpha=0.75, linewidth=1.5, color='purple')
-            # axh2.legend()
             axh2.set_title(f"Oversampling {data_log_titles[-1]}.")
             axh2.set_xticks(ticks=[-high_threshold, 0, high_threshold],
                             labels=[f"e{-high_threshold:+.0f}", "1", f"e{high_threshold:+.0f}"])

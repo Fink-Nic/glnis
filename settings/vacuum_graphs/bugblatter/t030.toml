@@ -78,15 +78,31 @@ n_plot_disc = 2
 plot_disc = true
 
 [[scripts.slice_plots.slice]]
+name = "re+ ch0"
+origin = [0.20013326, 0.59014007, 0.78253325, 0.29709536, 0.18888523, 0.55665165, 0.03500766, 0.0898766, 0.96604104]
+discrete = [0]
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 400}, 
+]
+[[scripts.slice_plots.slice]]
+name = "re- ch0"
+origin = [0.62536978, 0.60682705, 0.95990891, 0.3369098, 0.67494028, 0.02992192, 0.49277553, 0.51869195, 0.23059354]
+discrete = [0]
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 400}, 
+]
+[[scripts.slice_plots.slice]]
 name = "re+"
-from_max_wgt = "re+" 
+from_max_wgt = "re+"
 dirs = [0, 1] 
 grid = [
     {start = 0, stop = 1, num = 400}, 
 ]
 [[scripts.slice_plots.slice]]
 name = "re-"
-from_max_wgt = "re-" 
+from_max_wgt = "re-"
 dirs = [0, 1] 
 grid = [
     {start = 0, stop = 1, num = 400}, 

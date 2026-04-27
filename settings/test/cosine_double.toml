@@ -1,0 +1,13 @@
+run_name = "cosine@double"
+output_dir = "cosine/double"
+
+templates = [
+    "settings/test/base",
+    "settings/test/cosine_single",
+    "settings/templates/madnis_bins/size0",
+    "settings/templates/flow/size5",
+    "settings/templates/transformer/size3",
+]
+
+[integrand.cosine]
+n_cosines = 2

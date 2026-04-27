@@ -193,6 +193,9 @@ def run_sampler_comp(
             Settings.settings["layered_integrator"]["integrator_type"] = "havana"
             integrators[HAVANA_KEY] = HavanaIntegrator(madnis_integrator.integrand, **Settings.get_integrator_kwargs())
 
+        for integrator in integrators.values():
+            integrator.display_info()
+
         # Will hold integration results to write to text file and plot
         Data = SamplerCompData(integrator_identifiers=list(integrators.keys()),
                                graph_properties=madnis_integrator.integrand.graph_properties,
@@ -210,8 +213,8 @@ def run_sampler_comp(
             plot_disc = False
         if plot_disc:
             all_channels = np.array(
-                np.meshgrid(*[range(dim) for dim in madnis_integrator.integrand.discrete_dims])
-            ).T.reshape(-1, len(madnis_integrator.integrand.discrete_dims))
+                np.meshgrid(*[range(dim) for dim in madnis_integrator.discrete_dims])
+            ).T.reshape(-1, len(madnis_integrator.discrete_dims))
             # Discard the ones with zero prior probability
             prior = madnis_integrator.integrand.apply_prior_to_discrete(all_channels)
             all_channels = all_channels[prior > 0]
@@ -277,7 +280,6 @@ def run_sampler_comp(
         for identifier, itg in integrators.items():
             if identifier == NAIVE_KEY:
                 continue
-            itg.display_info()
             add_integration_snapshot(itg, Data.training_progress[identifier], True)
             if plot_disc:
                 add_disc_prob_snapshot(itg, Data.training_progress[identifier])

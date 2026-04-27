@@ -1,0 +1,12 @@
+run_name = "epem_a_tth@NLO"
+output_dir = "epem_a_tth/NLO/orientations"
+templates = [
+    "settings/epem_a_ttxh/NLO",
+    "settings/templates/flow/size8",
+    "settings/templates/madnis_bins/size1",
+    "settings/templates/transformer/size3",
+    "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
+]
+
+[integrand.gammaloop]
+sample_orientations = true

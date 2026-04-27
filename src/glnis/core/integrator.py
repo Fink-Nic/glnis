@@ -449,7 +449,7 @@ class HavanaIntegrator(Integrator):
             def build_nested(dims: List[int], idx: int = 0) -> NumericalIntegrator:
                 if idx == len(dims):
                     return NumericalIntegrator.continuous(
-                        self.continuous_dim, n_continuous_bins,)
+                        self.continuous_dim, n_continuous_bins)
                 return NumericalIntegrator.discrete(
                     [build_nested(dims, idx+1) for _ in range(dims[idx])],
                     max_prob_ratio,
@@ -987,11 +987,11 @@ class MadnisIntegrator(Integrator):
             case "variance":
                 loss = madnis_integrator.losses.stratified_variance
             case "variance_softclip":
-                loss = losses.stratified_variance_softclip
+                loss = madnis_integrator.losses.stratified_variance_softclip
             case "kl_divergence":
                 loss = madnis_integrator.losses.kl_divergence
             case "kl_divergence_softclip":
-                loss = losses.kl_divergence_softclip
+                loss = madnis_integrator.losses.kl_divergence_softclip
             case "test":
                 loss = losses.test()
             case _:

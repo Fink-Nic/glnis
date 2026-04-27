@@ -3,7 +3,7 @@ run_name = "qqx_aaa_pentabox"
 [graph]
 momtrop_edge_weight = 0.555555555555
 
-[gammaloop_state]
+[gammaloop]
 state_name = "qqx_aaa_pentabox_output"
 integration_state_name = "qqx_aaa_pentabox_integration"
 

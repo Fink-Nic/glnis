@@ -14,6 +14,16 @@ def run_settings_test(file: str, show_graph_properties: bool = False) -> None:
     try:
         Settings = SettingsParser(file)
 
+        if show_graph_properties:
+            from glnis.utils.helpers import Colour
+            gps = Settings.get_graph_properties()
+            if not isinstance(gps, list):
+                gps = [gps]
+            for i, gp in enumerate(gps):
+                shell_print(f"Graph properties of graph {i}:")
+                for key, value in gp.__dict__.items():
+                    shell_print(f"    {Colour.CYAN}{key}{Colour.END}: {value}")
+
         # Initialize the integrand and integrator
         torch.set_default_dtype(torch.float64)
 
@@ -21,12 +31,6 @@ def run_settings_test(file: str, show_graph_properties: bool = False) -> None:
         integrator = Integrator.from_settings(Settings.settings)
         shell_print(f"""Initializing the Integrand and Integrator took {
             - time_last + (time_last := time()):.2f}s""")
-
-        if show_graph_properties:
-            from glnis.utils.helpers import Colour
-            shell_print("Graph properties:")
-            for key, value in asdict(integrator.integrand.param.param.graph_properties).items():
-                shell_print(f"{Colour.CYAN}{key}{Colour.END}: {value}")
 
         integrator.display_info()
 
