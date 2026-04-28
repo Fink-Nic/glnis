@@ -141,18 +141,48 @@ class CosineIntegrand(Integrand):
     def __init__(self,
                  omega: int = 1,
                  n_cosines: int = 1,
+                 sep_pm: bool = False,
+                 self_conditional: bool = False,
                  **kwargs):
         super().__init__(**kwargs)
         self.omega = int(omega) or 1
+        self.self_conditional = self_conditional
+        if self_conditional:
+            n_cosines = 2
         self.continuous_dim = n_cosines - 3*self.graph_properties[0].n_loops
+        self.sep_pm = sep_pm
         self.momentum_space = False
         self.target = IntegrationResult(real_mean=0.0)
+        self.calls = 0
+        if sep_pm:
+            self.discrete_dims = [2]
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
+        if self.self_conditional:
+            f_x = np.sin(2*np.pi*self.omega * continuous)
+            f_pos = np.clip(f_x[:, 0], 0, None)
+            f_neg = np.clip(f_x[:, 1], None, 0)
+            training = continuous.shape[0] < 5000
+            if training:
+                return (f_pos - f_neg)**2 / (f_pos + f_neg)
+            else:
+                return f_pos + f_neg
+
+        f_x = np.mean(np.sin(2*np.pi*self.omega * continuous), axis=1, keepdims=True)
+        if not self.sep_pm:
+            return f_x
+
+        discrete = discrete.ravel()
+        f_pos = np.clip(f_x, 0, None)
+        f_neg = np.clip(f_x, None, 0)
+        out = np.zeros((continuous.shape[0], 1), dtype=continuous.dtype)
+        out[discrete == 0] = f_pos[discrete == 0]
+        out[discrete == 1] = f_neg[discrete == 1]
+
         # Simple cartesian parameterisation
         # momenta = np.log(continuous / (1 - continuous))
         # jac = np.prod(1 / (continuous * (1 - continuous)), axis=1, keepdims=True)
-        return np.mean(np.cos(2*np.pi*self.omega * continuous), axis=1, keepdims=True)  # * jac
+        return out  # * jac
 
 
 class GammaLoopIntegrand(Integrand):

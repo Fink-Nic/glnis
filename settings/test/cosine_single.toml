@@ -3,20 +3,25 @@ output_dir = "cosine/single"
 
 templates = [
     "settings/test/base",
-    "settings/templates/madnis_bins/size0",
+    "settings/templates/madnis_bins/size1",
     "settings/templates/flow/size5",
     "settings/templates/transformer/size3",
 ]
+
+[integrator.madnis]
+loss_type = "variance"
 
 [layered_integrand]
 integrand_type = "cosine"
 
 [integrand.cosine]
 n_cosines = 1
+sep_pm = true
+self_conditional = true
 
 [scripts.sampler_comp]
 n_training_steps = 50
-n_samples = 1000
+n_samples = 10000
 n_samples_after_training = 20000
 n_log = 5
 n_plot_snapshot = 10

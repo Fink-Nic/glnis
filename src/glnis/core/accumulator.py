@@ -85,10 +85,10 @@ class IntegrationResult:
                 self.imag_rsd = self._rsd(self.imag_mean, self.imag_error, self.n_points)
             if self.abs_real_mean:
                 self.abs_real_rsd = self._rsd(
-                    self.abs_real_mean, self.real_error, self.n_points)
+                    self.abs_real_mean, self.abs_real_error, self.n_points)
             if self.abs_imag_mean:
                 self.abs_imag_rsd = self._rsd(
-                    self.abs_imag_mean, self.imag_error, self.n_points)
+                    self.abs_imag_mean, self.abs_imag_error, self.n_points)
 
         # Don't want to overwrite these in case total_time is not provided
         if time_per_sample > 0:
