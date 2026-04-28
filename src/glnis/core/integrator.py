@@ -181,7 +181,6 @@ class Integrator(ABC):
 
         return indices, (1/prob)
 
-    @_block_if_ended
     def init_layer_data(self, n_points: int) -> LayerData:
         return LayerData(
             n_points,
@@ -208,6 +207,7 @@ class Integrator(ABC):
 
         n_cores = integrand_kwargs.pop('n_cores', 1)
         n_shards = integrand_kwargs.pop('n_shards', 32)
+        strat_sgn = integrand_kwargs.pop('strat_sgn', False)
         integrator_type: str | None = integrator_kwargs.pop('integrator_type', None)
 
         integrand = MPIntegrand(
@@ -216,6 +216,7 @@ class Integrator(ABC):
             integrand_kwargs=integrand_kwargs,
             n_cores=n_cores,
             n_shards=n_shards,
+            strat_sgn=strat_sgn,
         )
 
         match integrator_type.lower() if integrator_type is not None else None:
@@ -623,6 +624,8 @@ class MadnisIntegrator(Integrator):
         ),
         max_batch_size: int = 100_000,
         use_gpu: bool = True,
+        uniform_channel_ratio: float = 0.0,
+        channel_weight_mode: Literal["variance", "mean"] = "variance",
         **kwargs,
     ):
         super().__init__(integrand, **kwargs)
@@ -631,6 +634,8 @@ class MadnisIntegrator(Integrator):
 
         self.use_gpu = use_gpu
         self.device = self._get_device()
+        self.uniform_channel_ratio = uniform_channel_ratio
+        self.channel_weight_mode = channel_weight_mode
 
         self.use_scheduler = use_scheduler
         self.scheduler_type = scheduler_type
@@ -640,26 +645,51 @@ class MadnisIntegrator(Integrator):
 
         self.loss_type = loss_type
         self.loss_kwargs = loss_kwargs
+        if self.integrand.strat_sgn:
+            if self.loss_type in ["kl_divergence", "kl_divergence_softclip"]:
+                raise ValueError("KL divergence loss is not compatible with stratified sampling with sign.")
 
-        madnis_integrand = madnis_integrator.Integrand(
-            function=self._madnis_eval,
-            input_dim=self.input_dim,
-            discrete_dims=self.discrete_dims,
-            discrete_dims_position=self.discrete_dims_position,
-            discrete_prior_prob_function=self._madnis_discrete_prior_prob_function,
-        )
         discrete_flow_kwargs = transformer if discrete_model == "transformer" else made
 
-        self.madnis = madnis_integrator.Integrator(
-            madnis_integrand,
-            device=self.device,
-            discrete_flow_kwargs=discrete_flow_kwargs,
-            loss=self._get_loss(),
-            batch_size=self.batch_size,
-            discrete_model=discrete_model,
-            learning_rate=learning_rate,
-            flow_kwargs=flow_kwargs,
-        )
+        if self.integrand.strat_sgn:
+            madnis_integrand = madnis_integrator.Integrand(
+                function=self._madnis_eval,
+                input_dim=self.input_dim - 1,
+                channel_count=2,
+                # remapped_dim=2,
+                # has_channel_weight_prior=True,
+                discrete_dims=self.discrete_dims[1:],
+                discrete_dims_position=self.discrete_dims_position,
+                discrete_prior_prob_function=self._madnis_discrete_prior_prob_function,
+            )
+            self.madnis = madnis_integrator.Integrator(
+                madnis_integrand,
+                device=self.device,
+                discrete_flow_kwargs=discrete_flow_kwargs,
+                loss=self._get_loss(),
+                batch_size=self.batch_size,
+                discrete_model=discrete_model,
+                learning_rate=learning_rate,
+                flow_kwargs=flow_kwargs,
+            )
+        else:
+            madnis_integrand = madnis_integrator.Integrand(
+                function=self._madnis_eval,
+                input_dim=self.input_dim,
+                discrete_dims=self.discrete_dims,
+                discrete_dims_position=self.discrete_dims_position,
+                discrete_prior_prob_function=self._madnis_discrete_prior_prob_function,
+            )
+            self.madnis = madnis_integrator.Integrator(
+                madnis_integrand,
+                device=self.device,
+                discrete_flow_kwargs=discrete_flow_kwargs,
+                loss=self._get_loss(),
+                batch_size=self.batch_size,
+                discrete_model=discrete_model,
+                learning_rate=learning_rate,
+                flow_kwargs=flow_kwargs,
+            )
         self.max_batch_size = max_batch_size
 
         if pretrain_c_flow:
@@ -736,14 +766,17 @@ class MadnisIntegrator(Integrator):
         while n_eval < n_points:
             n = min(self.max_batch_size, n_points - n_eval)
             with torch.no_grad():
-                x_all, prob = self.madnis.flow.sample(
+                madnis_batch = self.madnis._get_samples(
                     n,
-                    return_prob=True,
-                    device=self.madnis.dummy.device,
-                    dtype=self.madnis.dummy.dtype,
+                    uniform_channel_ratio=self.uniform_channel_ratio,
+                    train=False,
+                    channel_weight_mode=self.channel_weight_mode,
+                    channel=None,
+                    evaluate_integrand=False,
                 )
-            discrete[n_eval:n_eval+n, :], continuous[n_eval:n_eval+n, :] = self._madnis_output_to_disc_cont(x_all)
-            wgt[n_eval:n_eval+n, :] = 1 / prob.numpy(force=True).reshape(-1, 1)
+            discrete[n_eval:n_eval+n, :], continuous[n_eval:n_eval+n, :] = self._madnis_output_to_disc_cont(
+                madnis_batch.x, madnis_batch.channels)
+            wgt[n_eval:n_eval+n, :] = 1 / madnis_batch.q_sample.numpy(force=True).reshape(-1, 1)
             n_eval += n
         layer_input.continuous = continuous
         layer_input.discrete = discrete
@@ -752,9 +785,9 @@ class MadnisIntegrator(Integrator):
 
         return layer_input
 
-    def _madnis_eval(self, x_all: Tensor) -> Tensor:
+    def _madnis_eval(self, x_all: Tensor, channel: Tensor | None = None) -> Tensor:
         layer_input = self.init_layer_data(x_all.shape[0])
-        layer_input.discrete, layer_input.continuous = self._madnis_output_to_disc_cont(x_all)
+        layer_input.discrete, layer_input.continuous = self._madnis_output_to_disc_cont(x_all, channel)
         layer_input.update(self.IDENTIFIER)
 
         acc: TrainingAccumulator = self.integrand.eval_integrand(
@@ -808,13 +841,16 @@ class MadnisIntegrator(Integrator):
             numpy_output.astype(np.float64)).to(self.device)
         return torch_output
 
-    def _madnis_output_to_disc_cont(self, x_all: Tensor) -> Tuple[NDArray, NDArray]:
+    def _madnis_output_to_disc_cont(self, x_all: Tensor, channel: Tensor | None = None) -> Tuple[NDArray, NDArray]:
+        n_disc = self.num_discrete_dims - int(self.integrand.strat_sgn)
         if self.discrete_dims_position == "first":
-            discrete = x_all[:, :self.num_discrete_dims].numpy(force=True)
-            continuous = x_all[:, self.num_discrete_dims:].numpy(force=True)
+            discrete = x_all[:, :n_disc].numpy(force=True)
+            continuous = x_all[:, n_disc:].numpy(force=True)
         else:
-            discrete = x_all[:, -self.num_discrete_dims:].numpy(force=True)
-            continuous = x_all[:, :-self.num_discrete_dims].numpy(force=True)
+            discrete = x_all[:, -n_disc:].numpy(force=True)
+            continuous = x_all[:, :-n_disc].numpy(force=True)
+        if channel is not None:
+            discrete = np.hstack([channel.numpy(force=True).reshape(-1, 1), discrete])
         return discrete, continuous
 
     @staticmethod
@@ -926,7 +962,7 @@ class MadnisIntegrator(Integrator):
         info = super()._get_info()
         info["scheduler_type"] = self.scheduler_type
         info["device"] = str(self.device)
-        if self.num_discrete_dims > 0:
+        if self.num_discrete_dims - int(self.integrand.strat_sgn) > 0:
             trainable_disc_flow = sum(p.numel() for p in self.madnis.flow.discrete_flow.parameters() if p.requires_grad)
             total_disc_flow = sum(p.numel() for p in self.madnis.flow.discrete_flow.parameters())
             info["discrete flow trainable parameters"] = trainable_disc_flow

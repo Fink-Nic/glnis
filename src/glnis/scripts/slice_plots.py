@@ -517,12 +517,10 @@ def plot_slices(file: str | SlicePlotData,
     data_log_titles = [r"|I|", r"$p$", r"$p \frac{<I>}{|I|}$"]
 
     for i, slice in enumerate(Data.slices2d):
-        print(f"{slice.func_val.shape=}")
         slice: Slice
         extent = [slice.grid[0].start, slice.grid[0].stop, slice.grid[1].start, slice.grid[1].stop]
         aspect_ratio = abs((slice.grid[0].stop - slice.grid[0].start) / (slice.grid[1].stop - slice.grid[1].start))
         for itype, prob in slice.prob.items():
-            print(f"{itype=} : {prob.shape=}")
             data_log = [np.abs(slice.func_val), prob]
             data_log = [d / np.nanmean(d) for d in data_log]  # Normalize by mean for better color scaling
             data_log = [np.log10(d, out=np.full_like(d, np.nan, dtype=np.float64), where=(d > 0)) for d in data_log]

@@ -4,7 +4,7 @@ output_dir = "bugblatter/t030"
 templates = [
     "settings/vacuum_graphs/bugblatter/base",
     "settings/vacuum_graphs/bugblatter/tseries_param",
-    "settings/templates/flow/size8",
+    "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size3",
 ]

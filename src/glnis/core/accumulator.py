@@ -559,6 +559,7 @@ class IntegrationStatistics(AccumulatorModule):
         else:
             self.dtype = data.dtype
             m = data.success
+            n_sqrt = np.sqrt(data.n_points)
             total_wgt = data.jac[m]*data.wgt[m]*data.func_val[m]
             abs_real_total_wgt = np.abs(total_wgt.real)
             abs_imag_total_wgt = np.abs(total_wgt.imag)
@@ -566,13 +567,13 @@ class IntegrationStatistics(AccumulatorModule):
             self.result = IntegrationResult(
                 n_points=data.n_points,
                 real_mean=total_wgt.real.mean(),
-                real_error=total_wgt.real.std() / np.sqrt(data.n_points),
+                real_error=total_wgt.real.std() / n_sqrt,
                 imag_mean=total_wgt.imag.mean(),
-                imag_error=total_wgt.imag.std() / np.sqrt(data.n_points),
+                imag_error=total_wgt.imag.std() / n_sqrt,
                 abs_real_mean=abs_real_total_wgt.mean(),
-                abs_real_error=abs_real_total_wgt.std() / np.sqrt(data.n_points),
+                abs_real_error=abs_real_total_wgt.std() / n_sqrt,
                 abs_imag_mean=abs_imag_total_wgt.mean(),
-                abs_imag_error=abs_imag_total_wgt.std() / np.sqrt(data.n_points),
+                abs_imag_error=abs_imag_total_wgt.std() / n_sqrt,
                 total_time=total_time,
             )
 

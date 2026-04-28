@@ -437,12 +437,14 @@ class ParameterisedIntegrand:
                  graph_properties: GraphProperties | List[GraphProperties],
                  param_kwargs: List[Dict[str, Any]],
                  integrand_kwargs: Dict[str, Any],
+                 strat_sgn: bool = False,
                  **kwargs):
         self.graph_properties = graph_properties if isinstance(graph_properties, list) else [graph_properties]
         self.param_kwargs = param_kwargs
         self.integrand_kwargs = integrand_kwargs
         self.condition_integrand_first = integrand_kwargs.get('condition_integrand_first', False)
         self.sum_channels = integrand_kwargs.get('sum_channels', False)
+        self.strat_sgn = strat_sgn
 
         self.integrand = Integrand.get_integrand_instance(self.graph_properties, self.integrand_kwargs)
         # If the integrand is not in momentum space, we assume it does not require a parameterisation.
@@ -464,6 +466,9 @@ class ParameterisedIntegrand:
         untouched_discrete = layer_input.discrete
         if self.param.num_layers > 1:
             untouched_continuous = layer_input.continuous
+        if self.strat_sgn:
+            layer_input.discrete = untouched_discrete[:, 1:]
+            layer_input.update('processing')
         if self.sum_channels:
             if len(self.param.discrete_dims) != 1:
                 raise ValueError(
@@ -496,7 +501,13 @@ class ParameterisedIntegrand:
             integration_result.discrete = untouched_discrete
         if self.param.num_layers > 1:
             integration_result.continuous = untouched_continuous
-        layer_input.update('processing')
+        if self.strat_sgn:
+            strat_ch = untouched_discrete[:, 0]
+            f_compl = integration_result.func_val
+            f_compl[strat_ch == 0] = np.clip(f_compl[strat_ch == 0], a_min=0, a_max=None)
+            f_compl[strat_ch == 1] = np.clip(f_compl[strat_ch == 1], a_min=None, a_max=0)
+            integration_result.func_val = f_compl
+        integration_result.update('processing')
         acc_kwargs = dict(
             target=self.integrand.target,
             training_phase=self.integrand.training_phase,)
@@ -541,13 +552,14 @@ class ParameterisedIntegrand:
         return total_wgt
 
     def _get_discrete_dims(self) -> List[int]:
+        disc = [2] if self.strat_sgn else []
         if self.sum_channels:
-            return self.integrand.discrete_dims
+            return disc + self.integrand.discrete_dims
 
         if self.condition_integrand_first:
-            return self.integrand.discrete_dims + self.param.discrete_dims
+            return disc + self.integrand.discrete_dims + self.param.discrete_dims
 
-        return self.param.discrete_dims + self.integrand.discrete_dims
+        return disc + self.param.discrete_dims + self.integrand.discrete_dims
 
     def _get_continuous_dims(self) -> int:
         return self.integrand.continuous_dim + self.param.continuous_dim
@@ -589,6 +601,7 @@ class MPIntegrand(ParameterisedIntegrand):
             graph_properties,
             param_kwargs,
             integrand_kwargs,
+            kwargs
         )
         self.workers = [
             ctx.Process(
@@ -609,11 +622,13 @@ class MPIntegrand(ParameterisedIntegrand):
                           stop_event,
                           graph_properties: GraphProperties,
                           param_kwargs: List[Dict[str, Any]],
-                          integrand_kwargs: Dict[str, Any],) -> None:
+                          integrand_kwargs: Dict[str, Any],
+                          init_kwargs) -> None:
         integrand = ParameterisedIntegrand(
             graph_properties,
             param_kwargs,
             integrand_kwargs,
+            **init_kwargs
         )
         q_in, q_out = queues
         q_out.put('STARTED')

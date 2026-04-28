@@ -13,11 +13,10 @@ loss_type = "variance"
 
 [layered_integrand]
 integrand_type = "cosine"
+strat_sgn = true
 
 [integrand.cosine]
 n_cosines = 1
-sep_pm = true
-self_conditional = true
 
 [scripts.sampler_comp]
 n_training_steps = 50

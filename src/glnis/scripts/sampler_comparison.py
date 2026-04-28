@@ -207,14 +207,16 @@ def run_sampler_comp(
                                param_kwargs=param_kwargs,)
 
         # Callback for the madnis integrator
-        if len(madnis_integrator.integrand.discrete_dims) > 0:
+        if len(madnis_integrator.integrand.discrete_dims) > int(madnis_integrator.integrand.strat_sgn):
             plot_disc = madnis_integrator._discrete_prod <= 10000 and plot_disc
         else:
             plot_disc = False
         if plot_disc:
-            all_channels = np.array(
-                np.meshgrid(*[range(dim) for dim in madnis_integrator.discrete_dims])
-            ).T.reshape(-1, len(madnis_integrator.discrete_dims))
+            all_channels = np.array(np.meshgrid(
+                *[range(dim)
+                  for dim in madnis_integrator.discrete_dims
+                  [int(madnis_integrator.integrand.strat_sgn):]])).T.reshape(
+                -1, len(madnis_integrator.discrete_dims))
             # Discard the ones with zero prior probability
             prior = madnis_integrator.integrand.apply_prior_to_discrete(all_channels)
             all_channels = all_channels[prior > 0]
