@@ -1,0 +1,127 @@
+run_name = "bugblatter@t030_sign_stratification"
+output_dir = "bugblatter/t030/sign_stratification"
+
+templates = [
+    "settings/vacuum_graphs/bugblatter/base",
+    "settings/vacuum_graphs/bugblatter/tseries_param",
+    "settings/templates/flow/size9",
+    "settings/templates/madnis_bins/size1",
+    "settings/templates/made/size5",
+]
+
+[integration_target]
+n_points = 416000000
+real_mean = -0.00000688441782011863
+real_error = 0.0000000200846984630986
+
+[layered_integrand]
+strat_sgn = true
+
+[integrator.madnis]
+loss_type = "variance"
+uniform_channel_ratio = 1.0
+
+[integrand.kaapo]
+params = [0.190270777045349, 1.0, 33.0223348259205]
+
+[scripts.sampler_comp]
+n_training_steps = 1000 # Number of MadNIS training steps
+nitn = 20 # Number of Vegas / Havana training steps (total training samples are equal to MadNIS)
+n_samples = 1000000 # Number of samples to compute the snapshot with
+n_samples_after_training = 10000000 # Number of samples drawn after the training to compute the final result
+n_log = 20 # Training steps between callback of loss to console
+n_plot_snapshot = 100 # Training steps between drawing n_samples samples for a snapshot
+n_plot_loss = 2 # Training steps between plotting the loss
+n_plot_disc = 2 # Training steps between plotting the discrete probabilities
+plot_disc = false
+
+[[scripts.hyperparam_comparison.comparison]]
+name = "flow network"
+plot_slices = true
+blocks = [
+        ["settings/templates/flow/size5"],
+        ["settings/templates/flow/size6"],
+        ["settings/templates/flow/size7"],
+        ["settings/templates/flow/size8"],
+        ["settings/templates/flow/size9"],
+    ]
+block_names = ["3_256", "4_256", "4_512", "5_512", "5_1024"]
+
+[[scripts.hyperparam_comparison.comparison]]
+name = "transformer network"
+plot_slices = true
+blocks = [
+        ["settings/templates/transformer/size2"],
+        ["settings/templates/transformer/size3"],
+        ["settings/templates/transformer/size4"],
+    ]
+block_names = ["1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64"]
+
+
+[[scripts.hyperparam_comparison.comparison]]
+name = "big flow bins"
+plot_slices = true
+blocks = [
+        [
+            "settings/templates/flow/size9",
+            "settings/templates/madnis_bins/size0",
+        ],
+        [
+            "settings/templates/flow/size9",
+            "settings/templates/madnis_bins/size1",
+        ],
+        [
+            "settings/templates/flow/size9",
+            "settings/templates/madnis_bins/size2",
+        ],
+        [
+            "settings/templates/flow/size9",
+            "settings/templates/madnis_bins/size3",
+        ],
+        [
+            "settings/templates/flow/size9",
+            "settings/templates/madnis_bins/size4",
+        ],
+    ]
+block_names = ["5_1024_5", "5_1024_10", "5_1024_20", "5_1024_50", "5_1024_100"]
+
+[scripts.hpcomp_training_run]
+n_training_steps = 600
+n_samples = 1000000
+n_samples_after_training = 10000000
+n_log = 50
+n_plot_snapshot = 100
+n_plot_loss = 2
+n_plot_disc = 2
+plot_disc = true
+
+[[scripts.slice_plots.slice]]
+name = "re+ ch0"
+origin = [0.20013326, 0.59014007, 0.78253325, 0.29709536, 0.18888523, 0.55665165, 0.03500766, 0.0898766, 0.96604104]
+discrete = [0]
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 400}, 
+]
+[[scripts.slice_plots.slice]]
+name = "re- ch0"
+origin = [0.62536978, 0.60682705, 0.95990891, 0.3369098, 0.67494028, 0.02992192, 0.49277553, 0.51869195, 0.23059354]
+discrete = [0]
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 400}, 
+]
+[[scripts.slice_plots.slice]]
+name = "re+"
+from_max_wgt = "re+"
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 400}, 
+]
+[[scripts.slice_plots.slice]]
+name = "re-"
+from_max_wgt = "re-"
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 400}, 
+]

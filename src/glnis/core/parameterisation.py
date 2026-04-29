@@ -153,6 +153,7 @@ class Parameterisation(ABC):
         Returns:
             LayerData
         """
+        cont_param = cont_param.reshape(len(layer_input.continuous), -1)
         if disc_param is None:
             disc_param = np.zeros(
                 (layer_input.n_points, 0), dtype=layer_input.dtype)

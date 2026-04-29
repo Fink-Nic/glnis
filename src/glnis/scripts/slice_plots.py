@@ -147,11 +147,15 @@ def run_slice_plots(
         parameterisation_kwargs = Settings.get_parameterisation_kwargs()
         integrand_kwargs = Settings.get_integrand_kwargs()
         n_cores = integrand_kwargs.pop("n_cores", 16)
+        n_shards = integrand_kwargs.pop("n_shards", 1)
+        strat_sgn = integrand_kwargs.pop("strat_sgn", False)
         integrand = MPIntegrand(
             graph_properties=graph_properties,
             param_kwargs=parameterisation_kwargs,
             integrand_kwargs=integrand_kwargs,
             n_cores=n_cores,
+            n_shards=n_shards,
+            strat_sgn=strat_sgn,
         )
         # Get result to normalize the function values
         itg = None

@@ -1,7 +1,7 @@
 [integrator.madnis]
 discrete_model = "transformer"
 
-[integrator.madnis.transformer]
+[integrator.madnis.transformer_kwargs]
 embedding_dim  = 32
 feedforward_dim = 64
 heads = 1

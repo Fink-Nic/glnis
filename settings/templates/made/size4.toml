@@ -1,6 +1,6 @@
 [integrator.madnis]
 discrete_model = "made"
 
-[integrator.madnis.made]
+[integrator.madnis.made_kwargs]
 layers = 3
 nodes_per_feature = 16

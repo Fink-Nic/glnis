@@ -213,9 +213,7 @@ def run_sampler_comp(
             plot_disc = False
         if plot_disc:
             all_channels = np.array(np.meshgrid(
-                *[range(dim)
-                  for dim in madnis_integrator.discrete_dims
-                  [int(madnis_integrator.integrand.strat_sgn):]])).T.reshape(
+                *[range(dim) for dim in madnis_integrator.discrete_dims])).T.reshape(
                 -1, len(madnis_integrator.discrete_dims))
             # Discard the ones with zero prior probability
             prior = madnis_integrator.integrand.apply_prior_to_discrete(all_channels)
@@ -258,6 +256,10 @@ def run_sampler_comp(
                 Data.training_progress[MADNIS_KEY].nspl_losses.append(status.total_samples)
             if step % n_plot_snapshot == 0:
                 add_integration_snapshot(madnis_integrator, Data.training_progress[MADNIS_KEY], True)
+                # res, err = madnis_integrator.madnis.integrate(n_samples)
+                # shell_print(
+                #     f"MadNIS snapshot at step {step} | {status.total_samples} total training samples: I = {res:.5e} +- {err:.5e}, RSD = {err/res*np.sqrt(n_samples):.3f}"
+                # )
             if step % n_plot_disc == 0 and plot_disc:
                 add_disc_prob_snapshot(
                     madnis_integrator,

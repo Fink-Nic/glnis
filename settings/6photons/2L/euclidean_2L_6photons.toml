@@ -11,7 +11,7 @@ integration_state_name = "physical_2L_6photons_integration"
 batch_size = 16384
 discrete_model = "transformer"
 
-[integrator.madnis.transformer]
+[integrator.madnis.transformer_kwargs]
 embedding_dim = 128
 feedforward_dim = 256
 heads = 2

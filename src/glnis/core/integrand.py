@@ -476,9 +476,8 @@ class ParameterisedIntegrand:
             func_val = np.zeros((layer_input.n_points, 1), dtype=np.complex128)
             for ch in range(self.param.discrete_dims[0]):
                 channels = np.full((layer_input.n_points, 1), ch, dtype=np.uint64)
-                layer_input.jac, layer_input.momenta = self.param.param._layer_parameterise(
+                layer_input.jac, layer_input.momenta, _ = self.param.param._layer_parameterise(
                     layer_input.continuous, channels)
-                layer_input.update(self.param.IDENTIFIER)
                 integration_result = self.integrand.evaluate_batch(layer_input)
                 func_val += integration_result.func_val * integration_result.jac
             layer_input.func_val = func_val
@@ -516,6 +515,13 @@ class ParameterisedIntegrand:
         return accumulator
 
     def discrete_prior_prob_function(self, indices: NDArray, dim: int = 0) -> NDArray:
+        if self.strat_sgn and indices.shape[1] == 0:
+            return np.full((indices.shape[0], 2), 0.5, dtype=np.float64)
+
+        if self.strat_sgn:
+            indices = indices[:, 1:]
+            dim -= 1
+
         if self.sum_channels:
             return self.integrand.discrete_prior_prob_function(indices, dim)
 

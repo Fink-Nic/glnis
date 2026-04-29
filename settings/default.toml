@@ -104,7 +104,7 @@ min_bin_height = 1e-3
 min_bin_derivative = 1e-3
 
 # Parameters for the transformer model
-[integrator.madnis.transformer]
+[integrator.madnis.transformer_kwargs]
 embedding_dim = 64
 feedforward_dim = 64
 heads = 4
@@ -112,7 +112,7 @@ mlp_units = 64
 transformer_layers = 2
 mlp_layers = 2
 
-[integrator.madnis.made]
+[integrator.madnis.made_kwargs]
 layers = 3
 nodes_per_feature = 8
 
