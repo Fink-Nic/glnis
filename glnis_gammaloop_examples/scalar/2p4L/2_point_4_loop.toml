@@ -41,7 +41,7 @@ coordinate_system = "tropical"
 
 [cli_settings.global.generation.compile]
 compilation_mode = "assembly"
-optimization_level = "O1"
+optimization_level = "O3"
 fast_math = true
 unsafe_math = true
 custom = []
@@ -57,17 +57,10 @@ compile = true
 summed = false
 summed_function_map = true
 
-# Disable thresholds with
 [cli_settings.global.generation.threshold_subtraction]
 enable_thresholds = false
 [default_runtime_settings.subtraction]
 disable_threshold_subtraction = true
-
-# Otherwise leave them enabled with
-# [cli_settings.global.generation.threshold_subtraction]
-# enable_thresholds = true
-# # The option below specifies the generation of threshold for the kinematics supplied
-# check_esurface_at_generation = true
 
 [cli_settings.global.n_cores]
 feyngen = 10
@@ -92,3 +85,22 @@ momenta = [
 	"dependent",
 ]
 helicities = [1, 1]
+
+[[default_runtime_settings.stability.levels]]
+precision = "Double"
+required_precision_for_re = 0.0000000001
+required_precision_for_im = 0.0000000001
+escalate_for_large_weight_threshold = 0.9
+
+[[default_runtime_settings.stability.levels]]
+precision = "Quad"
+required_precision_for_re = 0.00001
+required_precision_for_im = 0.00001
+escalate_for_large_weight_threshold = -1.0
+
+[[default_runtime_settings.stability.levels]]
+precision = "Arb"
+required_precision_for_re = 0.00001
+required_precision_for_im = 0.00001
+escalate_for_large_weight_threshold = -1.0
+

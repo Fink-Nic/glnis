@@ -10,9 +10,11 @@ templates = [
 [gammaloop]
 state = "epem_a_ttxh/NLO/GL08/state"
 integration_workspace = "epem_a_ttxh/NLO/GL08/state/integration_workspace"
+get_target_from_gammaloop = true
+prefer_gammaloop_over_target = true
 
 [integration_target]
-imag_mean = 3.2336e-06
+imag_mean = -3.2336e-06
 
 [integrator.madnis]
 batch_size = 20000
@@ -21,11 +23,11 @@ learning_rate = 4e-4
 [layered_integrand]
 integrand_type = "gammaloop"
 training_phase = "imag"
-n_cores = 32
+n_cores = 128
 
 [integrand.gammaloop]
-momentum_space = true
-sample_lmbs = false
+momentum_space = false
+sample_lmbs = "summed"
 sample_orientations = false
 integrand_name = "NLO"
 

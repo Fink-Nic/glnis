@@ -11,7 +11,8 @@ templates = [
 state = "epem_a_ttxh/NLO/GL18/state"
 integration_workspace = "epem_a_ttxh/NLO/GL18/state/integration_workspace"
 integrand_name = "NLO"
-get_target_from_gammaloop = false
+get_target_from_gammaloop = true
+prefer_gammaloop_over_target = true
 
 [integration_target]
 imag_mean = 1.3472e-04
@@ -23,12 +24,12 @@ learning_rate = 4e-4
 [layered_integrand]
 integrand_type = "gammaloop"
 training_phase = "imag"
-n_cores = 32
+n_cores = 128
 
 [integrand.gammaloop]
-momentum_space = true
-sample_lmbs = false
-sample_orientations = true
+momentum_space = false
+sample_lmbs = "summed"
+sample_orientations = false
 integrand_name = "NLO"
 
 [scripts.sampler_comp]

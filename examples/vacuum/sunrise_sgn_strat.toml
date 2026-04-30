@@ -1,20 +1,127 @@
 run_name = "sunrise@sign_stratification"
 output_dir = "sunrise/sign_stratification"
 templates = [
-    "settings/vacuum_graphs/sunrise/base",
     "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",
     #"settings/templates/made/size5",
     "settings/templates/transformer/size4",
 ]
 
-[layered_integrand]
-strat_sgn = true
+[integration_target]
+# chem potential 0.0138889
+# no chem potential 0.0373264
+real_mean = 0.0138889
+
+[graph]
+from_state = false
+momtrop_edge_weight = 0.75
+is_vacuum = true
+overwrite_graph_properties = true
+
+[graph.graph_properties]
+edge_src_dst_vertices = [
+    [0, 1], 
+    [1, 0], 
+    [1, 0]
+]
+edge_masses = [
+    0.0,
+    0.0,
+    0.0
+]
+edge_momentum_shifts = [
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ]
+]
+graph_external_vertices = []
+graph_signature = [
+    [1, 0], 
+    [0, 1], 
+    [1, -1]
+]
+momtrop_edge_weight = []
+lmb_array = [
+    [0, 1], 
+    [0, 2], 
+    [1, 2]
+]
+[model]
+from_state = false
+model_path = "/home/nic/Master/tropnis/kaapo_scalars.json"
+
+[layered_integrator]
+integrator_type = "madnis"
 
 [integrator.madnis]
+batch_size = 10000
+learning_rate = 1e-3
+use_scheduler = true
+pretrain_c_flow = false
 loss_type = "variance"
 use_cwnet = true
 uniform_channel_ratio = 0.1
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "rkaapo"
+# chem potential [3.141592653589793, 3.141592653589793, 0.0]
+# no chem potential [0.0, 0.0, 0.0]
+mu = [3.141592653589793, 3.141592653589793, 0.0]
+a = 0.5
+b = 1.0
+
+[layered_parameterisation.layer_1]
+parameterisation_type = "mc_layer"
+subtype = "fermi"
+ose_exponent = 4.0
+fermi_exponent = 1.0
+
+[layered_integrand]
+integrand_type = "kaapo"
+use_f128 = true
+n_cores = 128
+strat_sgn = true
+
+[integrand.kaapo]
+path_to_example = "thermal_integrand_examples/sunset"
+# chem potential [6.283185307179586, 3.141592653589793, 1.0]
+# no chem potential [6.283185307179586, 0.0, 1.0] 
+params = [6.283185307179586, 3.141592653589793, 1.0]
+use_prec = true
+
+[integrand.kaapo.symbolica_integrand_kwargs]
+rotation_seed = 42
+stability_tolerance = 1e-5
+stability_abs_threshold = 1e-12
+stability_abs_tolerance = 1e-15
+escalate_large_weight_multiplier = 0.9
+escalate_small_momentum_multiplier = 1e-3
+escalate_large_momentum_multiplier = 1e3
+n_shots = 3
+force_rebuild = false
+sum_orientations = true
+runtime_summation = false
+
+[integrand.kaapo.symbolica_integrand_prec_kwargs]
+prec = 200
+n_shots = 1
+escalate_large_weight_multiplier = -1.0
+escalate_small_momentum_multiplier = -1.0
+escalate_large_momentum_multiplier = -1.0
+sum_orientations = true
+runtime_summation = false
 
 [integrator.madnis.flow_kwargs]
 bins = 5
@@ -24,7 +131,7 @@ min_bin_derivative = 1e-5
 
 [integrator.madnis.cwnet_kwargs]
 layers = 5
-units = 128
+units = 512
 
 [scripts.sampler_comp]
 n_training_steps = 1000
@@ -52,3 +159,68 @@ grid = [
     {start = 0, stop = 1, num = 1000},
     {start = 0, stop = 1, num = 1000},
 ]
+
+[[scripts.hyperparam_comparison.comparison]]
+name = "strat_sgn"
+plot_slices = true
+blocks = [
+    [
+        """
+        [integrator.madnis]
+        use_cwnet = true
+        uniform_channel_ratio = 1.0
+        """,
+    ],
+    [
+        """
+        [integrator.madnis]
+        use_cwnet = true
+        uniform_channel_ratio = 0.1
+        """,
+    ],
+    [
+        """
+        [integrator.madnis]
+        use_cwnet = false
+        """,
+        "settings/templates/transformer/size4",
+    ],
+    [
+        """
+        [integrator.madnis]
+        use_cwnet = false
+        """,
+        "settings/templates/made/size5",
+    ],
+]
+block_names = ["cwnet_1.0", "cwnet_0.1", "transformer", "made" ]
+
+[scripts.hpcomp_training_run]
+n_training_steps = 1000
+n_samples = 1_000_000
+n_samples_after_training = 10_000_000
+n_log = 10
+n_plot_snapshot = 100
+n_plot_loss = 2
+plot_disc = true
+n_plot_disc = 10
+
+[[scripts.hpcomp_slice_plots.slice]]
+name = "pos"
+origin = [0.44341431, 0.22723927, 0.55458468]
+discrete = [0, 1]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.hpcomp_slice_plots.slice]]
+name = "neg"
+origin = [0.44341431, 0.22723927, 0.55458468]
+discrete = [1, 1]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+    {start = 0, stop = 1, num = 1000},
+]
+

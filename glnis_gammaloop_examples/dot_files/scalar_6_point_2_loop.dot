@@ -1,7 +1,6 @@
 digraph default {
 num=1;
 overall_factor=1;
-multiplicity_factor=1;
 ext    [style=invis]
 ext -> v7:0 [pdg=1000, id=0];
 ext -> v8:1 [pdg=1000, id=1];
