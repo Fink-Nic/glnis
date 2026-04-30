@@ -10,8 +10,9 @@ templates = [
 [gammaloop]
 state = "epem_a_ttxh/NLO/state"
 integration_workspace = "epem_a_ttxh/NLO/state/integration_workspace"
-get_target_from_gammaloop = false
 integrand_name = "NLO"
+get_target_from_gammaloop = true
+prefer_gammaloop_over_target = true
 
 [integration_target]
 imag_mean = -3.2336e-06

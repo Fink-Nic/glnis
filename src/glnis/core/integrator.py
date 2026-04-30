@@ -629,11 +629,11 @@ class MadnisIntegrator(Integrator):
         use_gpu: bool = True,
         use_cwnet: bool = False,
         cwnet_kwargs: Dict[str, Any] = dict(
-            layers=3,
-            units=32,
+            layers=4,
+            units=128,
         ),
         train_channel_weights: bool = True,
-        uniform_channel_ratio: float = 0.0,
+        uniform_channel_ratio: float = 0.1,
         channel_weight_mode: Literal["variance", "mean"] = "variance",
         **kwargs,
     ):
@@ -655,9 +655,6 @@ class MadnisIntegrator(Integrator):
 
         self.loss_type = loss_type
         self.loss_kwargs = loss_kwargs
-        if self.integrand.strat_sgn:
-            if self.loss_type in ["kl_divergence", "kl_divergence_softclip"]:
-                raise ValueError("KL divergence loss is not compatible with stratified sampling with sign.")
 
         discrete_flow_kwargs = transformer_kwargs if discrete_model == "transformer" else made_kwargs
 
@@ -668,7 +665,7 @@ class MadnisIntegrator(Integrator):
             discrete_dims=self.discrete_dims[int(self.use_cwnet):],
             discrete_dims_position=self.discrete_dims_position,
             discrete_prior_prob_function=self._madnis_discrete_prior_prob_function,
-            has_channel_weight_prior=self.use_cwnet,
+            has_channel_weight_prior=False,
         )
         if self.use_cwnet:
             self.madnis = madnis_integrator.Integrator(
@@ -680,8 +677,9 @@ class MadnisIntegrator(Integrator):
                 discrete_model="made",
                 learning_rate=learning_rate,
                 flow_kwargs=flow_kwargs,
-                train_channel_weights=train_channel_weights,
-                cwnet_kwargs=cwnet_kwargs,
+                uniform_channel_ratio=self.uniform_channel_ratio,
+                # train_channel_weights=train_channel_weights,
+                # cwnet_kwargs=cwnet_kwargs,
             )
         else:
             self.madnis = madnis_integrator.Integrator(
@@ -781,6 +779,10 @@ class MadnisIntegrator(Integrator):
             discrete[n_eval:n_eval+n, :], continuous[n_eval:n_eval+n, :] = self._madnis_output_to_disc_cont(
                 madnis_batch.x, madnis_batch.channels)
             wgt[n_eval:n_eval+n, :] = 1 / madnis_batch.q_sample.numpy(force=True).reshape(-1, 1)
+
+            # if self.num_discrete_dims == 1:
+            #     print(f"channel 0: {madnis_batch.x[:, 1][madnis_batch.x[:, 0] == 0].mean()}")
+            #     print(f"channel 1: {madnis_batch.x[:, 1][madnis_batch.x[:, 0] == 1].mean()}")
             if madnis_batch.channels is not None:
                 # We multiply by the number of channels to compensate for the lack of discrete prior call
                 wgt[n_eval:n_eval+n, :] *= torch.gather(
@@ -788,8 +790,10 @@ class MadnisIntegrator(Integrator):
                 )[:, 0].numpy(force=True).reshape(-1, 1) * self.discrete_dims[0]
                 # Next, weigh by N_i / N to restore the actual multichanneling alphas
                 channels = madnis_batch.channels.numpy(force=True)
+                # print(f"channel 0: {madnis_batch.x[madnis_batch.channels == 0].mean()}")
+                # print(f"channel 1: {madnis_batch.x[madnis_batch.channels == 1].mean()}")
                 channel_counts = np.bincount(channels, minlength=self.discrete_dims[0])
-                wgt[n_eval:n_eval+n, :] /= (channel_counts[channels] / len(madnis_batch.channels)).reshape(-1, 1)
+                wgt[n_eval:n_eval+n, :] /= (channel_counts[channels] / n).reshape(-1, 1)
 
             n_eval += n
 
@@ -812,10 +816,10 @@ class MadnisIntegrator(Integrator):
         torch_output = torch.from_numpy(
             weighted_func_val.astype(np.float64)).to(self.device)
 
-        if self.use_cwnet:
+        if self.madnis.integrand.has_channel_weight_prior:
             disc_prior = self.integrand.discrete_prior_prob_function(
                 np.zeros((x_all.shape[0], 0), dtype=np.uint64), 0)
-            disc_prior /= np.sum(disc_prior, axis=1, keepdims=True)
+            disc_prior /= np.sum(disc_prior, axis=1, keepdims=True) * self.discrete_dims[0]
             prior_wgt = np.take_along_axis(disc_prior, layer_input.discrete[:, [0]])
             torch_prior = torch.from_numpy(prior_wgt.astype(np.float64)).to(self.device)
             return torch_output, torch_prior
@@ -827,10 +831,9 @@ class MadnisIntegrator(Integrator):
         if continuous is None:
             continuous = np.zeros((n_samples, 0), dtype=discrete.dtype)
         if self.use_cwnet:
-            if discrete.shape[1] == 1:
-                import warnings
-                warnings.warn("probe_prob not implemented for purely CWNet discrete sampling, returning flat prior")
-                return np.full((n_samples, 1), 1 / self.discrete_dims[0], dtype=np.float64)
+            if continuous.size == 0:
+                ch_ctrb = self.madnis._get_channel_contributions(False, self.channel_weight_mode).numpy(force=True)
+                return ch_ctrb[discrete[:, 0]]
             channel = torch.from_numpy(discrete[:, 0]).to(self.device, torch.int64)
             discrete = discrete[:, 1:]
         else:
@@ -853,11 +856,11 @@ class MadnisIntegrator(Integrator):
                 if continuous.shape[1] > 0:
                     prob[n_eval:n_eval+n] = self.madnis.flow.prob(
                         x_all[n_eval:n_eval+n, :],
-                        channel=channel[n_eval:n_eval+n]).numpy(force=True).reshape(-1)
+                        channel=None if channel is None else channel[n_eval:n_eval+n]).numpy(force=True).reshape(-1)
                 else:
                     prob[n_eval:n_eval+n] = self.madnis.flow.discrete_flow.prob(
                         x_all[n_eval:n_eval+n, :],
-                        channel=channel[n_eval:n_eval+n]).numpy(force=True).reshape(-1)
+                        channel=None if channel is None else channel[n_eval:n_eval+n]).numpy(force=True).reshape(-1)
             n_eval += n
 
         return prob
@@ -1003,7 +1006,7 @@ class MadnisIntegrator(Integrator):
         info = super()._get_info()
         info["scheduler_type"] = self.scheduler_type
         info["device"] = str(self.device)
-        if self.num_discrete_dims - int(self.integrand.strat_sgn) > int(self.use_cwnet):
+        if self.num_discrete_dims > int(self.use_cwnet):
             trainable_disc_flow = sum(p.numel() for p in self.madnis.flow.discrete_flow.parameters() if p.requires_grad)
             total_disc_flow = sum(p.numel() for p in self.madnis.flow.discrete_flow.parameters())
             info["discrete flow trainable parameters"] = trainable_disc_flow

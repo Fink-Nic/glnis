@@ -2,14 +2,72 @@ run_name = "cosine@single"
 output_dir = "cosine/single"
 
 templates = [
-    "settings/test/base",
-    "settings/templates/madnis_bins/size1",
     "settings/templates/flow/size5",
     "settings/templates/transformer/size3",
 ]
 
+[graph]
+from_state = false
+momtrop_edge_weight = 0.75
+is_vacuum = true
+overwrite_graph_properties = true
+
+[graph.graph_properties]
+edge_src_dst_vertices = [
+    [0, 1], 
+    [1, 0], 
+    [1, 0]
+]
+edge_masses = [
+    0.0,
+    0.0,
+    0.0
+]
+edge_momentum_shifts = [
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ],
+    [
+        0.0,
+        0.0,
+        0.0
+    ]
+]
+graph_external_vertices = []
+graph_signature = [
+    [1, 0], 
+    [0, 1], 
+    [1, -1]
+]
+momtrop_edge_weight = []
+lmb_array = [
+    [0, 1], 
+    [0, 2], 
+    [1, 2]
+]
+[model]
+from_state = false
+
+[layered_integrator]
+integrator_type = "madnis"
+
 [integrator.madnis]
-loss_type = "variance"
+loss_type = "kl_divergence"
+use_cwnet = false
+uniform_channel_ratio = 1.0
+
+[integrator.madnis.flow_kwargs]
+bins = 5
+min_bin_width = 2e-4
+min_bin_height = 2e-5
+min_bin_derivative = 1e-5
 
 [layered_integrand]
 integrand_type = "cosine"
@@ -27,3 +85,75 @@ n_plot_snapshot = 10
 n_plot_loss = 1
 plot_disc = true
 n_plot_disc = 2
+
+[[scripts.hyperparam_comparison.comparison]]
+name = "strat_sgn"
+plot_slices = true
+blocks = [
+    [
+        """
+        [layered_integrand]
+        strat_sgn = false
+        """,
+    ],
+    [
+        """
+        [layered_integrand]
+        strat_sgn = true
+        [integrator.madnis]
+        use_cwnet = true
+        uniform_channel_ratio = 1.0
+        """,
+    ],
+    [
+        """
+        [layered_integrand]
+        strat_sgn = true
+        [integrator.madnis]
+        use_cwnet = true
+        uniform_channel_ratio = 0.1
+        """,
+    ],
+    [
+        """
+        [layered_integrand]
+        strat_sgn = true
+        """,
+        "settings/templates/transformer/size3",
+    ],
+    [
+        """
+        [layered_integrand]
+        strat_sgn = true
+        """,
+        "settings/templates/made/size5",
+    ],
+]
+block_names = ["no_strat", "cwnet_1.0", "cwnet_0.1", "transformer", "made" ]
+
+[scripts.hpcomp_training_run]
+n_training_steps = 100
+n_samples = 10_000
+n_samples_after_training = 100_000
+n_log = 10
+n_plot_snapshot = 10
+n_plot_loss = 2
+plot_disc = true
+n_plot_disc = 2
+
+[[scripts.hpcomp_slice_plots.slice]]
+name = "channel 0 (pos)"
+origin = [0]
+discrete = [0]
+dirs = [0]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+]
+[[scripts.hpcomp_slice_plots.slice]]
+name = "channel 1 (neg)"
+origin = [0]
+discrete = [1]
+dirs = [0]
+grid = [
+    {start = 0, stop = 1, num = 1000},
+]

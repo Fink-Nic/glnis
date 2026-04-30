@@ -425,7 +425,7 @@ class SettingsParser:
                 graph_properties = Dot.get_graph_properties(master_id, ext_momenta)
                 lmbs = graph_group.loop_momentum_bases
                 momentum_space = self.settings['integrand']['gammaloop']['momentum_space']
-                if self.settings['graph'].get('overwrite_lmb_heuristics', False) and momentum_space:
+                if self.settings['graph'].get('overwrite_lmb_heuristics', False):
                     active_lmbs = lmbs
                 else:
                     active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]

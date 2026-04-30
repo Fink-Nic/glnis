@@ -4,7 +4,6 @@ output_dir = "test/multi_mc_cwnet"
 templates = [
     "settings/test/base",
     "settings/test/mc",
-    "settings/templates/madnis_bins/size0",
     "settings/templates/flow/size5",
     "settings/templates/transformer/size3",
 ]

@@ -4,7 +4,8 @@ templates = [
     "settings/vacuum_graphs/sunrise/base",
     "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",
-    "settings/templates/made/size2",
+    #"settings/templates/made/size5",
+    "settings/templates/transformer/size4",
 ]
 
 [layered_integrand]
@@ -12,7 +13,18 @@ strat_sgn = true
 
 [integrator.madnis]
 loss_type = "variance"
+use_cwnet = true
 uniform_channel_ratio = 0.1
+
+[integrator.madnis.flow_kwargs]
+bins = 5
+min_bin_width = 2e-4
+min_bin_height = 2e-5
+min_bin_derivative = 1e-5
+
+[integrator.madnis.cwnet_kwargs]
+layers = 5
+units = 128
 
 [scripts.sampler_comp]
 n_training_steps = 1000
@@ -20,54 +32,23 @@ n_samples = 1000000
 nitn = 20
 n_samples_after_training = 10000000
 n_log = 10
-n_plot_snapshot = 20
+n_plot_snapshot = 50
 n_plot_loss = 1
-plot_disc = false
+plot_disc = true
 
 [[scripts.slice_plots.slice]]
-origin = [0.44341431, 0.22723927, 0.55458468]
-discrete = [1]
+name = "re+"
+from_max_wgt = "re+"
 dirs = [0, 1]
 grid = [
     {start = 0, stop = 1, num = 1000},
     {start = 0, stop = 1, num = 1000},
 ]
 [[scripts.slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965]
-discrete = [1]
+name = "re-"
+from_max_wgt = "re-"
 dirs = [0, 1]
 grid = [
     {start = 0, stop = 1, num = 1000},
-    {start = 0, stop = 1, num = 1000},
-]
-[[scripts.slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965]
-discrete = [1]
-dirs = [0, 2]
-grid = [
-    {start = 0, stop = 1, num = 1000},
-    {start = 0, stop = 1, num = 1000},
-]
-[[scripts.slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965]
-discrete = [1]
-dirs = [1, 2]
-grid = [
-    {start = 0, stop = 1, num = 1000},
-    {start = 0, stop = 1, num = 1000},
-]
-[[scripts.slice_plots.slice]]
-origin = [0.95709241, 0.97321720, 0.03780411]
-discrete = [2]
-dirs = [0, 1]
-grid = [
-    {start = 0, stop = 1, num = 1000},
-    {start = 0, stop = 1, num = 1000},
-]
-[[scripts.slice_plots.slice]]
-origin = [0.84720132, 0.83117505, 0.99961965]
-discrete = [1]
-dirs = [1]
-grid = [
     {start = 0, stop = 1, num = 1000},
 ]

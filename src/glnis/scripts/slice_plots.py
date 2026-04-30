@@ -254,7 +254,7 @@ def run_slice_plots(
                 shell_print(
                     f"Integrand has {integrand.continuous_dim} continuous dimensions, but origin has {len(origin)}. Skipping slice...")
                 continue
-            if not len(integrand.discrete_dims) == len(discrete):
+            if len(integrand.discrete_dims) > len(discrete):
                 shell_print(
                     f"Integrand has {len(integrand.discrete_dims)} discrete dimensions, but {len(discrete)} were provided. Skipping slice...")
                 continue
@@ -292,7 +292,7 @@ def run_slice_plots(
 
         if len(Data.slices1d) == 0 and len(Data.slices2d) == 0:
             shell_print(f"No valid slices defined in settings, exiting...")
-            quit()
+            return
 
         if not only_plot:
             shell_print(

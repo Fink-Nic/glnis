@@ -1,6 +1,6 @@
 [cli_settings]
 [cli_settings.state]
-folder = "./glnis_gammaloop_examples/epem_a_ttxh/NLO/state"
+folder = "./glnis_gammaloop_examples/epem_a_ttxh/NLO/GL18/state"
 
 # Mapping of the 11 NLO diagrams w.r.t our notation in https://arxiv.org/pdf/2203.11038
 # Targets from the real part of the cross-section in the OS+MSbar scheme
@@ -33,11 +33,11 @@ commands = [
       --symmetrize-left-right-states true
       -p epem_a_tth -i NLO
       --global-prefactor-num "1𝑖"
-      --select-graphs GL26
+      --select-graphs GL18
       --only-diagrams""",
   "save dot",
     "generate existing -p epem_a_tth -i NLO",
-    "duplicate integrand -p epem_a_tth -i NLO --output_process_name epem_a_tth --output_integrand_name NLO_semi_inclusive",
+    # "duplicate integrand -p epem_a_tth -i NLO --output_process_name epem_a_tth --output_integrand_name NLO_semi_inclusive",
     "save state -o"
 ]
 
@@ -184,7 +184,7 @@ commands = [
 
     """,
   """integrate -p epem_a_tth -i NLO --n-cores 10
-                 --target epem_a_tth@NLO=0.0,-1.47653e-04
+                 --target epem_a_tth@NLO=0.0,1.3472e-04
 				 --renderer ratatui
 				 --batch-size 1000
 				 --show-phase imag

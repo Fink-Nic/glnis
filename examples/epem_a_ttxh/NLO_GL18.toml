@@ -1,0 +1,129 @@
+run_name = "epem_a_tth@NLO"
+output_dir = "epem_a_tth/NLO/GL18"
+templates = [
+    "settings/templates/flow/size9",
+    "settings/templates/madnis_bins/size1",
+    "settings/templates/transformer/size4",
+    "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
+]
+
+[gammaloop]
+state = "epem_a_ttxh/NLO/GL18/state"
+integration_workspace = "epem_a_ttxh/NLO/GL18/state/integration_workspace"
+integrand_name = "NLO"
+get_target_from_gammaloop = false
+
+[integration_target]
+imag_mean = 1.3472e-04
+
+[integrator.madnis]
+batch_size = 20000
+learning_rate = 4e-4
+
+[layered_integrand]
+integrand_type = "gammaloop"
+training_phase = "imag"
+n_cores = 32
+
+[integrand.gammaloop]
+momentum_space = true
+sample_lmbs = false
+sample_orientations = true
+integrand_name = "NLO"
+
+[scripts.sampler_comp]
+n_training_steps = 1000
+n_samples = 100000
+n_samples_after_training = 10000000
+
+
+# Insane mwp: -d 0 -x 1.7147417998191233e-01 9.0554355263726949e-01 5.3215314082085108e-01 2.3370648009749315e-01 7.5648297947370036e-01 4.7542936758342952e-01 1.9357281770300003e-01 8.0434383445181290e-01 3.8307304041202112e-01
+
+
+[[scripts.hyperparam_comparison.comparison]]
+name = "gl_param"
+blocks = [
+    [
+        """
+        [integrand.gammaloop]
+        momentum_space = true
+        sample_lmbs = false
+        sample_orientations = false
+        integrand_name = "NLO"
+        """,
+        "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        momentum_space = true
+        sample_lmbs = "summed"
+        sample_orientations = false
+        integrand_name = "NLO"
+        """,
+        "settings/templates/parameterisation/mc_lmb_spherical",
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        momentum_space = true
+        sample_lmbs = false
+        sample_orientations = true
+        integrand_name = "NLO"
+        """,
+        "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        momentum_space = true
+        sample_lmbs = "summed"
+        sample_orientations = true
+        integrand_name = "NLO"
+        """,
+        "settings/templates/parameterisation/mc_lmb_spherical",
+    ],
+]
+block_names = ["no_heur", "heur", "no_heur_orientations", "heur_orientations"]
+[[scripts.hyperparam_comparison.comparison]]
+name = "gl"
+blocks = [
+    [
+        """
+        [integrand.gammaloop]
+        momentum_space = false
+        sample_lmbs = "summed"
+        sample_orientations = false
+        integrand_name = "NLO"
+        """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        momentum_space = false
+        sample_lmbs = "summed"
+        sample_orientations = true
+        integrand_name = "NLO"
+        """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        momentum_space = true
+        sample_lmbs = false
+        sample_orientations = true
+        integrand_name = "NLO"
+        """,
+    ],
+]
+block_names = ["smlmb", "smlmb+or", "nolmb+or", ]
+
+[scripts.hpcomp_training_run]
+n_training_steps = 2000
+n_samples = 1_000_000
+n_samples_after_training = 10_000_000
+n_log = 50
+n_plot_snapshot = 200
+n_plot_loss = 10
+plot_disc = true
+n_plot_disc = 2
