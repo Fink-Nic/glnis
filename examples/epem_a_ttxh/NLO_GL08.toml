@@ -1,5 +1,5 @@
-run_name = "epem_a_tth@NLO"
-output_dir = "epem_a_tth/NLO/GL08"
+run_name = "epem_a_ttxh@NLO"
+output_dir = "epem_a_ttxh/NLO/GL08"
 templates = [
     "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",

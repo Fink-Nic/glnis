@@ -60,8 +60,8 @@ integrator_type = "madnis"
 
 [integrator.madnis]
 loss_type = "kl_divergence"
-use_cwnet = false
-uniform_channel_ratio = 1.0
+use_cwnet = true
+uniform_channel_ratio = 0.1
 
 [integrator.madnis.flow_kwargs]
 bins = 5

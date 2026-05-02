@@ -1,4 +1,5 @@
 # type: ignore
+from glnis.utils.types import GraphProperties, LayerData
 import vegas
 import numpy as np
 import torch
@@ -14,7 +15,7 @@ from symbolica import NumericalIntegrator, Sample, RandomNumberGenerator
 
 import madnis.integrator as madnis_integrator
 from glnis.core.accumulator import (
-    DefaultAccumulator, TrainingAccumulator, GraphProperties, LayerData
+    DefaultAccumulator, TrainingAccumulator
 )
 from glnis.core.integrand import MPIntegrand
 from glnis.core.parser import SettingsParser
@@ -136,7 +137,7 @@ class Integrator(ABC):
                 accumulator = self.integrand.eval_integrand(layer_input, acc_type)
             else:
                 accumulator.combine_with(self.integrand.eval_integrand(layer_input, acc_type))
-                accumulator.finalise()
+            accumulator.finalise()
             n_eval += n
             if progress_report:
                 if n_eval % 1e6 == 0 and n_samples % 1e6 == 0:
@@ -280,7 +281,7 @@ class Integrator(ABC):
     @staticmethod
     def _default_callback(status: 'Integrator.TrainingStatus') -> None:
         shell_print(
-            f"itn {status.step}: {error_fmter(status.acc.training_mean, status.acc.training_err)}, RSD={status.acc.training_rsd:.3f}")
+            f"itn {status.step}: {error_fmter(status.acc.training_result.mean, status.acc.training_result.error)}, RSD={status.acc.training_result.rsd:.3f}")
 
     @dataclass(kw_only=True)
     class IntegratorState:
@@ -327,24 +328,18 @@ class VegasIntegrator(Integrator):
         report = []
         for itn in range(nitn):
             layer_input, r = self.get_samples(batch_size, return_r=True)
-            acc: TrainingAccumulator = self.integrand.eval_integrand(
-                layer_input, 'training')
-            f = acc.training_data.training_result.astype(np.float64)
-            self.adaptive_map.add_training_data(r, f.ravel())
+            acc: TrainingAccumulator = self.integrand.eval_integrand(layer_input, 'training')
+            self.adaptive_map.add_training_data(r, acc.training_data.astype(np.float64))
             self.adaptive_map.adapt(alpha=alpha)
             self.step += 1
             self.total_training_samples += batch_size
-            res = acc.training_mean
-            err = acc.training_err
-            rsd = acc.training_rsd
-            arsd = acc.training_abs_rsd
             status = Integrator.TrainingStatus(
                 step=self.step,
                 total_samples=self.total_training_samples,
                 acc=acc
             )
             callback(status)
-            report.append(f"itn {itn+1}: {error_fmter(res, err)}, RSD={rsd:.3f}, ARSD={arsd:.3f}")
+            report.append(f"itn {itn+1}: {error_fmter(acc.training_result.mean, acc.training_result.error)}")
 
         return "\n".join(f"{line}" for line in report)
 
@@ -482,10 +477,8 @@ class HavanaIntegrator(Integrator):
         n_digits = len(str(nitn))
         for itn in range(nitn):
             samples, layer_input = self.get_samples(batch_size, True, True)
-            acc: TrainingAccumulator = self.integrand.eval_integrand(
-                layer_input, 'training')
-            self.havana.add_training_samples(
-                samples, acc.training_data.training_result.ravel().tolist())
+            acc: TrainingAccumulator = self.integrand.eval_integrand(layer_input, 'training')
+            self.havana.add_training_samples(samples, acc.training_data.tolist())
             res, err, chi_sq = self.havana.update(
                 self.discrete_learning_rate, self.continuous_learning_rate)
             self.step += 1
@@ -627,6 +620,7 @@ class MadnisIntegrator(Integrator):
         ),
         max_batch_size: int = 100_000,
         use_gpu: bool = True,
+        gpu_id: int = 0,
         use_cwnet: bool = False,
         cwnet_kwargs: Dict[str, Any] = dict(
             layers=4,
@@ -642,6 +636,7 @@ class MadnisIntegrator(Integrator):
         torch.manual_seed(self.seed)
 
         self.use_gpu = use_gpu
+        self.gpu_id = gpu_id
         self.device = self._get_device()
         self.use_cwnet = use_cwnet and self.num_discrete_dims > 0
         self.uniform_channel_ratio = uniform_channel_ratio
@@ -809,12 +804,9 @@ class MadnisIntegrator(Integrator):
         layer_input.discrete, layer_input.continuous = self._madnis_output_to_disc_cont(x_all, channel)
         layer_input.update(self.IDENTIFIER)
 
-        acc: TrainingAccumulator = self.integrand.eval_integrand(
-            layer_input, 'training')
-        weighted_func_val = acc.training_data.training_result.flatten()
-
+        acc: TrainingAccumulator = self.integrand.eval_integrand(layer_input, 'training')
         torch_output = torch.from_numpy(
-            weighted_func_val.astype(np.float64)).to(self.device)
+            acc.training_data.astype(np.float64)).to(self.device)
 
         if self.madnis.integrand.has_channel_weight_prior:
             disc_prior = self.integrand.discrete_prior_prob_function(
@@ -1049,16 +1041,22 @@ class MadnisIntegrator(Integrator):
                 return None
 
     def _get_device(self) -> torch.device:
-        if torch.cuda.is_available() and self.use_gpu:
-            for i in range(torch.cuda.device_count()):
-                major, minor = torch.cuda.get_device_capability(i)
-                if (7, 0) <= (major, minor) < (12, 0):
-                    return torch.device(f'cuda:{i}')
-            else:
-                shell_print("CUDA devices found but none are compatible. Using CPU.")
-        else:
+        if not self.use_gpu:
+            return torch.device('cpu')
+        if not torch.cuda.is_available():
             shell_print("No CUDA device found. Using CPU.")
             return torch.device('cpu')
+
+        n_dvc = torch.cuda.device_count()
+        gpu_id = max(self.gpu_id, n_dvc)
+        reordered_list = list(range(n_dvc))
+        reordered_list.pop(gpu_id)
+        reordered_list.insert(0, gpu_id)
+        for i in reordered_list:
+            major, minor = torch.cuda.get_device_capability(i)
+            if (7, 0) <= (major, minor) < (12, 0):
+                return torch.device(f'cuda:{i}')
+        shell_print("CUDA devices found but none are compatible. Using CPU.")
 
     def _get_loss(self):
         from glnis.core import losses

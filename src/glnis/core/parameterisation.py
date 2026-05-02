@@ -1,4 +1,5 @@
 # type: ignore
+from glnis.utils.types import GraphProperties
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Dict, List, Tuple, Any
@@ -6,7 +7,7 @@ from numpy.typing import NDArray
 from copy import deepcopy
 
 import momtrop
-from glnis.core.accumulator import GraphProperties, LayerData
+from glnis.utils.types import LayerData
 
 
 type ParamOutput = Tuple[NDArray, NDArray, NDArray | None]

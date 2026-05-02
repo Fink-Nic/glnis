@@ -1,5 +1,5 @@
-run_name = "epem_a_tth@NLO"
-output_dir = "epem_a_tth/NLO/GL18"
+run_name = "epem_a_ttxh@NLO"
+output_dir = "epem_a_ttxh/NLO/GL18"
 templates = [
     "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",
@@ -18,7 +18,7 @@ prefer_gammaloop_over_target = true
 imag_mean = 1.3472e-04
 
 [integrator.madnis]
-batch_size = 20000
+batch_size = 50000
 learning_rate = 4e-4
 
 [layered_integrand]
@@ -34,8 +34,8 @@ integrand_name = "NLO"
 
 [scripts.sampler_comp]
 n_training_steps = 1000
-n_samples = 100000
-n_samples_after_training = 10000000
+n_samples = 1_000_000
+n_samples_after_training = 50_000_000
 
 
 # Insane mwp: -d 0 -x 1.7147417998191233e-01 9.0554355263726949e-01 5.3215314082085108e-01 2.3370648009749315e-01 7.5648297947370036e-01 4.7542936758342952e-01 1.9357281770300003e-01 8.0434383445181290e-01 3.8307304041202112e-01
@@ -120,9 +120,9 @@ blocks = [
 block_names = ["smlmb", "smlmb+or", "nolmb+or", ]
 
 [scripts.hpcomp_training_run]
-n_training_steps = 2000
+n_training_steps = 1000
 n_samples = 1_000_000
-n_samples_after_training = 10_000_000
+n_samples_after_training = 50_000_000
 n_log = 50
 n_plot_snapshot = 200
 n_plot_loss = 10

@@ -1,4 +1,5 @@
 # type: ignore
+from glnis.utils.types import GraphProperties, Result
 import numpy as np
 import pickle
 from numpy.typing import NDArray
@@ -7,12 +8,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from traceback import print_exc
-from madnis.integrator import TrainingStatus as MadnisTrainingStatus
 
 from glnis.utils.helpers import shell_print, verify_path
 from glnis.core.accumulator import (
-    GraphProperties,
-    IntegrationResult,
     DefaultAccumulator,
     TrainingAccumulator
 )
@@ -46,17 +44,17 @@ class SamplerCompData:
     def __init__(self,
                  integrator_identifiers: List[str],
                  graph_properties: GraphProperties,
-                 target: IntegrationResult,
+                 target: Result,
                  settings: Dict[str, Any] = None,
                  madnis_kwargs: Dict[str, Any] = None,
                  madnis_info: Dict[str, Any] = None,
                  integrand_kwargs: Dict[str, Any] = None,
                  param_kwargs: Dict[str, Any] = None,) -> None:
-        self.result: Dict[str, IntegrationResult] = dict()
+        self.result: Dict[str, Result] = dict()
         self.observables: Dict[str, Dict[str, Any]] = dict()
         self.training_progress: Dict[str, TrainingProgress] = dict()
         for name in integrator_identifiers:
-            self.result[name] = IntegrationResult()
+            self.result[name] = Result()
             self.observables[name] = dict()
             if not name == NAIVE_KEY:
                 self.training_progress[name] = TrainingProgress()
@@ -73,6 +71,17 @@ class SamplerCompData:
 
     def __setstate__(self, state):
         """Custom unpickling logic to handle changes in the class definition over time."""
+        result = state.get("result", dict())
+        if isinstance(result, dict):
+            # Convert any non-Result objects in result to Result
+            for key, value in result.items():
+                if not isinstance(value, Result):
+                    state["result"][key] = Result.from_legacy(value)
+        else:
+            state["result"] = dict()
+        target = state.get("target")
+        if target and not isinstance(target, Result):
+            state["target"] = Result.from_legacy(target)
         self.__dict__.update(state)
 
         # Provide defaults for fields that didn't exist when the file was saved
@@ -163,6 +172,7 @@ def run_sampler_comp(
         n_samples = params.get("n_samples", 10_000)
         n_samples_after_training = params.get("n_samples_after_training", 100_000)
         nitn = params.get("nitn", 10)  # number of vegas/havana training iterations
+        take_prelim_snapshot = params.get("take_prelim_snapshot", True)
 
         if not no_output:
             PROJECT_ROOT = Path(__file__).parents[3]
@@ -224,12 +234,20 @@ def run_sampler_comp(
         def add_integration_snapshot(itg: Integrator, tp: TrainingProgress, print_results: bool = False) -> None:
             acc: TrainingAccumulator = itg.integrate(
                 n_samples, progress_report=False, acc_type='training')
-            tp.means.append(acc.training_mean)
-            tp.errors.append(acc.training_err)
-            tp.rsds.append(acc.training_rsd)
-            tp.abs_rsds.append(acc.training_abs_rsd)
-            tp.tvars.append(acc.training_tvar)
-            tp.abs_tvars.append(acc.training_abs_tvar)
+            tp.means.append(acc.training_result.mean)
+            tp.errors.append(acc.training_result.error)
+            tp.rsds.append(acc.training_result.rsd)
+            tp.tvars.append(acc.training_result.tvar)
+            match itg.integrand.training_phase:
+                case 'real':
+                    tp.abs_rsds.append(acc.result.real.rsd)
+                    tp.abs_tvars.append(acc.result.real.tvar)
+                case 'imag':
+                    tp.abs_rsds.append(acc.result.imag.rsd)
+                    tp.abs_tvars.append(acc.result.imag.tvar)
+                case 'abs':
+                    tp.abs_rsds.append(acc.training_result.rsd)
+                    tp.abs_tvars.append(acc.training_result.tvar)
             tp.steps_snapshot.append(itg.step)
             tp.nspl_snapshot.append(itg.total_training_samples)
             if print_results:
@@ -280,13 +298,14 @@ def run_sampler_comp(
                 -time_last + (time_last := time()):.2f}s"""
         )
 
-        shell_print("Taking preliminary snapshots...")
-        for identifier, itg in integrators.items():
-            if identifier == NAIVE_KEY:
-                continue
-            add_integration_snapshot(itg, Data.training_progress[identifier], True)
-            if plot_disc:
-                add_disc_prob_snapshot(itg, Data.training_progress[identifier])
+        if take_prelim_snapshot:
+            shell_print("Taking preliminary snapshots...")
+            for identifier, itg in integrators.items():
+                if identifier == NAIVE_KEY:
+                    continue
+                add_integration_snapshot(itg, Data.training_progress[identifier], True)
+                if plot_disc:
+                    add_disc_prob_snapshot(itg, Data.training_progress[identifier])
 
         # Training all the integrators
         if not no_vegas:
@@ -380,34 +399,34 @@ def plot_sampler_comp(file: str,
         )
         f.write(f"Learned phase: {Data.integrand_kwargs['training_phase'].upper()}\n")
         f.write(f"Target:")
-        if Data.target.real_mean:
-            f.write(f"\n    RE : {Data.target.real_mean:.8e}")
-            if Data.target.real_error:
-                f.write(f" +- {Data.target.real_error:.8e}, RSD = {Data.target.real_rsd:.3f}")
-        if Data.target.imag_mean:
-            f.write(f"\n    IM : {Data.target.imag_mean:.8e}")
-            if Data.target.imag_error:
-                f.write(f" +- {Data.target.imag_error:.8e}, RSD = {Data.target.imag_rsd:.3f}")
+        if Data.target.real.mean:
+            f.write(f"\n    RE : {Data.target.real.mean:.8e}")
+            if Data.target.real.error:
+                f.write(f" +- {Data.target.real.error:.8e}, RSD = {Data.target.real.rsd:.3f}")
+        if Data.target.imag.mean:
+            f.write(f"\n    IM : {Data.target.imag.mean:.8e}")
+            if Data.target.imag.error:
+                f.write(f" +- {Data.target.imag.error:.8e}, RSD = {Data.target.imag.rsd:.3f}")
 
         for identifier, obs in Data.result.items():
             f.write(f"\n\n{line}")
             f.write(f"{f' {identifier} Results ':{'#'}^{width}}\n")
-            if obs.real_error:
+            if obs.real.error:
                 f.write(
-                    f"    RE : {obs.real_mean:.8e} +- {obs.real_error:.8e}, RSD = {obs.real_rsd:.3f}, ARSD = {obs.abs_real_rsd:.3f}\n")
-            if obs.imag_error:
+                    f"    RE : {obs.real.mean:.8e} +- {obs.real.error:.8e}, RSD = {obs.real.rsd:.3f}, ARSD = {obs.abs_real.rsd:.3f}\n")
+            if obs.imag.error:
                 f.write(
-                    f"    IM : {obs.imag_mean:.8e} +- {obs.imag_error:.8e}, RSD = {obs.imag_rsd:.3f}, ARSD = {obs.abs_imag_rsd:.3f}\n")
+                    f"    IM : {obs.imag.mean:.8e} +- {obs.imag.error:.8e}, RSD = {obs.imag.rsd:.3f}, ARSD = {obs.abs_imag.rsd:.3f}\n")
             f.write(f"Relative Time-Variance: ")
-            if obs.real_tvar:
-                f.write(f"RE = {obs.real_tvar:.3e}  ")
-            if obs.imag_tvar:
-                f.write(f"IM = {obs.imag_tvar:.3e}  ")
+            if obs.real.tvar:
+                f.write(f"RE = {obs.real.tvar:.3e}  ")
+            if obs.imag.tvar:
+                f.write(f"IM = {obs.imag.tvar:.3e}  ")
             f.write(f"\nAbsolute Time-Variance: ")
-            if obs.abs_real_tvar:
-                f.write(f"RE = {obs.abs_real_tvar:.3e}  ")
-            if obs.abs_imag_tvar:
-                f.write(f"IM = {obs.abs_imag_tvar:.3e}  ")
+            if obs.abs_real.tvar:
+                f.write(f"RE = {obs.abs_real.tvar:.3e}  ")
+            if obs.abs_imag.tvar:
+                f.write(f"IM = {obs.abs_imag.tvar:.3e}  ")
             f.write(f"\nCPU-microsecond per sample: {obs.total_time / obs.n_points * 1e6:.3e}\n")
             f.write(f"Number of samples: {obs.n_points}")
 
@@ -537,53 +556,53 @@ def plot_sampler_comp(file: str,
 
         tgt_line_len = n_spl - 1
         tgt = Data.target
-        if tgt.real_mean:
-            axs[0, 0].hlines(tgt.real_mean, 0, tgt_line_len, color='red')
-        if tgt.real_error:
+        if tgt.real.mean:
+            axs[0, 0].hlines(tgt.real.mean, 0, tgt_line_len, color='red')
+        if tgt.real.error:
             axs[0, 0].fill_between(
                 [0, tgt_line_len],
-                [tgt.real_mean - tgt.real_error],
-                [tgt.real_mean + tgt.real_error],
+                [tgt.real.mean - tgt.real.error],
+                [tgt.real.mean + tgt.real.error],
                 color='red', alpha=0.3
             )
-        if tgt.real_rsd:
-            axs[1, 0].hlines(tgt.real_rsd, 0, tgt_line_len, color='red')
-        if tgt.abs_real_rsd:
-            axs[2, 0].hlines(tgt.abs_real_rsd, 0, tgt_line_len, color='red')
-        if tgt.real_tvar:
-            axs[3, 0].hlines(tgt.real_tvar, 0, tgt_line_len, color='red')
+        if tgt.real.rsd:
+            axs[1, 0].hlines(tgt.real.rsd, 0, tgt_line_len, color='red')
+        if tgt.abs_real.rsd:
+            axs[2, 0].hlines(tgt.abs_real.rsd, 0, tgt_line_len, color='red')
+        if tgt.real.tvar:
+            axs[3, 0].hlines(tgt.real.tvar, 0, tgt_line_len, color='red')
 
-        if tgt.imag_mean:
-            axs[0, 1].hlines(tgt.imag_mean, 0, tgt_line_len, color='red')
-        if tgt.imag_error:
+        if tgt.imag.mean:
+            axs[0, 1].hlines(tgt.imag.mean, 0, tgt_line_len, color='red')
+        if tgt.imag.error:
             axs[0, 1].fill_between(
                 [0, tgt_line_len],
-                [tgt.imag_mean - tgt.imag_error],
-                [tgt.imag_mean + tgt.imag_error],
+                [tgt.imag.mean - tgt.imag.error],
+                [tgt.imag.mean + tgt.imag.error],
                 color='red', alpha=0.3
             )
-        if tgt.imag_rsd:
-            axs[1, 1].hlines(tgt.imag_rsd, 0, tgt_line_len, color='red')
-        if tgt.abs_imag_rsd:
-            axs[2, 1].hlines(tgt.abs_imag_rsd, 0, tgt_line_len, color='red')
-        if tgt.imag_tvar:
-            axs[3, 1].hlines(tgt.imag_tvar, 0, tgt_line_len, color='red')
+        if tgt.imag.rsd:
+            axs[1, 1].hlines(tgt.imag.rsd, 0, tgt_line_len, color='red')
+        if tgt.abs_imag.rsd:
+            axs[2, 1].hlines(tgt.abs_imag.rsd, 0, tgt_line_len, color='red')
+        if tgt.imag.tvar:
+            axs[3, 1].hlines(tgt.imag.tvar, 0, tgt_line_len, color='red')
 
         for i, obs in enumerate(Data.result.values()):
-            if obs.real_error > 0:
-                axs[0, 0].errorbar(i, obs.real_mean, yerr=obs.real_error,
+            if obs.real.error > 0:
+                axs[0, 0].errorbar(i, obs.real.mean, yerr=obs.real.error,
                                    marker='o', markersize=5, capsize=5, color='black')
-                axs[1, 0].scatter(i, obs.real_rsd, color='black')
-                axs[2, 0].scatter(i, obs.abs_real_rsd, color='black')
-                axs[3, 0].scatter(i, obs.real_tvar, color='black')
+                axs[1, 0].scatter(i, obs.real.rsd, color='black')
+                axs[2, 0].scatter(i, obs.abs_real.rsd, color='black')
+                axs[3, 0].scatter(i, obs.real.tvar, color='black')
                 for j in range(1, 4):
                     axs[j, 0].set_yscale("log")
-            if obs.imag_error > 0:
-                axs[0, 1].errorbar(i, obs.imag_mean, yerr=obs.imag_error,
+            if obs.imag.error > 0:
+                axs[0, 1].errorbar(i, obs.imag.mean, yerr=obs.imag.error,
                                    marker='o', markersize=5, capsize=5, color='black')
-                axs[1, 1].scatter(i, obs.imag_rsd, color='black')
-                axs[2, 1].scatter(i, obs.abs_imag_rsd, color='black')
-                axs[3, 1].scatter(i, obs.imag_tvar, color='black')
+                axs[1, 1].scatter(i, obs.imag.rsd, color='black')
+                axs[2, 1].scatter(i, obs.abs_imag.rsd, color='black')
+                axs[3, 1].scatter(i, obs.imag.tvar, color='black')
                 for j in range(1, 4):
                     axs[j, 1].set_yscale("log")
         fig.suptitle(f"Integration results for {run_name}")

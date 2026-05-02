@@ -6,7 +6,7 @@ from pathlib import Path
 from pickle import dump, load
 
 from glnis.utils.helpers import shell_print, verify_path, _finite_float
-from glnis.core.accumulator import IntegrationResult
+from glnis.utils.types import Result
 from glnis.scripts.sampler_comparison import (
     run_sampler_comp, SamplerCompData, TrainingProgress, MADNIS_KEY
 )
@@ -20,9 +20,16 @@ class RunData:
     settings: Dict[str, Any]
     madnis_info: Dict[str, Any]
     training_progress: TrainingProgress
-    target: IntegrationResult
+    target: Result
     observables: Dict[str, Any]
     run_time: float
+
+    def __setstate__(self, state):
+        # Handle legacy IntegrationResult objects for backward compatibility
+        target = state.get('target')
+        if isinstance(target, Result):
+            state['target'] = Result.from_legacy(target)
+        self.__dict__.update(state)
 
 
 class HParamCompData:
@@ -236,11 +243,11 @@ def run_hyperparam_comparison(
                 continue
 
         if len(failed_comparisons) > 0:
-            shell_print(f"Failed {len(failed_comparisons)} comparisons:")
+            shell_print(f"Failed {len(failed_comparisons)} comparison blocks:")
             for comp, (block, error) in failed_comparisons.items():
                 shell_print(f"  Comparison '{comp}' and block '{block}' with error: {error}")
         else:
-            shell_print(f"All comparisons finished successfully!")
+            shell_print(f"All comparison blocks finished successfully!")
 
     if no_output:
         return Data
@@ -316,35 +323,35 @@ def plot_hyperparam_comparison(file: str) -> None:
         tgt_line_len = n_blocks - 1
         if target.real_mean:
             axs2[0, 0].hlines(target.real_mean, 0, tgt_line_len, color='red')
-            if target.real_error:
+            if target.real.error:
                 axs2[0, 0].fill_between(
                     [0, tgt_line_len],
-                    target.real_mean - target.real_error,
-                    target.real_mean + target.real_error,
+                    target.real_mean - target.real.error,
+                    target.real_mean + target.real.error,
                     color='red', alpha=0.3
                 )
-        if target.real_rsd:
-            axs2[1, 0].hlines(target.real_rsd, 0, tgt_line_len, color='red')
-        if target.real_tvar:
-            axs2[2, 0].hlines(target.real_tvar, 0, tgt_line_len, color='red')
-        if target.abs_real_tvar:
-            axs2[3, 0].hlines(target.abs_real_tvar, 0, tgt_line_len, color='red')
+        if target.real.rsd:
+            axs2[1, 0].hlines(target.real.rsd, 0, tgt_line_len, color='red')
+        if target.real.tvar:
+            axs2[2, 0].hlines(target.real.tvar, 0, tgt_line_len, color='red')
+        if target.abs_real.tvar:
+            axs2[3, 0].hlines(target.abs_real.tvar, 0, tgt_line_len, color='red')
 
-        if target.imag_mean:
-            axs2[0, 1].hlines(target.imag_mean, 0, tgt_line_len, color='red')
+        if target.imag.mean:
+            axs2[0, 1].hlines(target.imag.mean, 0, tgt_line_len, color='red')
             if target.imag_error:
                 axs2[0, 1].fill_between(
                     [0, tgt_line_len],
-                    target.imag_mean - target.imag_error,
-                    target.imag_mean + target.imag_error,
+                    target.imag.mean - target.imag.error,
+                    target.imag.mean + target.imag.error,
                     color='red', alpha=0.3
                 )
-        if target.imag_rsd:
-            axs2[1, 1].hlines(target.imag_rsd, 0, tgt_line_len, color='red')
-        if target.imag_tvar:
-            axs2[2, 1].hlines(target.imag_tvar, 0, tgt_line_len, color='red')
-        if target.abs_imag_tvar:
-            axs2[3, 1].hlines(target.abs_imag_tvar, 0, tgt_line_len, color='red')
+        if target.imag.rsd:
+            axs2[1, 1].hlines(target.imag.rsd, 0, tgt_line_len, color='red')
+        if target.imag.tvar:
+            axs2[2, 1].hlines(target.imag.tvar, 0, tgt_line_len, color='red')
+        if target.abs_imag.tvar:
+            axs2[3, 1].hlines(target.abs_imag.tvar, 0, tgt_line_len, color='red')
 
         fig3, axs3 = plt.subplots(nrows=2, ncols=1, sharex=True, layout="constrained", figsize=(8, 6))
         axs3: List[plt.Axes]

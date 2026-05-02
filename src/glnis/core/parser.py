@@ -1,4 +1,5 @@
 # type: ignore
+from glnis.utils.types import GraphProperties
 from symbolica import E, S, Expression
 from typing import Dict, Tuple, List, Any, Set
 from copy import deepcopy
@@ -7,8 +8,285 @@ import momtrop
 import pydot
 import json
 import tomllib
-from glnis.utils.helpers import overwrite_settings, verify_path, shell_print
-from glnis.core.accumulator import GraphProperties, IntegrationResult
+from glnis.utils.helpers import overwrite_settings, verify_path
+from glnis.utils.types import Result
+
+
+class SettingsParser:
+    def __init__(self, settings: str | Path | Dict = "settings/default.toml",
+                 _from_existing: bool = False):
+        if not isinstance(settings, dict):
+            settings_path = Path(settings)
+            settings_path = verify_path(settings_path, suffix=".toml")
+            with settings_path.open("rb") as f:
+                settings = tomllib.load(f)
+
+        if _from_existing:
+            # This ensures that the actual settings are being overwritten
+            default_settings = settings
+        else:
+            settings_default_path = verify_path("settings/default.toml")
+            with settings_default_path.open("rb") as f:
+                default_settings = tomllib.load(f)
+            if default_settings.get('gammaloop', {}).get('state_dir', "default") == "default":
+                raise ValueError(
+                    """
+                    No default gammaloop state directory specified. 
+                    You can set it using 'glnis setdef -d <path_to_gammaloop_examples>'.
+                    If you want to use the glnis gammaloop examples, you should point it to '/glnis_gammaloop_exaples' inside your gammaloop folder.
+                    """
+                )
+
+        for t in settings.get("templates", []):
+            try:
+                template = verify_path(t, suffix=".toml")
+                with template.open("rb") as f:
+                    template = tomllib.load(f)
+            except (FileNotFoundError, OSError, TypeError):
+                try:
+                    template = tomllib.loads(t)
+                except tomllib.TOMLDecodeError:
+                    raise ValueError(
+                        f"Template '{t}' is neither a valid path to a .toml file nor a valid TOML string.")
+            default_settings = overwrite_settings(
+                default_settings, template)
+        self.settings: Dict[str, Any] = overwrite_settings(
+            default_settings, settings,
+            always_overwrite=['layered_parameterisation', 'templates'])
+
+        if Path(self.settings['gammaloop']['state']).is_absolute():
+            self.gammaloop_state_path = Path(self.settings['gammaloop']['state'])
+        else:
+            self.gammaloop_state_path = Path(self.settings['gammaloop']['state_dir'],
+                                             self.settings['gammaloop']['state'])
+        self.settings['integrand']['gammaloop'][
+            'gammaloop_state_path'] = str(self.gammaloop_state_path)
+        self._graph_from_state = self.settings['graph']['from_state']
+        if self._graph_from_state:
+            import gammaloop
+            self.gammaloop_state = gammaloop.GammaLoopAPI(
+                self.gammaloop_state_path,
+                level=gammaloop.LogLevel.Off,
+                logfile_level=gammaloop.LogLevel.Off,
+                read_only_state=self.settings['integrand']['gammaloop']['read_only_state'])
+            self._outputs = dict()
+            for o in self.gammaloop_state.list_outputs():
+                self._outputs.update(o)
+            if len(self._outputs) == 0:
+                raise ValueError(
+                    f"No processes found in GammaLoop state at '{self.gammaloop_state_path}'. Perhaps you forgot to generate it?")
+            self.dot_path = "Loaded dot from state."
+        else:
+            self.gammaloop_state = None
+            self._outputs = None
+            self.dot_path = Path(self.settings['graph']['dot_path'])
+        if self.settings['model']['from_state']:
+            self.model_path = "Loaded model from state."
+        else:
+            self.model_path = self.settings['model']['model_path']
+
+    def settings_with_additional_templates(self, template_list: List[str | Path]) -> 'SettingsParser':
+        """
+        Returns a new SettingsParser with the provided template(s) added to the list of templates in the settings.
+        Templates can be provided as paths to .toml files or as valid TOML strings.
+        """
+        new_settings = deepcopy(self.settings)
+        if not isinstance(template_list, list):
+            template_list = [template_list]
+        new_settings['templates'].extend(template_list)
+        return SettingsParser(new_settings, _from_existing=True)
+
+    def get_gammaloop_integration_result(self) -> Dict | None:
+        result_path = Path(self.settings['gammaloop']['state_dir'],
+                           self.settings['gammaloop']['integration_workspace'],
+                           self.settings['gammaloop']['result_file'])
+        if not result_path.exists():
+            return None
+
+        with result_path.open("r") as f:
+            gammaloop_result = json.load(f)
+
+        return gammaloop_result
+
+    def get_integration_target(self) -> Result:
+        gammaloop_result = self.get_gammaloop_integration_result()
+        if not self.settings['gammaloop']['get_target_from_gammaloop'] or gammaloop_result is None:
+            return Result.from_kwargs(**self.settings.get('integration_target', {}))
+        try:
+            integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
+            if integrand_name not in self._outputs:
+                integrand_name = list(self._outputs)[0]
+            slots = gammaloop_result['slots']
+            candidates = [slot for slot in slots
+                          if slot['integrand'] == integrand_name]
+            if len(candidates) == 0:
+                raise ValueError("No matching slots found in GammaLoop result.")
+            candidate = candidates[0]
+            gl_res = candidate.get('integral')
+            target = candidate.get('target')
+            if self.settings['gammaloop']['prefer_gammaloop_over_target'] or target is None:
+                if gl_res is not None:
+                    return Result(
+                        n_points=gl_res['neval'],
+                        real_mean=gl_res['result']['re'],
+                        imag_mean=gl_res['result']['im'],
+                        real_error=gl_res['error']['re'],
+                        imag_error=gl_res['error']['im'],
+                    )
+            if target is None:
+                raise ValueError("No target found in GammaLoop result.")
+            return Result.from_kwargs(
+                real_mean=target['re'],
+                imag_mean=target['im'],
+            )
+        except:
+            return Result.from_kwargs(**self.settings.get('integration_target', {}))
+
+    def get_model(self) -> 'ModelParser':
+        return ModelParser(self.model_path)
+
+    def get_parameterisation_kwargs(self) -> List[Dict[str, Any]]:
+        nested_kwargs: Dict[str, Any] = deepcopy(
+            self.settings['layered_parameterisation'])
+        kwargs_list = []
+        for new_kwargs in nested_kwargs.values():
+            param_type = new_kwargs['parameterisation_type']
+            old_kwargs = self.settings['parameterisation'].get(param_type, {})
+            # old_kwargs['parameterisation_type'] = param_type
+            kwargs_list.append(overwrite_settings(old_kwargs, new_kwargs))
+
+        return kwargs_list
+
+    def get_integrand_kwargs(self) -> Dict[str, Any]:
+        new_kwargs = self.settings['layered_integrand']
+        new_kwargs['target'] = self.get_integration_target()
+        old_kwargs = deepcopy(self.settings['integrand'].get(new_kwargs['integrand_type'], {}))
+
+        return overwrite_settings(old_kwargs, new_kwargs)
+
+    def get_integrator_kwargs(self) -> Dict[str, Any]:
+        new_kwargs = self.settings['layered_integrator']
+        old_kwargs = deepcopy(self.settings['integrator'].get(new_kwargs['integrator_type'], {}))
+
+        return overwrite_settings(old_kwargs, new_kwargs)
+
+    def get_graph_properties(self) -> GraphProperties | List[GraphProperties]:
+        if self.settings['graph']['overwrite_graph_properties']:
+            return GraphProperties(**self.settings['graph']['graph_properties'])
+
+        if self._graph_from_state:
+            integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
+            if integrand_name not in self._outputs:
+                integrand_name = list(self._outputs)[0]
+            process_id = self._outputs[integrand_name]
+            iinfo = self.gammaloop_state.get_integrand_info(process_id, integrand_name)
+            model_as_str = self.gammaloop_state.get_model()
+            Model = ModelParser(model_as_str, from_string=True)
+            dot_as_str = self.gammaloop_state.get_dot_files(process_id, integrand_name)
+            Dot = DotParser(dot_as_str, Model, dot_from_string=True)
+            kinematics = self.gammaloop_state.get_default_runtime_settings().kinematics
+            e_cm = kinematics.e_cm
+            ext_momenta = kinematics.externals.data.momenta.to_dict()
+            graph_properties_list = []
+            for group_id, graph_group in enumerate(iinfo.graph_groups):
+                master_id = [g.graph_id for g in graph_group.graphs if g.is_master][0]
+                graph_properties = Dot.get_graph_properties(master_id, ext_momenta)
+                lmbs = graph_group.loop_momentum_bases
+                momentum_space = self.settings['integrand']['gammaloop']['momentum_space']
+                if self.settings['graph'].get('overwrite_lmb_heuristics', False):
+                    active_lmbs = lmbs
+                else:
+                    active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]
+                    active_lmbs = active_lmbs if len(active_lmbs) > 0 else lmbs
+                try:
+                    generation_basis_id = [lmb.matches_generation_basis for lmb in lmbs].index(True)
+                except:
+                    generation_basis_id = 0
+                generation_channel_id = active_lmbs.index(lmbs[generation_basis_id])
+                # Map edge_ids to {0, ..., n_edges-1}
+                gl_internal_edge_ids = set(e_id for lmb in lmbs for e_id in lmb.edge_ids)
+                if not len(gl_internal_edge_ids) == graph_properties.n_edges:
+                    raise ValueError(
+                        """Number of internal edges inferred from the dot file does not match the number of internal edges in the GammaLoop state. 
+                        This should not happen, please report this issue.""")
+                e_id_map: Dict[int, int] = dict()
+                for my_e_id, gl_e_id in enumerate(gl_internal_edge_ids):
+                    e_id_map[gl_e_id] = my_e_id
+                graph_properties.lmb_array = [[e_id_map[e_id] for e_id in lmb.edge_ids] for lmb in active_lmbs]
+
+                graph_properties.orientation_ids = [o.orientation_id for o in graph_group.orientations]
+                graph_properties.orientation_signatures = [o.signature for o in graph_group.orientations]
+                graph_properties.generation_channel_id = generation_channel_id
+                graph_properties.e_cm = e_cm
+                graph_properties.__post_init__()
+
+                n_int_edges = graph_properties.n_edges
+                edge_weight = self.settings['graph']['momtrop_edge_weight']
+                match edge_weight:
+                    case int() | float():
+                        edge_weight = n_int_edges*[float(edge_weight)]
+                    case [_, *_]:
+                        if not len(edge_weight) == n_int_edges:
+                            raise ValueError("If provided as a sequence, the number of momtrop "
+                                             + "edgeweights must match the number of internal edges.")
+                        edge_weight = edge_weight
+                    case "default":
+                        default_weight = (
+                            3*graph_properties.n_loops + 3/2)/n_int_edges/2
+                        edge_weight = n_int_edges*[default_weight]
+                    case _:
+                        raise ValueError("Momtrop edge weights must be one of: \n"
+                                         + "Number, Sequence of Numbers or \"default\".")
+
+                graph_properties.momtrop_edge_weight = edge_weight
+                graph_properties_list.append(graph_properties)
+
+            return graph_properties_list
+
+        Dot = DotParser(self.dot_path, self.model_path)
+        ext_momenta = self.settings['graph']['external_momenta']
+        graph_properties = Dot.get_graph_properties(0, ext_momenta)
+        graph_properties.generation_channel_id = 0
+        graph_properties.e_cm = 0.0
+        graph_properties.__post_init__()
+
+        n_int_edges = graph_properties.n_edges
+
+        edge_weight = self.settings['graph']['momtrop_edge_weight']
+        match edge_weight:
+            case int() | float():
+                edge_weight = n_int_edges*[float(edge_weight)]
+            case [_, *_]:
+                if not len(edge_weight) == n_int_edges:
+                    raise ValueError("If provided as a sequence, the number of momtrop "
+                                     + "edgeweights must match the number of internal edges.")
+                edge_weight = edge_weight
+            case "default":
+                default_weight = (
+                    3*graph_properties.n_loops + 3/2)/n_int_edges/2
+                edge_weight = n_int_edges*[default_weight]
+            case _:
+                raise ValueError("Momtrop edge weights must be one of: \n"
+                                 + "Number, Sequence of Numbers or \"default\".")
+
+        graph_properties.momtrop_edge_weight = edge_weight
+
+        return graph_properties
+
+    @staticmethod
+    def momtrop_sampler_from_graph_properties(
+            gp: GraphProperties) -> Tuple[momtrop.Sampler, momtrop.EdgeData, momtrop.Settings]:
+
+        mt_edges = [momtrop.Edge(tuple(src_dst), ismassive, weight) for src_dst, ismassive, weight
+                    in zip(gp.edge_src_dst_vertices, gp.edge_ismassive, gp.momtrop_edge_weight)]
+        assym_graph = momtrop.Graph(mt_edges, gp.graph_external_vertices)
+        momentum_shifts = [momtrop.Vector(*shift)
+                           for shift in gp.edge_momentum_shifts]
+        sampler = momtrop.Sampler(assym_graph, gp.graph_signature)
+        edge_data = momtrop.EdgeData(gp.edge_masses, momentum_shifts)
+        sampler_settings = momtrop.Settings(False, False)
+
+        return sampler, edge_data, sampler_settings
 
 
 class ModelParser:
@@ -242,280 +520,3 @@ class DotParser:
             edge_external_sigs=edge_external_sigs,
             external_momenta=ext_momenta,
         )
-
-
-class SettingsParser:
-    def __init__(self, settings: str | Path | Dict = "settings/default.toml",
-                 _from_existing: bool = False):
-        if not isinstance(settings, dict):
-            settings_path = Path(settings)
-            settings_path = verify_path(settings_path, suffix=".toml")
-            with settings_path.open("rb") as f:
-                settings = tomllib.load(f)
-
-        if _from_existing:
-            # This ensures that the actual settings are being overwritten
-            default_settings = settings
-        else:
-            settings_default_path = verify_path("settings/default.toml")
-            with settings_default_path.open("rb") as f:
-                default_settings = tomllib.load(f)
-            if default_settings.get('gammaloop', {}).get('state_dir', "default") == "default":
-                raise ValueError(
-                    """
-                    No default gammaloop state directory specified. 
-                    You can set it using 'glnis setdef -d <path_to_gammaloop_examples>'.
-                    If you want to use the glnis gammaloop examples, you should point it to '/glnis_gammaloop_exaples' inside your gammaloop folder.
-                    """
-                )
-
-        for t in settings.get("templates", []):
-            try:
-                template = verify_path(t, suffix=".toml")
-                with template.open("rb") as f:
-                    template = tomllib.load(f)
-            except (FileNotFoundError, OSError, TypeError):
-                try:
-                    template = tomllib.loads(t)
-                except tomllib.TOMLDecodeError:
-                    raise ValueError(
-                        f"Template '{t}' is neither a valid path to a .toml file nor a valid TOML string.")
-            default_settings = overwrite_settings(
-                default_settings, template)
-        self.settings: Dict[str, Any] = overwrite_settings(
-            default_settings, settings,
-            always_overwrite=['layered_parameterisation', 'templates'])
-
-        if Path(self.settings['gammaloop']['state']).is_absolute():
-            self.gammaloop_state_path = Path(self.settings['gammaloop']['state'])
-        else:
-            self.gammaloop_state_path = Path(self.settings['gammaloop']['state_dir'],
-                                             self.settings['gammaloop']['state'])
-        self.settings['integrand']['gammaloop'][
-            'gammaloop_state_path'] = str(self.gammaloop_state_path)
-        self._graph_from_state = self.settings['graph']['from_state']
-        if self._graph_from_state:
-            import gammaloop
-            self.gammaloop_state = gammaloop.GammaLoopAPI(
-                self.gammaloop_state_path,
-                level=gammaloop.LogLevel.Off,
-                logfile_level=gammaloop.LogLevel.Off,
-                read_only_state=self.settings['integrand']['gammaloop']['read_only_state'])
-            self._outputs = dict()
-            for o in self.gammaloop_state.list_outputs():
-                self._outputs.update(o)
-            if len(self._outputs) == 0:
-                raise ValueError(
-                    f"No processes found in GammaLoop state at '{self.gammaloop_state_path}'. Perhaps you forgot to generate it?")
-            self.dot_path = "Loaded dot from state."
-        else:
-            self.gammaloop_state = None
-            self._outputs = None
-            self.dot_path = Path(self.settings['graph']['dot_path'])
-        if self.settings['model']['from_state']:
-            self.model_path = "Loaded model from state."
-        else:
-            self.model_path = self.settings['model']['model_path']
-
-    def settings_with_additional_templates(self, template_list: List[str | Path]) -> 'SettingsParser':
-        """
-        Returns a new SettingsParser with the provided template(s) added to the list of templates in the settings.
-        Templates can be provided as paths to .toml files or as valid TOML strings.
-        """
-        new_settings = deepcopy(self.settings)
-        if not isinstance(template_list, list):
-            template_list = [template_list]
-        new_settings['templates'].extend(template_list)
-        return SettingsParser(new_settings, _from_existing=True)
-
-    def get_gammaloop_integration_result(self) -> Dict | None:
-        result_path = Path(self.settings['gammaloop']['state_dir'],
-                           self.settings['gammaloop']['integration_workspace'],
-                           self.settings['gammaloop']['result_file'])
-        if not result_path.exists():
-            return None
-
-        with result_path.open("r") as f:
-            gammaloop_result = json.load(f)
-
-        return gammaloop_result
-
-    def get_integration_target(self) -> IntegrationResult:
-        gammaloop_result = self.get_gammaloop_integration_result()
-        if not self.settings['gammaloop']['get_target_from_gammaloop'] or gammaloop_result is None:
-            return IntegrationResult(**self.settings.get('integration_target', {}))
-        try:
-            integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
-            if integrand_name not in self._outputs:
-                integrand_name = list(self._outputs)[0]
-            slots = gammaloop_result['slots']
-            candidates = [slot for slot in slots
-                          if slot['integrand'] == integrand_name]
-            if len(candidates) == 0:
-                raise ValueError("No matching slots found in GammaLoop result.")
-            candidate = candidates[0]
-            gl_res = candidate.get('integral')
-            target = candidate.get('target')
-            if self.settings['gammaloop']['prefer_gammaloop_over_target'] or target is None:
-                if gl_res is not None:
-                    return IntegrationResult(
-                        n_points=gl_res['neval'],
-                        real_mean=gl_res['result']['re'],
-                        imag_mean=gl_res['result']['im'],
-                        real_error=gl_res['error']['re'],
-                        imag_error=gl_res['error']['im'],
-                    )
-            if target is None:
-                raise ValueError("No target found in GammaLoop result.")
-            return IntegrationResult(
-                real_mean=target['re'],
-                imag_mean=target['im'],
-            )
-        except:
-            return IntegrationResult(**self.settings.get('integration_target', {}))
-
-    def get_model(self) -> ModelParser:
-        return ModelParser(self.model_path)
-
-    def get_parameterisation_kwargs(self) -> List[Dict[str, Any]]:
-        nested_kwargs: Dict[str, Any] = deepcopy(
-            self.settings['layered_parameterisation'])
-        kwargs_list = []
-        for new_kwargs in nested_kwargs.values():
-            param_type = new_kwargs['parameterisation_type']
-            old_kwargs = self.settings['parameterisation'].get(param_type, {})
-            # old_kwargs['parameterisation_type'] = param_type
-            kwargs_list.append(overwrite_settings(old_kwargs, new_kwargs))
-
-        return kwargs_list
-
-    def get_integrand_kwargs(self) -> Dict[str, Any]:
-        new_kwargs = self.settings['layered_integrand']
-        new_kwargs['target'] = self.get_integration_target()
-        old_kwargs = deepcopy(self.settings['integrand'].get(new_kwargs['integrand_type'], {}))
-
-        return overwrite_settings(old_kwargs, new_kwargs)
-
-    def get_integrator_kwargs(self) -> Dict[str, Any]:
-        new_kwargs = self.settings['layered_integrator']
-        old_kwargs = deepcopy(self.settings['integrator'].get(new_kwargs['integrator_type'], {}))
-
-        return overwrite_settings(old_kwargs, new_kwargs)
-
-    def get_graph_properties(self) -> GraphProperties | List[GraphProperties]:
-        if self.settings['graph']['overwrite_graph_properties']:
-            return GraphProperties(**self.settings['graph']['graph_properties'])
-
-        if self._graph_from_state:
-            integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
-            if integrand_name not in self._outputs:
-                integrand_name = list(self._outputs)[0]
-            process_id = self._outputs[integrand_name]
-            iinfo = self.gammaloop_state.get_integrand_info(process_id, integrand_name)
-            model_as_str = self.gammaloop_state.get_model()
-            Model = ModelParser(model_as_str, from_string=True)
-            dot_as_str = self.gammaloop_state.get_dot_files(process_id, integrand_name)
-            Dot = DotParser(dot_as_str, Model, dot_from_string=True)
-            kinematics = self.gammaloop_state.get_default_runtime_settings().kinematics
-            e_cm = kinematics.e_cm
-            ext_momenta = kinematics.externals.data.momenta.to_dict()
-            graph_properties_list = []
-            for group_id, graph_group in enumerate(iinfo.graph_groups):
-                master_id = [g.graph_id for g in graph_group.graphs if g.is_master][0]
-                graph_properties = Dot.get_graph_properties(master_id, ext_momenta)
-                lmbs = graph_group.loop_momentum_bases
-                momentum_space = self.settings['integrand']['gammaloop']['momentum_space']
-                if self.settings['graph'].get('overwrite_lmb_heuristics', False):
-                    active_lmbs = lmbs
-                else:
-                    active_lmbs = [lmb for lmb in lmbs if lmb.channel_id is not None]
-                    active_lmbs = active_lmbs if len(active_lmbs) > 0 else lmbs
-                try:
-                    generation_basis_id = [lmb.matches_generation_basis for lmb in lmbs].index(True)
-                except:
-                    generation_basis_id = 0
-                generation_channel_id = active_lmbs.index(lmbs[generation_basis_id])
-                # Map edge_ids to {0, ..., n_edges-1}
-                gl_internal_edge_ids = set(e_id for lmb in lmbs for e_id in lmb.edge_ids)
-                if not len(gl_internal_edge_ids) == graph_properties.n_edges:
-                    raise ValueError(
-                        """Number of internal edges inferred from the dot file does not match the number of internal edges in the GammaLoop state. 
-                        This should not happen, please report this issue.""")
-                e_id_map: Dict[int, int] = dict()
-                for my_e_id, gl_e_id in enumerate(gl_internal_edge_ids):
-                    e_id_map[gl_e_id] = my_e_id
-                graph_properties.lmb_array = [[e_id_map[e_id] for e_id in lmb.edge_ids] for lmb in active_lmbs]
-
-                graph_properties.orientation_ids = [o.orientation_id for o in graph_group.orientations]
-                graph_properties.orientation_signatures = [o.signature for o in graph_group.orientations]
-                graph_properties.generation_channel_id = generation_channel_id
-                graph_properties.e_cm = e_cm
-                graph_properties.__post_init__()
-
-                n_int_edges = graph_properties.n_edges
-                edge_weight = self.settings['graph']['momtrop_edge_weight']
-                match edge_weight:
-                    case int() | float():
-                        edge_weight = n_int_edges*[float(edge_weight)]
-                    case [_, *_]:
-                        if not len(edge_weight) == n_int_edges:
-                            raise ValueError("If provided as a sequence, the number of momtrop "
-                                             + "edgeweights must match the number of internal edges.")
-                        edge_weight = edge_weight
-                    case "default":
-                        default_weight = (
-                            3*graph_properties.n_loops + 3/2)/n_int_edges/2
-                        edge_weight = n_int_edges*[default_weight]
-                    case _:
-                        raise ValueError("Momtrop edge weights must be one of: \n"
-                                         + "Number, Sequence of Numbers or \"default\".")
-
-                graph_properties.momtrop_edge_weight = edge_weight
-                graph_properties_list.append(graph_properties)
-
-            return graph_properties_list
-
-        Dot = DotParser(self.dot_path, self.model_path)
-        ext_momenta = self.settings['graph']['external_momenta']
-        graph_properties = Dot.get_graph_properties(0, ext_momenta)
-        graph_properties.generation_channel_id = 0
-        graph_properties.e_cm = 0.0
-        graph_properties.__post_init__()
-
-        n_int_edges = graph_properties.n_edges
-
-        edge_weight = self.settings['graph']['momtrop_edge_weight']
-        match edge_weight:
-            case int() | float():
-                edge_weight = n_int_edges*[float(edge_weight)]
-            case [_, *_]:
-                if not len(edge_weight) == n_int_edges:
-                    raise ValueError("If provided as a sequence, the number of momtrop "
-                                     + "edgeweights must match the number of internal edges.")
-                edge_weight = edge_weight
-            case "default":
-                default_weight = (
-                    3*graph_properties.n_loops + 3/2)/n_int_edges/2
-                edge_weight = n_int_edges*[default_weight]
-            case _:
-                raise ValueError("Momtrop edge weights must be one of: \n"
-                                 + "Number, Sequence of Numbers or \"default\".")
-
-        graph_properties.momtrop_edge_weight = edge_weight
-
-        return graph_properties
-
-    @staticmethod
-    def momtrop_sampler_from_graph_properties(
-            gp: GraphProperties) -> Tuple[momtrop.Sampler, momtrop.EdgeData, momtrop.Settings]:
-
-        mt_edges = [momtrop.Edge(tuple(src_dst), ismassive, weight) for src_dst, ismassive, weight
-                    in zip(gp.edge_src_dst_vertices, gp.edge_ismassive, gp.momtrop_edge_weight)]
-        assym_graph = momtrop.Graph(mt_edges, gp.graph_external_vertices)
-        momentum_shifts = [momtrop.Vector(*shift)
-                           for shift in gp.edge_momentum_shifts]
-        sampler = momtrop.Sampler(assym_graph, gp.graph_signature)
-        edge_data = momtrop.EdgeData(gp.edge_masses, momentum_shifts)
-        sampler_settings = momtrop.Settings(False, False)
-
-        return sampler, edge_data, sampler_settings

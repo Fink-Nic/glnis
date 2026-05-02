@@ -1,6 +1,7 @@
 # type: ignore
 import warnings
 import math
+from glnis.utils.types import GraphProperties, Result, LayerData
 import numpy as np
 import multiprocessing as mp
 from multiprocessing.connection import wait
@@ -11,7 +12,7 @@ from copy import deepcopy
 
 from glnis.core.parameterisation import LayeredParameterisation
 from glnis.core.accumulator import (
-    Accumulator, TrainingAccumulator, TrainingData, GraphProperties, LayerData, IntegrationResult
+    Accumulator, TrainingAccumulator, DefaultAccumulator
 )
 from glnis.utils.helpers import chunks, shell_print, verify_path
 
@@ -31,7 +32,7 @@ class Integrand(ABC):
                  continuous_dim: int = 0,
                  discrete_dims: List[int] = None,
                  use_f128: bool = False,
-                 target: IntegrationResult | None = None,
+                 target: Result | None = None,
                  training_phase: Literal['real', 'imag', 'abs'] = 'real',
                  **uncaught_kwargs):
         self.graph_properties = graph_properties if isinstance(graph_properties, list) else [graph_properties]
@@ -41,7 +42,7 @@ class Integrand(ABC):
         self.dtype = np.dtype(
             np.float128) if self.use_f128 else np.dtype(np.float64)
         self.training_phase = training_phase
-        self.target = target if target is not None else IntegrationResult()
+        self.target = target if target is not None else Result()
 
     @abstractmethod
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
@@ -116,7 +117,7 @@ class TestIntegrand(Integrand):
         self.sigma = np.array(sigma)
         self.const_f = const_f
         if not self.const_f:
-            self.target = IntegrationResult(real_mean=1)
+            self.target = Result.from_kwargs(real_mean=1)
         if self.sigma.size > 1:
             self.discrete_dims.append(self.sigma.size)
 
@@ -152,7 +153,7 @@ class CosineIntegrand(Integrand):
         self.continuous_dim = n_cosines - 3*self.graph_properties[0].n_loops
         self.sep_pm = sep_pm
         self.momentum_space = False
-        self.target = IntegrationResult(real_mean=0.0)
+        self.target = Result.from_kwargs(real_mean=0.0)
         self.calls = 0
         if sep_pm:
             self.discrete_dims = [2]
@@ -461,7 +462,8 @@ class ParameterisedIntegrand:
         self.training_phase = self.integrand.training_phase
         self.target = self.integrand.target
 
-    def eval_integrand(self, layer_input: LayerData,
+    def eval_integrand(self,
+                       layer_input: LayerData,
                        acc_type: Literal['default', 'training'] = 'default') -> Accumulator:
         untouched_discrete = layer_input.discrete
         if self.param.num_layers > 1:
@@ -509,10 +511,18 @@ class ParameterisedIntegrand:
         integration_result.update('processing')
         acc_kwargs = dict(
             target=self.integrand.target,
-            training_phase=self.integrand.training_phase,)
-        accumulator = integration_result.accumulate(acc_type, **acc_kwargs)
+            training_phase=self.integrand.training_phase,
+            strat_channels=[2] if self.strat_sgn else None,
+        )
 
-        return accumulator
+        match acc_type:
+            case 'default':
+                return DefaultAccumulator(integration_result, **acc_kwargs)
+            case 'training':
+                return TrainingAccumulator(integration_result, **acc_kwargs)
+            case _:
+                raise NotImplementedError(
+                    f"Accumulator of type '{acc_type}' not implemented in {self.__class__.__name__}.")
 
     def discrete_prior_prob_function(self, indices: NDArray, dim: int = 0) -> NDArray:
         if self.strat_sgn and indices.shape[1] == 0:
@@ -652,8 +662,8 @@ class MPIntegrand(ParameterisedIntegrand):
                     layer_input, acc_type = args
                     layer_input: LayerData
                     layer_input.wake()
-                    res = integrand.eval_integrand(layer_input, acc_type)
-                    q_out.put((chunk_id, res))
+                    acc = integrand.eval_integrand(layer_input, acc_type)
+                    q_out.put((chunk_id, acc))
                 case 'prior':
                     indices, dim = args
                     res = integrand.discrete_prior_prob_function(indices, dim)
@@ -684,6 +694,7 @@ class MPIntegrand(ParameterisedIntegrand):
                 (job_type, chunk_id, (data_chunk, acc_type)), block=False)
 
         chunk_id_return_order = []
+        acc_returned = []
         readers = [q._reader for q in self.q_out]
 
         n_processed = 0
@@ -699,27 +710,18 @@ class MPIntegrand(ParameterisedIntegrand):
                     continue
                 chunk_id, acc = output
 
-                if n_processed == 0:
-                    accumulator: Accumulator = acc
-                else:
-                    accumulator.combine_with(acc)
                 chunk_id_return_order.append(chunk_id)
+                acc_returned.append(acc)
                 n_processed += 1
 
         if n_processed != n_chunks:
             raise RuntimeError("MPIntegrand evaluation was interrupted before all chunks were processed.")
 
-        if acc_type == 'training':
-            accumulator: TrainingAccumulator
-            result_sorted = n_chunks*[None]
-            training_acc: TrainingData = accumulator.training_data
-            for i, sorted_id in enumerate(chunk_id_return_order):
-                result_sorted[sorted_id] = training_acc._training_result[i]
-            training_acc._training_result[:] = result_sorted
+        acc_sorted = [None]*n_chunks
+        for i, sorted_id in enumerate(chunk_id_return_order):
+            acc_sorted[sorted_id] = acc_returned[i]
 
-        accumulator.finalise()
-
-        return accumulator
+        return type(acc_sorted[0]).cat(acc_sorted)
 
     def discrete_prior_prob_function(self, indices: NDArray, dim: int = 0) -> NDArray:
         job_type = "prior"

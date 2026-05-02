@@ -1,5 +1,6 @@
 # type: ignore
 import pickle
+from glnis.utils.types import GraphProperties
 from numpy.typing import NDArray
 from typing import Dict, List, Any
 from dataclasses import dataclass, asdict
@@ -7,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from glnis.utils.helpers import shell_print, verify_path
-from glnis.core.accumulator import GraphProperties, TrainingAccumulator
+from glnis.core.accumulator import TrainingAccumulator
 from glnis.scripts.sampler_comparison import (
     SamplerCompData,
     MADNIS_KEY,
@@ -72,7 +73,7 @@ def run_slice_plots(
     import signal
     import numpy as np
 
-    from glnis.core.accumulator import LayerData
+    from glnis.utils.types import LayerData
     from glnis.core.integrator import (
         Integrator,
         MadnisIntegrator,
@@ -322,7 +323,7 @@ def run_slice_plots(
             func_val = np.full(n_samples_1d, np.nan)
             func_val[inside_hcube_mask] = acc.training_data.training_result.ravel()
             if itg:
-                func_val /= itg
+                func_val[inside_hcube_mask] = func_val[inside_hcube_mask] / itg
             s1d.func_val = func_val
 
             integrator_probs = dict()
@@ -358,7 +359,7 @@ def run_slice_plots(
             func_val = np.full(n_samples_2d, np.nan)
             func_val[inside_hcube_mask] = acc.training_data.training_result.ravel()
             if itg:
-                func_val /= itg
+                func_val[inside_hcube_mask] = func_val[inside_hcube_mask] / itg
 
             # imshow plots data.shape[0] rows, data.shape[1] cols
             s2d.func_val = func_val.reshape(s2d.grid[1].num, s2d.grid[0].num)
@@ -450,6 +451,12 @@ def plot_slices(file: str | SlicePlotData,
     fraction = 0.062  # Default fraction for colorbar size
     padding = -0.02  # Default padding between plot and colorbar
 
+    def slice_rsd(func_val: NDArray, prob: NDArray) -> float:
+        vals = func_val / prob
+        mean = np.nanmean(func_val)
+        weighted_variance = np.nanmean((vals - mean)**2 * prob)
+        return np.sqrt(weighted_variance) / abs(mean) if mean != 0 else 0
+
     for i, slice in enumerate(Data.slices1d):
         slice: Slice
         grid1d = np.linspace(**asdict(slice.grid[0]))
@@ -474,11 +481,11 @@ def plot_slices(file: str | SlicePlotData,
             axs[2].set_yticklabels(['-', '0', '+'])
             axs[2].set_xlabel("t")
 
-            true_scale = np.nanmean(np.abs(slice.func_val) / prob)
             ax_table.axis('off')
             with np.printoptions(precision=precision, suppress=True):
                 table_data = [
-                    [r"Actual Ratio $\left<\frac{|I|}{<I> p}\right>$", f"{true_scale:.3e}"],
+                    [r"$\mathrm{RSD}_{\mathrm{slice}}, \mathrm{ARSD}_{\mathrm{slice}}$",
+                     f"{slice_rsd(slice.func_val, prob):.3e}, {slice_rsd(np.abs(slice.func_val), prob):.3e}"],
                     [r"$\mathrm{origin, channel}$", f"{slice.origin}, {slice.discrete}"],
                     [r"$u$", f"{slice.dirs[0]}"],
                 ]
@@ -529,7 +536,6 @@ def plot_slices(file: str | SlicePlotData,
             data_log = [d / np.nanmean(d) for d in data_log]  # Normalize by mean for better color scaling
             data_log = [np.log10(d, out=np.full_like(d, np.nan, dtype=np.float64), where=(d > 0)) for d in data_log]
             data3 = data_log[1] - data_log[0]  # np.abs(slice.func_val / prob)
-            true_scale = np.nanmean(np.abs(slice.func_val) / prob)
             data_discrete = np.sign(slice.func_val).astype(np.float64)
 
             fig = plt.figure(figsize=(11.5, 7.5), constrained_layout=True)
@@ -621,7 +627,8 @@ def plot_slices(file: str | SlicePlotData,
             ax_table.axis('off')
             with np.printoptions(precision=precision, suppress=True):
                 table_data = [
-                    [r"Actual Ratio $\left<\frac{|I|}{<I> p}\right>$", f"{true_scale:.3e}"],
+                    [r"$\mathrm{RSD}_{\mathrm{slice}}, \mathrm{ARSD}_{\mathrm{slice}}$",
+                     f"{slice_rsd(slice.func_val, prob):.3e}, {slice_rsd(np.abs(slice.func_val), prob):.3e}"],
                     [r"$\mathrm{origin, channel}$", f"{slice.origin}, {slice.discrete}"],
                     [r"$u$", f"{slice.dirs[0]}"],
                     [r"$v$", f"{slice.dirs[1]}"],

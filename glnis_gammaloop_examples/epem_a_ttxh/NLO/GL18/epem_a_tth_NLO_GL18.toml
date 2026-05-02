@@ -21,7 +21,6 @@ folder = "./glnis_gammaloop_examples/epem_a_ttxh/NLO/GL18/state"
 name = "generate"
 commands = [
   "import model sm-default.json",
-  "set global kv global.n_cores.feyngen=10",
   "remove processes",
   """
   generate xs e+ e- > t t~ h | e+ e- g t t~ h ghG ghG~ a QCD^2==2 QED^2==6 [{{3}} QCD=1]
@@ -29,7 +28,7 @@ commands = [
     --symmetrize-left-right-states true
     -p epem_a_tth -i NLO
     --global-prefactor-num '(-2𝑖)'
-    --select-graphs 18
+    --select-graphs GL18
     --only-diagrams""",
   "save dot",
   "generate existing -p epem_a_tth -i NLO",
@@ -40,16 +39,6 @@ commands = [
 name = "integrate"
 commands = [
   "run set_model_parameters",
-  """
-  set process -p epem_a_tth string 
-  '
-  [sampling]
-  graphs = "monte_carlo"
-  orientations = "summed"
-  lmb_multichanneling = true
-  lmb_channels = "summed"
-  '
-  """,
   """
   set process -p epem_a_tth -i NLO kv
 	  integrator.integrated_phase="imag"
@@ -92,7 +81,7 @@ lmb_multichanneling = true
 lmb_channels = "summed"
 
 [default_runtime_settings.general]
-evaluator_method = "SingleParametric"
+evaluator_method = "SummedFunctionMap"
 enable_cache = false
 debug_cache = false
 generate_events = false
