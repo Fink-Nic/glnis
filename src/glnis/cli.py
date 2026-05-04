@@ -49,9 +49,9 @@ def main() -> None:
 
     slice_plots = subparsers.add_parser(
         "splots",
-        help="Generate slice plots for the integrator states in a given SamplerCompData.")
+        help="Generate slice plots for the integrator states in a given SamplerCompData object.")
     slice_plots.add_argument('--file', '-f', type=str,
-                             help="File containing either SamplerCompData or SlicePlotsData.")
+                             help="File containing either SamplerCompData or SlicePlotsData object.")
     slice_plots.add_argument('--settings_file', '-s', type=str, default="",
                              help="The file containing the slice plot settings.")
     slice_plots.add_argument('--state', '-t', type=str, default="no_state_file",
@@ -62,7 +62,7 @@ def main() -> None:
                              help="Enable this flag to not output the plot file.")
 
     mp_efficiency = subparsers.add_parser(
-        "mpe", help="Analyze the multi-core performance scaling for the MadNIS integrator.")
+        "mpe", help="Analyze the multi-core performance scaling for the evaluation chain.")
     mp_efficiency.add_argument('--file', '-f', type=str,
                                help="The settings .toml file, or a file containing SamplerCompData.")
     mp_efficiency.add_argument('--no_output', action='store_true', default=False,

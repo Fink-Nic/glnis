@@ -1,59 +1,40 @@
 # Installation
+* A nix flake is provided, if necessary
 * Install in editable mode
 ```bash
 pip install -e .
 ```
-* Gammaloop `hedge_numerator` branch installation from:
+* GammaLoop installation from:
 ```
 https://github.com/alphal00p/gammaloop
 ```
-Follow the instructions in order to install the python API.
+Follow the instructions in order to install the python API (make sure you install it in the same venv as `glnis`).
 
-# Workflow
-## Settings files
-Inside of `settings/`, there are a number of examples. A list and explanation of the parameters can be found within `settings/default.toml`. It is recommended to follow the naming convention of the examples, this also applies to the names of the `GammaLoop` runcards, `.dot` files and state folders.
+# Setup
 
-## Setup
-* In order to easily be able to use the examples provided, please point the `settings/default.toml` to the folder containing your 'GammaLoop' states:
-```toml
-[gammaloop_state]
-state_folder = "/path/to/your/folder"
-```
+In order to easily be able to use the examples provided, please move the `glnis_gammaloop_examples` folder inside of your gammaloop installation folder. Then run `glnis setdef -d <path/to/glnis_gammaloop_examples>` to tell the script where to find them. 
 
-* Place the contents of `gammaloop_files/` inside your `GammaLoop` folder
-These are the runcards and `.dot` files required to generate the example states.
+Do not change the name of `glnis_gammaloop_examples`, the example runcards rely on it.
 
-## Setting up your gammaloop states
-You can use the makefile provided inside of `gammaloop_files` in order to:
-* Generate a state from one of the provided runcards inside of `gammaloop_files/runcards`. 
-Example (to be run from inside your `GammaLoop` folder):
+## Creating your gammaloop states
+All the examples can be generated and integrated using the following shell command:
 ```bash
-make -f gl.makefile generate NAME=scalar_box
-```
-* Integrate an example:
-```bash
-make -f gl.makefile integrate NAME=scalar_box
+./gammaloop glnis_gammaloop_examples/<path/to/example_runcard.toml> run generate integrate -c "quit -o"
 ```
 
-## Testing the compatibility with glnis
-Example:
+## Testing your setup
+Run a single training step and integrate a batch of samples:
 ```bash
-glnis stest -s settings/scalar_box.toml
+glnis stest -f <path/to/example.toml>
+```
+When encountering `dlopen` errors, you may need to execute the script from within your `gammaloop` installation folder.
+
+## Minimal working training run, including output and saving of data
+```bash
+glnis tprog -f <path/to/example.toml>
 ```
 
-## Minimal working training run, including output of data
-Example:
-```bash
-glnis tprog -s settings/scalar_box.toml
-```
-
-## Quirks
-Follow the example in `scripts/training_prog.py`:
-* In order to properly catch `KeyboardInterrupt` exceptions, set the `SIGINT` signal handling via
-```python
-signal.signal(signal.SIGINT, signal.default_int_handler)
-```
-* Once you are done (or want to prematurely exit), call `end()` on your `MPIntegrand` objects:
-```python
-integrand.end()
-```
+# Other scripts and configs
+* Run `glnis --help` for a summary of available scripts. 
+* Run `glnis <subcommand> --help` for a list of options for a given script.
+* A comprehensive list of options for the samplers, integrands, parameterisation chain, scripts and plotting can be found in the default settings file at `settings/default.toml`.
