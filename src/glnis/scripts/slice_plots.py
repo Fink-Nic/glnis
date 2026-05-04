@@ -148,33 +148,27 @@ def run_slice_plots(
             graph_properties = graph_properties[0]
         parameterisation_kwargs = Settings.get_parameterisation_kwargs()
         integrand_kwargs = Settings.get_integrand_kwargs()
-        n_cores = integrand_kwargs.pop("n_cores", 16)
-        n_shards = integrand_kwargs.pop("n_shards", 1)
-        strat_sgn = integrand_kwargs.pop("strat_sgn", False)
         integrand = MPIntegrand(
             graph_properties=graph_properties,
             param_kwargs=parameterisation_kwargs,
             integrand_kwargs=integrand_kwargs,
-            n_cores=n_cores,
-            n_shards=n_shards,
-            strat_sgn=strat_sgn,
         )
         # Get result to normalize the function values
         itg = None
-        madnis_obs = SData.result.get("MadNIS", None)
+        madnis_result = SData.result.get("MadNIS", None)
         match integrand.training_phase:
             case "real":
-                tgt = integrand.target.real_mean
+                tgt = integrand.target.real.mean
                 if tgt:
                     itg = tgt
-                elif madnis_obs is not None:
-                    itg = madnis_obs.real_mean
+                elif madnis_result is not None:
+                    itg = madnis_result.real.mean
             case "imag":
-                tgt = integrand.target.imag_mean
+                tgt = integrand.target.imag.mean
                 if tgt:
                     itg = tgt
-                elif madnis_obs is not None:
-                    itg = madnis_obs.imag_mean
+                elif madnis_result is not None:
+                    itg = madnis_result.imag.mean
 
         if itg is not None and not only_plot:
             if not only_plot:
@@ -216,6 +210,9 @@ def run_slice_plots(
                              EPS=EPS,
                              itg=itg)
 
+        c_dim = integrators[next(iter(integrators))].continuous_dim
+        d_dim = integrators[next(iter(integrators))].num_discrete_dims
+
         for slice in slices:
             slice_name = slice.get("name", "")
             from_max_wgt: str | None = slice.get("from_max_wgt", None)
@@ -252,20 +249,20 @@ def run_slice_plots(
                 discrete = [int(d) for d in discrete] if discrete is not None else None
                 origin = origin.copy() if origin is not None else None
             if origin is None:
-                origin = rng.uniform(0.05, 0.95, size=integrand.continuous_dim)
+                origin = rng.uniform(0.05, 0.95, size=c_dim)
             if discrete is None:
-                discrete = [rng.integers(0, ddim) for ddim in integrand.discrete_dims]
-            if not len(origin) == integrand.continuous_dim:
+                discrete = [rng.integers(0, ddim) for ddim in integrators[next(iter(integrators))].discrete_dims]
+            if not len(origin) == c_dim:
                 shell_print(
-                    f"{Colour.RED}Integrand has {integrand.continuous_dim} continuous dimensions, but origin has {len(origin)}. Skipping slice...{Colour.END}")
+                    f"{Colour.RED}Integrand has {c_dim} continuous dimensions, but origin has {len(origin)}. Skipping slice...{Colour.END}")
                 continue
-            if len(integrand.discrete_dims) > len(discrete):
+            if not len(discrete) == d_dim:
                 shell_print(
-                    f"{Colour.RED}Integrand has {len(integrand.discrete_dims)} discrete dimensions, but {len(discrete)} were provided. Skipping slice...{Colour.END}")
+                    f"{Colour.RED}Integrand has {d_dim} discrete dimensions, but {len(discrete)} were provided. Skipping slice...{Colour.END}")
                 continue
             grid = [LinSpace(**ls) for ls in grid if isinstance(ls, dict)]
             if len(dirs) == 0:
-                _dir = rng.uniform(0, 1, size=integrand.continuous_dim)
+                _dir = rng.uniform(0, 1, size=c_dim)
                 dirs = [_dir / np.linalg.norm(_dir)]
             if len(grid) == 0:
                 grid = len(dirs) * [LinSpace()]
@@ -275,12 +272,12 @@ def run_slice_plots(
             for d in dirs:
                 if isinstance(d, int):
                     origin[d] = 0.0
-            dirs = [[1 if i == d else 0 for i in range(integrand.continuous_dim)]
+            dirs = [[1 if i == d else 0 for i in range(c_dim)]
                     if isinstance(d, int) else d for d in dirs]
             for d in dirs:
-                if len(d) != integrand.continuous_dim:
+                if len(d) != c_dim:
                     shell_print(
-                        f"{Colour.RED}Integrand has {integrand.continuous_dim} continuous dimensions, but direction {d} has {len(d)}. Skipping slice...{Colour.END}")
+                        f"{Colour.RED}Integrand has {c_dim} continuous dimensions, but direction {d} has {len(d)}. Skipping slice...{Colour.END}")
                     continue
             dirs = [np.array(d) for d in dirs]
             new_slice = Slice(
@@ -316,16 +313,12 @@ def run_slice_plots(
             grid1d = np.linspace(**asdict(grid))
             continuous = origin + direction * grid1d.reshape(-1, 1)
             inside_hcube_mask = np.all((continuous >= Data.EPS) & (continuous <= 1.0 - Data.EPS), axis=-1)
-            layer_input = LayerData(
-                int(np.sum(inside_hcube_mask)),
-                n_mom=3*graph_properties.n_loops,
-                n_cont=integrand.continuous_dim,
-                n_disc=len(integrand.discrete_dims),)
+            layer_input = integrators[next(iter(integrators))].init_layer_data(int(np.sum(inside_hcube_mask)))
             layer_input.discrete = discrete[inside_hcube_mask]
             layer_input.continuous = continuous[inside_hcube_mask]
             acc: TrainingAccumulator = integrand.eval_integrand(layer_input, "training")
             func_val = np.full(n_samples_1d, np.nan)
-            func_val[inside_hcube_mask] = acc.training_data.training_result.ravel()
+            func_val[inside_hcube_mask] = acc.training_data.ravel()
             if itg:
                 func_val[inside_hcube_mask] = func_val[inside_hcube_mask] / itg
             s1d.func_val = func_val
@@ -352,16 +345,12 @@ def run_slice_plots(
                 np.linspace(**asdict(s2d.grid[1])))
             continuous = origin + t0.reshape(-1, 1) * s2d.dirs[0] + t1.reshape(-1, 1) * s2d.dirs[1]
             inside_hcube_mask = np.all((continuous >= Data.EPS) & (continuous <= 1.0 - Data.EPS), axis=-1)
-            layer_input = LayerData(
-                int(np.sum(inside_hcube_mask)),
-                n_mom=3*graph_properties.n_loops,
-                n_cont=integrand.continuous_dim,
-                n_disc=len(integrand.discrete_dims),)
+            layer_input = integrators[next(iter(integrators))].init_layer_data(int(np.sum(inside_hcube_mask)))
             layer_input.continuous = continuous[inside_hcube_mask]
             layer_input.discrete = discrete[inside_hcube_mask]
             acc: TrainingAccumulator = integrand.eval_integrand(layer_input, "training")
             func_val = np.full(n_samples_2d, np.nan)
-            func_val[inside_hcube_mask] = acc.training_data.training_result.ravel()
+            func_val[inside_hcube_mask] = acc.training_data.ravel()
             if itg:
                 func_val[inside_hcube_mask] = func_val[inside_hcube_mask] / itg
 

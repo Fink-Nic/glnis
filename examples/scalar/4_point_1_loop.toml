@@ -1,7 +1,6 @@
 run_name = "scalar@box"
 output_dir = "scalar/4p1L"
 templates = [
-    "settings/scalar/base",
     "settings/templates/flow/size7",
     "settings/templates/madnis_bins/size1",
     "settings/templates/transformer/size4",
@@ -12,3 +11,112 @@ state = "scalar/4p1L/state"
 integration_workspace = "scalar/4p1L/state/integration_workspace"
 get_target_from_gammaloop = true
 prefer_gammaloop_over_target = true
+
+[layered_integrator]
+integrator_type = "madnis"
+
+[integrator.madnis]
+batch_size = 10000
+
+[layered_integrand]
+integrand_type = "gammaloop"
+training_phase = "real"
+n_cores = 32
+
+[layered_parameterisation.layer_0]
+parameterisation_type = "momtrop"
+
+[integrand.gammaloop]
+integrand_name = "default"
+run_commands = []
+momentum_space = true
+sample_lmbs = false 
+sample_orientations = false
+use_arb_prec = false
+minimal_output = true
+read_only_state = true
+log_level_off = true
+
+[parameterisation.momtrop]
+overwrite_edge_weight = false
+sample_discrete = true
+mask_redundant = true
+
+[scripts.sampler_comp]
+n_training_steps = 500
+n_samples = 1000000
+n_samples_after_training = 10000000
+nitn = 10 
+n_log = 20 
+n_plot_snapshot = 50 
+n_plot_loss = 1 # Training steps between plotting the loss
+n_plot_disc = 5
+plot_disc = true 
+
+[[scripts.hyperparam_comparison.comparison]]
+name = "param"
+plot_slices = false
+blocks = [ 
+    ["""
+    [layered_parameterisation.layer_0]
+    parameterisation_type = "momtrop"
+    sample_discrete = false
+    """],
+    ["""
+    [layered_parameterisation.layer_0]
+    parameterisation_type = "momtrop"
+    sample_discrete = true
+    [layered_parameterisation.layer_1]
+    parameterisation_type = "identity"
+    uniform_continuous = true
+    """],
+    ["""
+    [layered_parameterisation.layer_0]
+    parameterisation_type = "momtrop"
+    sample_discrete = true
+    mask_redundant = true
+    """],
+    ["settings/templates/parameterisation/mc_lmb_spherical_no_heur"],
+]
+block_names = [
+    "cont", 
+    "disc", 
+    "both", 
+    "lmb_mc",
+]
+[[scripts.hyperparam_comparison.comparison]]
+name = "transformer network"
+plot_slices = false
+blocks = [
+    ["settings/templates/transformer/size0"],
+    ["settings/templates/transformer/size1"],
+    ["settings/templates/transformer/size2"],
+    ["settings/templates/transformer/size3"],
+    ["settings/templates/transformer/size4"],
+    ["settings/templates/transformer/size5"],
+]
+block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64", "8_3_3_128"]
+[[scripts.hyperparam_comparison.comparison]]
+name = "flow network"
+plot_slices = false
+blocks = [
+    ["settings/templates/flow/size4"],
+    ["settings/templates/flow/size5"],
+    ["settings/templates/flow/size6"],
+    ["settings/templates/flow/size7"],
+    ["settings/templates/flow/size8"],
+    ["settings/templates/flow/size9"],
+]
+block_names = ["3_128", "3_256", "4_256", "4_512", "5_512", "5_1024"]
+
+[scripts.hpcomp_training_run]
+n_training_steps = 500
+n_samples = 1000000
+n_samples_after_training = 10000000
+nitn = 10 
+n_log = 20 
+n_plot_snapshot = 50 
+n_plot_loss = 1 # Training steps between plotting the loss
+n_plot_disc = 5
+plot_disc = true 
+take_prelim_snapshot = false

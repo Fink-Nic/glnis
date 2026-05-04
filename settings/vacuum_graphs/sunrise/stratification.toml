@@ -129,7 +129,7 @@ min_bin_height = 2e-5
 min_bin_derivative = 1e-5
 
 [integrator.madnis.cwnet_kwargs]
-uniform_channel_ratio = 0.1
+uniform_channel_ratio = 1.0
 layers = 5
 units = 512
 channel_weight_mode = "variance"
@@ -168,13 +168,6 @@ blocks = [
     [
         """
         [integrator.madnis]
-        use_cwnet = true
-        uniform_channel_ratio = 0.1
-        """,
-    ],
-    [
-        """
-        [integrator.madnis]
         use_cwnet = false
         """,
         "settings/templates/transformer/size4",
@@ -189,11 +182,22 @@ blocks = [
     [
         """
         [integrator.madnis]
-        use_cwnet = true
-        uniform_channel_ratio = 0.1
+        use_cwnet = false
         [layered_integrand]
-        num_strat_dim = 2
+        strat_sgn = false
+        num_strat_dim = 1
         """,
+        "settings/templates/transformer/size4",
+    ],
+    [
+        """
+        [integrator.madnis]
+        use_cwnet = false
+        [layered_integrand]
+        strat_sgn = false
+        num_strat_dim = 1
+        """,
+        "settings/templates/made/size5",
     ],
     [
         """
@@ -212,22 +216,34 @@ blocks = [
         num_strat_dim = 2
         """,
         "settings/templates/made/size5",
+    ],
+    [
+        """
+        [integrator.madnis]
+        use_cwnet = false
+        [layered_integrand]
+        num_strat_dim = 0
+        """,
+        "settings/templates/transformer/size4",
     ],
 ]
 block_names = [
-    "sgn_cwnet", "sgn_trans", "sgn_made", 
-    "sgn_lmb_cwnet", "sgn_lmb_trans", "sgn_lmb_made"
+    "sgn_trans", "sgn_made", 
+    "lmb_trans", "lmb_made",
+    "sgn_lmb_trans", "sgn_lmb_made",
+    "no_strat"
 ]
 
 [scripts.hpcomp_training_run]
 n_training_steps = 1000
 n_samples = 1_000_000
 n_samples_after_training = 10_000_000
-n_log = 10
+n_log = 50
 n_plot_snapshot = 100
 n_plot_loss = 2
 plot_disc = true
 n_plot_disc = 10
+take_prelim_snapshot = false
 
 [[scripts.hpcomp_slice_plots.slice]]
 name = "pos"

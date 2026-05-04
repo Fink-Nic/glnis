@@ -80,12 +80,6 @@ blocks = [
     [layered_parameterisation.layer_0]
     parameterisation_type = "momtrop"
     sample_discrete = true
-    mask_redundant = false
-    """],
-    ["""
-    [layered_parameterisation.layer_0]
-    parameterisation_type = "momtrop"
-    sample_discrete = true
     mask_redundant = true
     """],
     ["settings/templates/parameterisation/mc_lmb_spherical_no_heur"],
@@ -93,7 +87,6 @@ blocks = [
 block_names = [
     "cont", 
     "disc", 
-    "both_red_c", 
     "both", 
     "lmb_mc",
 ]
@@ -113,10 +106,6 @@ block_names = ["1_1_1_32", "1_2_2_32", "2_2_2_64", "2_3_3_64", "4_3_3_64", "8_3_
 name = "flow network"
 plot_slices = false
 blocks = [
-    ["settings/templates/flow/size0"],
-    ["settings/templates/flow/size1"],
-    ["settings/templates/flow/size2"],
-    ["settings/templates/flow/size3"],
     ["settings/templates/flow/size4"],
     ["settings/templates/flow/size5"],
     ["settings/templates/flow/size6"],
@@ -124,7 +113,7 @@ blocks = [
     ["settings/templates/flow/size8"],
     ["settings/templates/flow/size9"],
 ]
-block_names = ["1_16", "1_64", "2_64", "2_128", "3_128", "3_256", "4_256", "4_512", "5_512", "5_1024"]
+block_names = ["3_128", "3_256", "4_256", "4_512", "5_512", "5_1024"]
 
 [scripts.hpcomp_training_run]
 n_training_steps = 500

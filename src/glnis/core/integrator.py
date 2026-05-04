@@ -642,8 +642,8 @@ class MadnisIntegrator(Integrator):
         self.loss_type = loss_type
         self.loss_kwargs = loss_kwargs
 
-        self.discrete_model = discrete_model if self.num_discrete_dims <= int(self.use_cwnet) else "made"
-        discrete_flow_kwargs = transformer_kwargs if discrete_model == "transformer" else made_kwargs
+        self.discrete_model = discrete_model if not self.use_cwnet else "made"
+        discrete_flow_kwargs = transformer_kwargs if self.discrete_model == "transformer" else made_kwargs
 
         madnis_integrand = madnis_integrator.Integrand(
             function=self._madnis_eval,

@@ -327,13 +327,13 @@ def plot_hyperparam_comparison(file: str) -> None:
             axs2[3, i].set_yscale("log")
 
         tgt_line_len = n_blocks - 1
-        if target.real_mean:
-            axs2[0, 0].hlines(target.real_mean, 0, tgt_line_len, color='red')
+        if target.real.mean:
+            axs2[0, 0].hlines(target.real.mean, 0, tgt_line_len, color='red')
             if target.real.error:
                 axs2[0, 0].fill_between(
                     [0, tgt_line_len],
-                    target.real_mean - target.real.error,
-                    target.real_mean + target.real.error,
+                    target.real.mean - target.real.error,
+                    target.real.mean + target.real.error,
                     color='red', alpha=0.3
                 )
         if target.real.rsd:
@@ -345,7 +345,7 @@ def plot_hyperparam_comparison(file: str) -> None:
 
         if target.imag.mean:
             axs2[0, 1].hlines(target.imag.mean, 0, tgt_line_len, color='red')
-            if target.imag_error:
+            if target.imag.error:
                 axs2[0, 1].fill_between(
                     [0, tgt_line_len],
                     target.imag.mean - target.imag.error,

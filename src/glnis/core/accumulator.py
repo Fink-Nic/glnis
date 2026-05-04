@@ -179,7 +179,6 @@ class IntegrationStatistics(AccumulatorModule):
         self.precision = precision
         strat_channels = strat_channels or []
         self._result: Result = Result()
-        self._result_non_stratified: Result = Result()
 
         self._finalised = False
         self._strat_dict: Dict[tuple[int], Result] = dict()
@@ -246,7 +245,6 @@ class IntegrationStatistics(AccumulatorModule):
             ):
                 if res.error <= 0:
                     continue
-
                 report.append(f"""    {Colour.DARKCYAN}{phase_str}{Colour.END} : {
                     error_fmter(res.mean, res.error, self.precision)}""")
                 err_rel = abs(res.error / res.mean)
@@ -346,10 +344,6 @@ class IntegrationStatistics(AccumulatorModule):
         self._result = Result()
         for res in self._strat_dict.values():
             self._result.combine_with_stratified(res)
-        if self._result_non_stratified is not None:
-            self._result_non_stratified = Result()
-            for res in self._strat_dict.values():
-                self._result_non_stratified.combine_with(res)
         self._finalised = True
 
 
