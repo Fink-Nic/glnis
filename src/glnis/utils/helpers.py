@@ -69,9 +69,48 @@ def error_fmter(value: float, error: float, prec_error: int = 2) -> str:
     return f"{val_str}({err_str})e{log10val:+03d}"
 
 
+def time_fmter(seconds: float, prefix: str = "", n_digits: int = 3) -> str:
+    """
+    Format a time duration in seconds into a human-readable string with appropriate units.
+
+    Examples:
+        digits = 3
+        seconds = 0.000001 -> "1.00 µs"
+        seconds = 0.01 -> "10.0 ms"
+        seconds = 1 -> "1.00 s"
+        seconds = 120 -> "2.00 min"
+        seconds = 4000 -> "1.11 h"
+    """
+    number: float = 0
+    suffix: str = " " + prefix
+    if seconds < 1e-6:
+        suffix += "ns"
+        number = seconds * 1e9
+    elif seconds < 1e-3:
+        suffix += "µs"
+        number = seconds * 1e6
+    elif seconds < 1:
+        suffix += "ms"
+        number = seconds * 1e3
+    elif seconds < 60:
+        suffix += "s"
+        number = seconds
+    elif seconds < 3600:
+        suffix += "min"
+        number = seconds / 60
+    else:
+        suffix += "h"
+        number = seconds / 3600
+
+    prec = n_digits - 1 - math.floor(math.log10(abs(number))) if number != 0 else n_digits
+    number_str = f"{number:.{prec}f}"
+
+    return number_str + suffix
+
+
 def chunks(ary: Sequence, n_chunks: int) -> Iterable[Sequence]:
     """
-    Like numpy.array_split, but works for all sequences
+    Like numpy.array_split, but works for all sequences and returns an iterator.
     """
     ln_ary = len(ary)
     if n_chunks > ln_ary or n_chunks < 1:

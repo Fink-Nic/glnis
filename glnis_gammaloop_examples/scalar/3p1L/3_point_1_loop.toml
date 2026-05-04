@@ -27,7 +27,7 @@ commands = [
   integrator.seed=1337
 	""",
   """
-  integrate  --n-cores 10 --target 9.75646e-5 0.0
+  integrate  --n-cores 10 --target 9.76546e-5 0.0
     --restart
   """,
 ]

@@ -1,9 +1,0 @@
-run_name = "scalar@triangle@lmb_spherical"
-output_dir = "scalar/3p1L/lmb_mc"
-templates = [
-    "examples/scalar/3_point_1_loop",
-    "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
-    "settings/templates/flow/size7",
-    "settings/templates/madnis_bins/size1",
-    "settings/templates/transformer/size4",
-]

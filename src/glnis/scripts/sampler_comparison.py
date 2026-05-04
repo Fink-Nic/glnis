@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from traceback import print_exc
 
-from glnis.utils.helpers import shell_print, verify_path
+from glnis.utils.helpers import shell_print, verify_path, Colour, time_fmter
 from glnis.core.accumulator import (
     DefaultAccumulator,
     TrainingAccumulator
@@ -131,7 +131,7 @@ def run_sampler_comp(
         cleanup_done = True
 
     try:
-        shell_print(f"Working on {"dictionary" if isinstance(file, dict) else file}")
+        shell_print(f"Working on {Colour.YELLOW}{'dictionary' if isinstance(file, dict) else file}{Colour.END}")
         try:
             Settings = SettingsParser(file)
             SData = None
@@ -140,7 +140,7 @@ def run_sampler_comp(
                 SData = pickle.load(f)
             if not isinstance(SData, SamplerCompData):
                 raise ValueError(
-                    f"Expected a SamplerCompData object in the file, but got {type(SData)}")
+                    f"Expected a SamplerCompData object in the file, but got {Colour.RED}{type(SData)}{Colour.END}")
             Settings = SettingsParser(SData.settings)
         settings_for_plotting = Settings.settings
         if overwrite_plotting_settings:
@@ -148,7 +148,7 @@ def run_sampler_comp(
                 settings_for_plotting = SettingsParser(overwrite_plotting_settings).settings
             except:
                 shell_print(
-                    f"Could not parse plotting settings from {overwrite_plotting_settings}, using original settings")
+                    f"Could not parse plotting settings from {Colour.YELLOW}{overwrite_plotting_settings}{Colour.END}, using original settings")
         scripts_for_plotting: Dict[str, Dict[str, Any]] = settings_for_plotting.get("scripts", dict())
         plotting_settings = scripts_for_plotting.get(subroutine, dict()).get("plotting", dict())
         if len(plotting_settings) == 0:
@@ -180,8 +180,9 @@ def run_sampler_comp(
             directory = Path(PROJECT_ROOT, OUTPUT_DIR, Settings.settings.get("output_dir", "default"), subroutine)
             if not directory.exists():
                 directory.mkdir(parents=True, exist_ok=True)
-                shell_print(f"Created output folder at {directory}")
-            shell_print(f"Output will be at {directory}")
+                shell_print(f"Created output folder at {Colour.YELLOW}{directory}{Colour.END}")
+            else:
+                shell_print(f"Output will be at {Colour.YELLOW}{directory}{Colour.END}")
 
         time_last = time()
         Settings.settings["layered_integrator"]["integrator_type"] = "madnis"
@@ -207,14 +208,16 @@ def run_sampler_comp(
             integrator.display_info()
 
         # Will hold integration results to write to text file and plot
-        Data = SamplerCompData(integrator_identifiers=list(integrators.keys()),
-                               graph_properties=madnis_integrator.integrand.graph_properties,
-                               target=madnis_integrator.integrand.target,
-                               settings=Settings.settings,
-                               madnis_kwargs=madnis_kwargs,
-                               madnis_info=madnis_integrator.get_info(),
-                               integrand_kwargs=integrand_kwargs,
-                               param_kwargs=param_kwargs,)
+        Data = SamplerCompData(
+            integrator_identifiers=list(integrators.keys()),
+            graph_properties=madnis_integrator.integrand.graph_properties,
+            target=madnis_integrator.integrand.target,
+            settings=Settings.settings,
+            madnis_kwargs=madnis_kwargs,
+            madnis_info=madnis_integrator.get_info(),
+            integrand_kwargs=integrand_kwargs,
+            param_kwargs=param_kwargs,
+        )
 
         # Callback for the madnis integrator
         if len(madnis_integrator.integrand.discrete_dims) > int(madnis_integrator.integrand.strat_sgn):
@@ -252,7 +255,7 @@ def run_sampler_comp(
             tp.nspl_snapshot.append(itg.total_training_samples)
             if print_results:
                 shell_print(
-                    f"Trained Result after {itg.step} steps | {itg.total_training_samples} total training samples:")
+                    f"Trained Result after {Colour.BLUE}{itg.step}{Colour.END} steps | {Colour.BLUE}{itg.total_training_samples}{Colour.END} total training samples:")
                 shell_print(acc.str_report())
 
         def add_disc_prob_snapshot(
@@ -266,7 +269,7 @@ def run_sampler_comp(
             step = status.step
             if step % n_log == 0:
                 shell_print(
-                    f"Step {step}: loss={status.madnis_status.loss:.5f}, lr = {status.madnis_status.learning_rate:.2e}"
+                    f"Step {Colour.BLUE}{step}{Colour.END}: loss={status.madnis_status.loss:.5f}, lr = {status.madnis_status.learning_rate:.2e}"
                 )
             if step % n_plot_loss == 0:
                 Data.training_progress[MADNIS_KEY].losses.append(status.madnis_status.loss)
@@ -274,10 +277,6 @@ def run_sampler_comp(
                 Data.training_progress[MADNIS_KEY].nspl_losses.append(status.total_samples)
             if step % n_plot_snapshot == 0:
                 add_integration_snapshot(madnis_integrator, Data.training_progress[MADNIS_KEY], True)
-                # res, err = madnis_integrator.madnis.integrate(n_samples)
-                # shell_print(
-                #     f"MadNIS snapshot at step {step} | {status.total_samples} total training samples: I = {res:.5e} +- {err:.5e}, RSD = {err/res*np.sqrt(n_samples):.3f}"
-                # )
             if step % n_plot_disc == 0 and plot_disc:
                 add_disc_prob_snapshot(
                     madnis_integrator,
@@ -294,8 +293,8 @@ def run_sampler_comp(
         neval = int(n_total_training_samples / nitn)
 
         shell_print(
-            f"""Initializing the Integrand and Integrators took {
-                -time_last + (time_last := time()):.2f}s"""
+            f"""Initialized the Integrand and Integrators in {Colour.CYAN}{
+                time_fmter(-time_last + (time_last := time()))}{Colour.END}"""
         )
 
         if take_prelim_snapshot:
@@ -309,27 +308,30 @@ def run_sampler_comp(
 
         # Training all the integrators
         if not no_vegas:
-            shell_print(f"Training {VEGAS_KEY}:")
+            shell_print(f"Training {Colour.CYAN}{VEGAS_KEY}{Colour.END}:")
             vegas_training_result = integrators[VEGAS_KEY].train(
                 nitn, neval, callback=lambda status: callback(VEGAS_KEY, status))
             shell_print(vegas_training_result)
-            shell_print(f"Training {VEGAS_KEY} took {-time_last + (time_last := time()): .2f}s")
+            shell_print(
+                f"Training {Colour.CYAN}{VEGAS_KEY}{Colour.END} took {time_fmter(-time_last + (time_last := time()))}")
 
         if not no_havana:
-            shell_print(f"Training {HAVANA_KEY}:")
+            shell_print(f"Training {Colour.CYAN}{HAVANA_KEY}{Colour.END}:")
             havana_training_result = integrators[HAVANA_KEY].train(
                 nitn, neval, callback=lambda status: callback(HAVANA_KEY, status))
             shell_print(havana_training_result)
-            shell_print(f"Training {HAVANA_KEY} took {-time_last + (time_last := time()): .2f}s")
+            shell_print(
+                f"Training {Colour.CYAN}{HAVANA_KEY}{Colour.END} took {time_fmter(-time_last + (time_last := time()))}")
 
-        shell_print(f"Training {MADNIS_KEY}:")
+        shell_print(f"Training {Colour.CYAN}{MADNIS_KEY}{Colour.END}:")
         madnis_integrator.train(n_training_steps, callback=callback_madnis)
-        shell_print(f"Training {MADNIS_KEY} took {-time_last + (time_last := time()): .2f}s")
+        shell_print(
+            f"Training {Colour.CYAN}{MADNIS_KEY}{Colour.END} took {time_fmter(-time_last + (time_last := time()))}")
 
         for identifier, integrator in integrators.items():
             if export_states:
                 Data.integrator_states[identifier] = integrator.export_state()
-            shell_print(f"Integrating using {identifier}:")
+            shell_print(f"Integrating using {Colour.CYAN}{identifier}{Colour.END}:")
             acc: DefaultAccumulator = integrator.integrate(n_samples_after_training)
             Data.result[identifier] = acc.statistics.result
             Data.observables[identifier].update(acc.get_observables())
@@ -375,7 +377,7 @@ def plot_sampler_comp(file: str,
     if not isinstance(Data, SamplerCompData):
         raise ValueError(f"Expected a SamplerCompData object in the file, but got {type(Data)}")
 
-    shell_print(f"Plotting data from '{file}'")
+    shell_print(f"Plotting data from {Colour.YELLOW}{file}{Colour.END}")
 
     sep = "-"
     width = 60

@@ -136,3 +136,4 @@ n_plot_snapshot = 50
 n_plot_loss = 1 # Training steps between plotting the loss
 n_plot_disc = 5
 plot_disc = true 
+take_prelim_snapshot = false

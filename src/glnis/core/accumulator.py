@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 
 from glnis.utils.types import LayerData
 from glnis.utils.types import Result, SinglePhaseResult
-from glnis.utils.helpers import Colour, error_fmter
+from glnis.utils.helpers import Colour, error_fmter, time_fmter
 
 
 class AccumulatorModule(ABC):
@@ -22,12 +22,12 @@ class AccumulatorModule(ABC):
         pass
 
     @abstractmethod
-    def str_report(self) -> str:
-        return str(self.get_observables())
-
-    @abstractmethod
     def get_observables(self) -> Dict[str, Any]:
         return dict()
+
+    @abstractmethod
+    def str_report(self) -> str:
+        return str(self.get_observables())
 
     def finalise(self) -> None:
         """
@@ -64,14 +64,6 @@ class Accumulator:
         for s_module, o_module in zip(self.modules, other.modules):
             s_module.combine_with(o_module)
 
-    def str_report(self) -> str:
-        line = 125*"="
-        report = [line]
-        report.extend([m.str_report() for m in self.modules if m.str_report()])
-        report.append(line)
-
-        return "\n".join(report)
-
     def get_observables(self) -> Dict[str, Any]:
         obs = dict()
         for module in self.modules:
@@ -81,6 +73,14 @@ class Accumulator:
     def finalise(self) -> None:
         for module in self.modules:
             module.finalise()
+
+    def str_report(self) -> str:
+        line = 125*"="
+        report = [line]
+        report.extend([m.str_report() for m in self.modules if m.str_report()])
+        report.append(line)
+
+        return "\n".join(report)
 
     @classmethod
     def cat(cls, accumulators: List['Accumulator']) -> 'Accumulator':
@@ -131,6 +131,7 @@ class TrainingAccumulator(DefaultAccumulator):
                  **kwargs):
         super().__init__(data=data, **kwargs)
         total_weight = data.jac*data.wgt*data.func_val
+        # Keep per-chunk arrays in a list so combine_with() can append and finalise() can concatenate.
         match training_phase:
             case 'real':
                 self._training_data: List[NDArray] = [total_weight.real.ravel()]
@@ -176,20 +177,21 @@ class IntegrationStatistics(AccumulatorModule):
                  strat_channels: List[int] | None = None,):
         self.target = target or Result()
         self.precision = precision
-        self._result: Result | None = None
         strat_channels = strat_channels or []
+        self._result: Result = Result()
+        self._result_non_stratified: Result = Result()
 
         self._finalised = False
         self._strat_dict: Dict[tuple[int], Result] = dict()
+        # Build the Cartesian product of stratification channel indices.
         all_channels = [] if not strat_channels else np.array(np.meshgrid(
             *[range(dim) for dim in strat_channels]), dtype=np.uint64).T.reshape(-1, len(strat_channels))
         total_wgt = data.jac*data.wgt*data.func_val if data is not None else None
-        if len(strat_channels) == 0:
-            self._strat_dict['all'] = Result.from_values(
-                real_values=total_wgt.real,
-                imag_values=total_wgt.imag,
-                total_time=data.get_processing_times().get('total_time', 0) if data is not None else 0,
-            )
+        self._result_non_stratified = Result.from_values(
+            real_values=total_wgt.real,
+            imag_values=total_wgt.imag,
+            total_time=data.get_processing_times().get('total_time', 0) if data is not None else 0,
+        )
         total_time = data.get_processing_times().get('total_time', 0) if data is not None else 0
         for ch in all_channels:
             if data is None:
@@ -203,69 +205,104 @@ class IntegrationStatistics(AccumulatorModule):
                     total_time=total_time * ch_mask.sum() / data.n_points if data.n_points > 0 else 0,
                 )
 
+    @property
+    def result(self) -> Result:
+        if not self._finalised:
+            self.finalise()
+        if len(self._strat_dict) == 0:
+            return self._result_non_stratified
+        return self._result
+
+    @property
+    def result_non_stratified(self) -> Result | None:
+        if not self._finalised:
+            self.finalise()
+        return self._result_non_stratified
+
     def combine_with(self: 'IntegrationStatistics', other: 'IntegrationStatistics') -> None:
+        assert len(self._strat_dict) == len(other._strat_dict) and all(key in self._strat_dict for key in other._strat_dict.keys(
+        )), "Stratification channels must be the same to combine IntegrationStatistics."
         self._finalised = False
+        self._result_non_stratified.combine_with(other._result_non_stratified)
         for key in self._strat_dict.keys():
+            s, o = self._strat_dict[key], other._strat_dict[key]
             self._strat_dict[key].combine_with(other._strat_dict[key])
+            c = self._strat_dict[key]
 
     def str_report(self) -> str:
+        if not self._finalised:
+            self.finalise()
         report = []
         report.append(
-            f"Integration Result after {Colour.BLUE}{self.result.n_points}{Colour.END} evaluations:")
-        for phase_str, res, res_abs, tgt, tgt_abs in zip(
-            ["real", "imag"],
-            [self.result.real, self.result.imag],
-            [self.result.abs_real, self.result.abs_imag],
-            [self.target.real, self.target.imag],
-            [self.target.abs_real, self.target.abs_imag],
-        ):
-            if res.error <= 0:
-                continue
+            f"{Colour.PURPLE}Integration Result{Colour.END} using {Colour.BLUE}{self.result.n_points}{Colour.END} evals:")
 
-            report.append(f"""    {Colour.DARKCYAN}{phase_str}{Colour.END} : {
-                error_fmter(res.mean, res.error, self.precision)}""")
-            err_rel = abs(res.error / res.mean)
-            err_col = Colour.GREEN if err_rel < 0.01 else (
-                Colour.YELLOW if err_rel < 0.05 else Colour.RED)
-            report[-1] += f" ({err_col}{err_rel:.3%}{Colour.END})"
-            if res.rsd > 0:
-                report[-1] += f", RSD={res.rsd:.3f}"
-            if res_abs.rsd > 0:
-                report[-1] += f", ARSD={res_abs.rsd:.3f}"
-            if res.tvar > 0:
-                report[-1] += f", TVAR={res.tvar:.3e}"
-            if res_abs.tvar > 0:
-                report[-1] += f", ATVAR={res_abs.tvar:.3e}"
-            if tgt.mean == 0:
-                continue
+        def add_result_str(result: Result, target: Result, comp_tgt: bool = True) -> None:
+            for phase_str, res, res_abs, tgt, tgt_abs in zip(
+                ('RE', 'IM'),
+                (result.real, result.imag),
+                (result.abs_real, result.abs_imag),
+                (target.real, target.imag),
+                (target.abs_real, target.abs_imag),
+            ):
+                if res.error <= 0:
+                    continue
 
-            diff = res.mean - tgt.mean
-            sigma_diff = abs(diff) / res.error if res.error > 0 else 0
-            rel_diff = abs(diff / tgt.mean)
-            if tgt.error > 0:
-                target_str = error_fmter(tgt.mean, tgt.error, self.precision)
-            else:
-                target_str = f"{tgt.mean:<+12.8e}"
+                report.append(f"""    {Colour.DARKCYAN}{phase_str}{Colour.END} : {
+                    error_fmter(res.mean, res.error, self.precision)}""")
+                err_rel = abs(res.error / res.mean)
+                err_col = Colour.GREEN if err_rel < 0.01 else (
+                    Colour.YELLOW if err_rel < 0.05 else Colour.RED)
+                report[-1] += f" ({err_col}{err_rel:.3%}{Colour.END})"
+                if res.rsd > 0:
+                    report[-1] += f", RSD={res.rsd:.3f}"
+                if res_abs.rsd > 0:
+                    report[-1] += f", ARSD={res_abs.rsd:.3f}"
+                if res.tvar > 0:
+                    report[-1] += f", TVAR={res.tvar:.3e}"
+                if res_abs.tvar > 0:
+                    report[-1] += f", ATVAR={res_abs.tvar:.3e}"
 
-            report.append(
-                f"    vs target : {target_str} Δ = {diff:<+.{self.precision}e}")
-            diff_col = Colour.GREEN if rel_diff < 0.01 else Colour.RED
-            sigma_col = Colour.GREEN if abs(sigma_diff) < 1 else (
-                Colour.YELLOW if abs(sigma_diff) < 2 else Colour.RED)
-            report[-1] += f" ({diff_col}{rel_diff:.3%}{Colour.END})"
-            report[-1] += f", {sigma_col}{sigma_diff:.2f}{Colour.END}σ" if sigma_diff > 0 else ""
-            if tgt.rsd > 0:
-                report[-1] += f", RSD={tgt.rsd:.3f}"
-            if tgt_abs.rsd > 0:
-                report[-1] += f", ARSD={tgt_abs.rsd:.3f}"
-            if tgt.tvar > 0:
-                report[-1] += f", TVAR={tgt.tvar:.3e}"
-            if tgt_abs.tvar > 0:
-                report[-1] += f", ATVAR={tgt_abs.tvar:.3e}"
+                if not comp_tgt:
+                    continue
+                if tgt.mean == 0:
+                    continue
+
+                diff = res.mean - tgt.mean
+                sigma_diff = abs(diff) / res.error if res.error > 0 else 0
+                rel_diff = abs(diff / tgt.mean)
+                if tgt.error > 0:
+                    target_str = error_fmter(tgt.mean, tgt.error, self.precision)
+                else:
+                    target_str = f"{tgt.mean:<10.6e}"
+
+                report.append(
+                    f"    tgt: {target_str} Δ = {diff:<+.{self.precision}e}")
+                diff_col = Colour.GREEN if rel_diff < 0.01 else Colour.RED
+                sigma_col = Colour.GREEN if abs(sigma_diff) < 1 else (
+                    Colour.YELLOW if abs(sigma_diff) < 2 else Colour.RED)
+                report[-1] += f" {diff_col}{rel_diff:.3%}{Colour.END}"
+                report[-1] += f" {sigma_col}{sigma_diff:.2f}{Colour.END}σ" if sigma_diff > 0 else ""
+                if tgt.rsd > 0:
+                    report[-1] += f", RSD={tgt.rsd:.3f}"
+                if tgt_abs.rsd > 0:
+                    report[-1] += f", ARSD={tgt_abs.rsd:.3f}"
+                if tgt.tvar > 0:
+                    report[-1] += f", TVAR={tgt.tvar:.3e}"
+                if tgt_abs.tvar > 0:
+                    report[-1] += f", ATVAR={tgt_abs.tvar:.3e}"
+
+        if len(self._strat_dict) > 0:
+            report.append(f"{Colour.PURPLE}Stratified:{Colour.END}")
+            add_result_str(self.result, self.target)
+            report.append(f"{Colour.PURPLE}Non-Stratified:{Colour.END}")
+            add_result_str(self.result_non_stratified, self.target)
+        else:
+            add_result_str(self.result, self.target)
 
         return "\n".join(line for line in report)
 
     def get_observables(self) -> Dict[str, Any]:
+        strat = len(self._strat_dict) > 0
         obs = dict(
             real_mean=self.result.real.mean,
             real_error=self.result.real.error,
@@ -283,14 +320,25 @@ class IntegrationStatistics(AccumulatorModule):
             abs_imag_error=self.result.abs_imag.error,
             abs_imag_rsd=self.result.abs_imag.rsd,
             abs_imag_tvar=self.result.abs_imag.tvar,
+
+            non_strat_real_mean=self.result_non_stratified.real.mean if strat else 0.0,
+            non_strat_real_error=self.result_non_stratified.real.error if strat else 0.0,
+            non_strat_real_rsd=self.result_non_stratified.real.rsd if strat else 0.0,
+            non_strat_real_tvar=self.result_non_stratified.real.tvar if strat else 0.0,
+            non_strat_abs_real_mean=self.result_non_stratified.abs_real.mean if strat else 0.0,
+            non_strat_abs_real_error=self.result_non_stratified.abs_real.error if strat else 0.0,
+            non_strat_abs_real_rsd=self.result_non_stratified.abs_real.rsd if strat else 0.0,
+            non_strat_abs_real_tvar=self.result_non_stratified.abs_real.tvar if strat else 0.0,
+            non_strat_imag_mean=self.result_non_stratified.imag.mean if strat else 0.0,
+            non_strat_imag_error=self.result_non_stratified.imag.error if strat else 0.0,
+            non_strat_imag_rsd=self.result_non_stratified.imag.rsd if strat else 0.0,
+            non_strat_imag_tvar=self.result_non_stratified.imag.tvar if strat else 0.0,
+            non_strat_abs_imag_mean=self.result_non_stratified.abs_imag.mean if strat else 0.0,
+            non_strat_abs_imag_error=self.result_non_stratified.abs_imag.error if strat else 0.0,
+            non_strat_abs_imag_rsd=self.result_non_stratified.abs_imag.rsd if strat else 0.0,
+            non_strat_abs_imag_tvar=self.result_non_stratified.abs_imag.tvar if strat else 0.0
         )
         return obs
-
-    @property
-    def result(self) -> Result:
-        if self._result is None or not self._finalised:
-            self.finalise()
-        return self._result
 
     def finalise(self) -> None:
         if self._finalised:
@@ -298,6 +346,10 @@ class IntegrationStatistics(AccumulatorModule):
         self._result = Result()
         for res in self._strat_dict.values():
             self._result.combine_with_stratified(res)
+        if self._result_non_stratified is not None:
+            self._result_non_stratified = Result()
+            for res in self._strat_dict.values():
+                self._result_non_stratified.combine_with(res)
         self._finalised = True
 
 
@@ -348,12 +400,12 @@ class MaxWeight(AccumulatorModule):
                 self.imag_neg_max_wgt_point = other.imag_neg_max_wgt_point
 
     def str_report(self) -> str:
-        report = ["Max weights and their location in x-space:"]
+        report = [f"{Colour.PURPLE}Max Weights{Colour.END}"]
 
         def mwp_to_str(mwp):
             disc, cont = mwp
-            out = f"{Colour.PURPLE}ch{Colour.END}=[{' '.join(f"{d:.0f}" for d in disc)}] " if disc.size > 0 else ""
-            out += f"{Colour.PURPLE}x{Colour.END}={cont}" if cont.size > 0 else ""
+            out = f"{Colour.DARKCYAN}ch{Colour.END}=[{' '.join(f"{d:.0f}" for d in disc)}] " if disc.size > 0 else ""
+            out += f"{Colour.DARKCYAN}x{Colour.END}={cont}" if cont.size > 0 else ""
             return out
 
         if self.real_pos_max_wgt > 0.:
@@ -411,10 +463,12 @@ class ProcessingTimes(AccumulatorModule):
                 self.processing_times[identifier] = time
 
     def str_report(self) -> str:
-        mus_factor = 1.0e6 / self.n_points
         time_since_init = perf_counter() - self._t_init
         report = [
-            f"Total elapsed time: {time_since_init:.2f} s | {self.time_total:.2f} CPU-s | {self.time_total*mus_factor:.1f} µs / eval. Breakdown by subroutine:"]
+            f"""{Colour.PURPLE}Total Time{Colour.END} : {time_fmter(time_since_init)} | {
+                time_fmter(self.time_total, prefix='CPU-')} | {
+                    time_fmter(self.time_total / self.n_points)} / eval. Breakdown by subroutine: {Colour.END} """
+        ]
         subroutine_times = []
         processing_times = dict(
             sampler=self.time_sampler,
@@ -426,12 +480,13 @@ class ProcessingTimes(AccumulatorModule):
             if identifier == 'total_time':
                 continue
             perc_time = 100. * time / self.time_total
+            t = time / self.n_points if self.n_points > 0 else 0.0
             if perc_time > 50.:
                 subroutine_times.append(
-                    f"{identifier}: {Colour.RED}{mus_factor*time:.1f}{Colour.END} µs ({Colour.RED}{int(perc_time)}%{Colour.END})")
+                    f"{Colour.DARKCYAN}{identifier}{Colour.END}: {Colour.RED}{time_fmter(t)}{Colour.END} {Colour.RED}{int(perc_time)}%{Colour.END}")
             else:
                 subroutine_times.append(
-                    f"{identifier}: {mus_factor*time:.1f} µs ({int(perc_time)}%)")
+                    f"{Colour.DARKCYAN}{identifier}{Colour.END}: {time_fmter(t)} {int(perc_time)}%")
         report.append(" | ".join(subroutine_times))
 
         return "\n".join(line for line in report)

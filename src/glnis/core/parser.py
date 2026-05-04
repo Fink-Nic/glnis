@@ -29,11 +29,12 @@ class SettingsParser:
             with settings_default_path.open("rb") as f:
                 default_settings = tomllib.load(f)
             if default_settings.get('gammaloop', {}).get('state_dir', "default") == "default":
+                from glnis.core.helpers import Colour
                 raise ValueError(
-                    """
-                    No default gammaloop state directory specified. 
-                    You can set it using 'glnis setdef -d <path_to_gammaloop_examples>'.
-                    If you want to use the glnis gammaloop examples, you should point it to '/glnis_gammaloop_exaples' inside your gammaloop folder.
+                    f"""
+                    {Colour.RED}No default gammaloop state directory specified{Colour.END} 
+                    You can set it using {Colour.CYAN}glnis setdef -d <path_to_folder>{Colour.END}
+                    If you want to use the glnis gammaloop examples, you should point it to {Colour.YELLOW}<path_to_gammaloop_folder>/glnis_gammaloop_exaples{Colour.END}
                     """
                 )
 
@@ -97,9 +98,11 @@ class SettingsParser:
         return SettingsParser(new_settings, _from_existing=True)
 
     def get_gammaloop_integration_result(self) -> Dict | None:
-        result_path = Path(self.settings['gammaloop']['state_dir'],
-                           self.settings['gammaloop']['integration_workspace'],
-                           self.settings['gammaloop']['result_file'])
+        result_path = Path(self.settings['gammaloop']['integration_workspace'])
+        if not result_path.exists():
+            result_path = Path(self.settings['gammaloop']['state_dir'],
+                               self.settings['gammaloop']['integration_workspace'],
+                               self.settings['gammaloop']['result_file'])
         if not result_path.exists():
             return None
 
@@ -152,7 +155,6 @@ class SettingsParser:
         for new_kwargs in nested_kwargs.values():
             param_type = new_kwargs['parameterisation_type']
             old_kwargs = self.settings['parameterisation'].get(param_type, {})
-            # old_kwargs['parameterisation_type'] = param_type
             kwargs_list.append(overwrite_settings(old_kwargs, new_kwargs))
 
         return kwargs_list
@@ -221,7 +223,7 @@ class SettingsParser:
                 graph_properties.__post_init__()
 
                 n_int_edges = graph_properties.n_edges
-                edge_weight = self.settings['graph']['momtrop_edge_weight']
+                edge_weight = self.settings.get('graph', {}).get('momtrop_edge_weight', 'default')
                 match edge_weight:
                     case int() | float():
                         edge_weight = n_int_edges*[float(edge_weight)]
@@ -252,7 +254,7 @@ class SettingsParser:
 
         n_int_edges = graph_properties.n_edges
 
-        edge_weight = self.settings['graph']['momtrop_edge_weight']
+        edge_weight = self.settings.get('graph', {}).get('momtrop_edge_weight', 'default')
         match edge_weight:
             case int() | float():
                 edge_weight = n_int_edges*[float(edge_weight)]

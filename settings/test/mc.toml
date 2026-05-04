@@ -1,5 +1,5 @@
-run_name = "test@mc"
-output_dir = "test/mc"
+run_name = "gaussian@mc"
+output_dir = "gaussian/mc"
 
 templates = [
     "settings/test/base",

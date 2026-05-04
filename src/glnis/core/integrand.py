@@ -1,26 +1,21 @@
 # type: ignore
-import warnings
 import math
-from glnis.utils.types import GraphProperties, Result, LayerData
 import numpy as np
 import multiprocessing as mp
+
 from multiprocessing.connection import wait
+from copy import deepcopy
 from abc import ABC, abstractmethod
 from numpy.typing import NDArray
 from typing import Dict, List, Sequence, Callable, Literal, Any
-from copy import deepcopy
 
+from glnis.utils.types import GraphProperties, Result, LayerData
 from glnis.core.parameterisation import LayeredParameterisation
-from glnis.core.accumulator import (
-    Accumulator, TrainingAccumulator, DefaultAccumulator
-)
+from glnis.core.accumulator import TrainingAccumulator, DefaultAccumulator
 from glnis.utils.helpers import chunks, shell_print, verify_path
 
-try:
-    import kaapos.samplers as ksamplers
-    import kaapos.integrands as kintegrands
-except:
-    raise ImportError("Failed to import thermal integrand module.")
+import kaapos.samplers as ksamplers
+import kaapos.integrands as kintegrands
 
 
 class Integrand(ABC):
@@ -87,10 +82,10 @@ class Integrand(ABC):
         integrand_kwargs.update(dict(graph_properties=graph_properties))
         integrand_type = integrand_kwargs.pop('integrand_type')
         match integrand_type:
-            case 'test':
-                return TestIntegrand(**integrand_kwargs)
-            case 'cosine':
-                return CosineIntegrand(**integrand_kwargs)
+            case 'gaussian':
+                return GaussianIntegrand(**integrand_kwargs)
+            case 'sine':
+                return SineIntegrand(**integrand_kwargs)
             case 'gammaloop':
                 return GammaLoopIntegrand(**integrand_kwargs)
             case 'kaapo':
@@ -100,14 +95,408 @@ class Integrand(ABC):
                     f"Integrand {integrand_type} has not been implemented.")
 
 
-class TestIntegrand(Integrand):
+class ParameterisedIntegrand:
+    def __init__(self,
+                 graph_properties: GraphProperties | List[GraphProperties],
+                 param_kwargs: List[Dict[str, Any]],
+                 integrand_kwargs: Dict[str, Any],
+                 **kwargs):
+        self.graph_properties = graph_properties if isinstance(graph_properties, list) else [graph_properties]
+        self.param_kwargs = param_kwargs
+        self.integrand_kwargs = integrand_kwargs
+        self.condition_integrand_first = integrand_kwargs.get('condition_integrand_first', False)
+        self.sum_channels = integrand_kwargs.get('sum_channels', False)
+        self.strat_sgn = integrand_kwargs.get('strat_sgn', False)
+        self.num_strat_dim = max(int(integrand_kwargs.get('num_strat_dim', 0)), int(self.strat_sgn))
+
+        self.integrand = Integrand.get_integrand_instance(self.graph_properties, self.integrand_kwargs)
+        # If the integrand is not in momentum space, we assume it does not require a parameterisation.
+        if not self.integrand.momentum_space:
+            self.param_kwargs = []
+        self.param = LayeredParameterisation(self.graph_properties, self.param_kwargs)
+        self.sum_channels = self.sum_channels and len(self.param.discrete_dims) == 1
+        self.dtype = self.integrand.dtype
+        self.continuous_dim = self._get_continuous_dims()
+        self.discrete_dims = self._get_discrete_dims()
+        if self.param.param.IDENTIFIER == "identity param":
+            self.param.param.chain_continuous_dim_in = self.continuous_dim
+
+        self.training_phase = self.integrand.training_phase
+        self.target = self.integrand.target
+
+    def eval_integrand(self,
+                       layer_input: LayerData,
+                       acc_type: Literal['default', 'training'] = 'default'
+                       ) -> DefaultAccumulator | TrainingAccumulator:
+        untouched_discrete = layer_input.discrete
+        if self.param.num_layers > 1:
+            untouched_continuous = layer_input.continuous
+        if self.strat_sgn:
+            # The first discrete entry stores the sign stratification channel.
+            layer_input.discrete = untouched_discrete[:, 1:]
+            layer_input.update('processing')
+        if self.sum_channels:
+            if len(self.param.discrete_dims) != 1:
+                raise ValueError(
+                    "sum_channels is only supported for a single discrete dimension in the parameterisation.")
+            func_val = np.zeros((layer_input.n_points, 1), dtype=np.complex128)
+            for ch in range(self.param.discrete_dims[0]):
+                channels = np.full((layer_input.n_points, 1), ch, dtype=np.uint64)
+                layer_input.jac, layer_input.momenta, _ = self.param.param._layer_parameterise(
+                    layer_input.continuous, channels)
+                integration_result = self.integrand.evaluate_batch(layer_input)
+                func_val += integration_result.func_val * integration_result.jac
+            layer_input.func_val = func_val
+            layer_input.jac = np.ones_like(func_val, dtype=self.dtype)
+            integration_result = layer_input
+        else:
+            pass_disc_to_integrand = np.zeros(
+                (layer_input.n_points, 0), dtype=np.uint64)
+            if self.condition_integrand_first:
+                n_disc_integrand = len(self.integrand.discrete_dims)
+                pass_disc_to_integrand = layer_input.discrete[:, :n_disc_integrand]
+                layer_input.discrete = layer_input.discrete[:, n_disc_integrand:]
+                layer_input.update('processing')
+            parameterised = self.param.parameterise(layer_input)
+            if self.condition_integrand_first:
+                parameterised.discrete = np.hstack(
+                    [parameterised.discrete, pass_disc_to_integrand])
+                parameterised.update('processing')
+            integration_result = self.integrand.evaluate_batch(parameterised)
+        integration_result.discrete = untouched_discrete
+        if self.param.num_layers > 1:
+            integration_result.continuous = untouched_continuous
+        if self.strat_sgn:
+            strat_ch = untouched_discrete[:, 0]
+            f_compl = integration_result.func_val
+            f_compl[strat_ch == 0] = np.clip(f_compl[strat_ch == 0], a_min=0, a_max=None)
+            f_compl[strat_ch == 1] = np.clip(f_compl[strat_ch == 1], a_min=None, a_max=0)
+            integration_result.func_val = f_compl
+        integration_result.update('processing')
+        acc_kwargs = dict(
+            target=self.integrand.target,
+            training_phase=self.integrand.training_phase,
+            strat_channels=self.discrete_dims[:self.num_strat_dim],
+        )
+
+        match acc_type:
+            case 'default':
+                return DefaultAccumulator(integration_result, **acc_kwargs)
+            case 'training':
+                return TrainingAccumulator(integration_result, **acc_kwargs)
+            case _:
+                raise NotImplementedError(
+                    f"Accumulator of type '{acc_type}' not implemented in {self.__class__.__name__}.")
+
+    def discrete_prior_prob_function(self, indices: NDArray, dim: int = 0) -> NDArray:
+        if self.strat_sgn and indices.shape[1] == 0:
+            return np.full((indices.shape[0], 2), 0.5, dtype=np.float64)
+
+        if self.strat_sgn:
+            indices = indices[:, 1:]
+            dim -= 1
+
+        if self.sum_channels:
+            return self.integrand.discrete_prior_prob_function(indices, dim)
+
+        if self.condition_integrand_first:
+            n_dim = len(self.integrand.discrete_dims)
+            prior1: Callable = self.integrand.discrete_prior_prob_function
+            prior2: Callable = self.param.discrete_prior_prob_function
+        else:
+            n_dim = len(self.param.discrete_dims)
+            prior1: Callable = self.param.discrete_prior_prob_function
+            prior2: Callable = self.integrand.discrete_prior_prob_function
+
+        if dim < n_dim:
+            return prior1(indices, dim)
+
+        return prior2(indices[:, n_dim:], dim - n_dim)
+
+    def apply_prior_to_discrete(self, discrete: NDArray) -> NDArray:
+        disc_prod = np.array(self.discrete_dims, dtype=np.float64).prod()
+        total_wgt = np.full((discrete.shape[0]), 1.0/disc_prod, dtype=self.dtype)
+        for i in range(discrete.shape[1]):
+            try:
+                disc_prior = self.discrete_prior_prob_function(discrete[:, :i], i)
+                disc_prior /= np.sum(disc_prior, axis=1, keepdims=True)
+                prior_wgt = np.take_along_axis(
+                    disc_prior,
+                    discrete[:, [i]]).ravel()
+                total_wgt = np.divide(total_wgt, prior_wgt, out=np.zeros_like(total_wgt), where=prior_wgt != 0)
+            except Exception as e:
+                shell_print(f"Error computing discrete weight for dimension {i}: {e}")
+                shell_print(f"Discrete samples for this dimension: {discrete[:, i]}")
+                raise e
+
+        return total_wgt
+
+    def set_attribute(self, attr_name: str, value: Any) -> None:
+        if hasattr(self.integrand, attr_name):
+            setattr(self.integrand, attr_name, value)
+        if hasattr(self.param, attr_name):
+            setattr(self.param, attr_name, value)
+
+    def _get_discrete_dims(self) -> List[int]:
+        disc = [2] if self.strat_sgn else []
+        if self.sum_channels:
+            return disc + self.integrand.discrete_dims
+
+        if self.condition_integrand_first:
+            return disc + self.integrand.discrete_dims + self.param.discrete_dims
+
+        return disc + self.param.discrete_dims + self.integrand.discrete_dims
+
+    def _get_continuous_dims(self) -> int:
+        return self.integrand.continuous_dim + self.param.continuous_dim
+
+
+class MPIntegrand(ParameterisedIntegrand):
+    N_UNUSED_CORES = 1
+    MAX_CHUNK_SIZE = 100_000
+    MIN_CHUNK_SIZE = 100
+    IDENTIFIER = "multiprocessing integrand"
+
+    def __init__(self,
+                 graph_properties: GraphProperties | List[GraphProperties],
+                 param_kwargs: List[Dict[str, Any]],
+                 integrand_kwargs: Dict[str, Any],
+                 **kwargs):
+        n_cores = int(integrand_kwargs.pop('n_cores', 1))
+        n_shards = int(integrand_kwargs.pop('n_shards', 32))
+        self.n_cores = max(min(n_cores, mp.cpu_count() - self.N_UNUSED_CORES), 1)
+        n_shards = max(int(min(n_shards, self.n_cores)), 1)
+        self._freed = False
+
+        ctx = mp.get_context()
+        self.q_in = [ctx.Queue() for _ in range(n_shards)]
+        self.q_out = [ctx.Queue() for _ in range(n_shards)]
+        self.stop_event = ctx.Event()
+        super().__init__(graph_properties,
+                         param_kwargs,
+                         integrand_kwargs,
+                         **kwargs)
+        worker_args = (
+            self.stop_event,
+            graph_properties,
+            param_kwargs,
+            integrand_kwargs,
+            kwargs
+        )
+        self.workers = [
+            ctx.Process(
+                target=self._integrand_worker,
+                args=((self.q_in[w_id % n_shards], self.q_out[w_id % n_shards]), *worker_args),
+                daemon=True) for w_id in range(self.n_cores)
+        ]
+        for w in self.workers:
+            w.start()
+        for w_id in range(self.n_cores):
+            output = self.q_out[w_id % n_shards].get()
+            if not output == 'STARTED':
+                raise ValueError(
+                    f"Unexpected initialization value in queue: {output}")
+
+    def eval_integrand(self, layer_input: LayerData,
+                       acc_type: Literal['default', 'training'] = 'default'
+                       ) -> DefaultAccumulator | TrainingAccumulator:
+        job_type = 'eval'
+
+        n_cores = max(min(math.floor(layer_input.n_points /
+                      self.MIN_CHUNK_SIZE), self.n_cores), 1)
+        chunks_per_worker = math.ceil(
+            layer_input.n_points / n_cores / self.MAX_CHUNK_SIZE)
+        n_chunks = n_cores * chunks_per_worker
+
+        data_chunks = layer_input.as_chunks(n_chunks, n_cores)
+
+        for chunk_id, data_chunk in enumerate(data_chunks):
+            self.q_in[chunk_id % len(self.q_in)].put(
+                (job_type, chunk_id, (data_chunk, acc_type)), block=False)
+
+        chunk_id_return_order = []
+        acc_returned = []
+        readers = [q._reader for q in self.q_out]
+
+        n_processed = 0
+        while n_processed < n_chunks:
+            ready = wait(readers)
+            for r in ready:
+                idx = readers.index(r)
+                if self.stop_event.is_set():
+                    break
+                try:
+                    output = self.q_out[idx].get()
+                except Exception:
+                    continue
+                chunk_id, acc = output
+
+                chunk_id_return_order.append(chunk_id)
+                acc_returned.append(acc)
+                n_processed += 1
+
+        if n_processed != n_chunks:
+            raise RuntimeError("MPIntegrand evaluation was interrupted before all chunks were processed.")
+
+        acc_sorted = [None]*n_chunks
+        for i, sorted_id in enumerate(chunk_id_return_order):
+            acc_sorted[sorted_id] = acc_returned[i]
+
+        return type(acc_sorted[0]).cat(acc_sorted)
+
+    def discrete_prior_prob_function(self, indices: NDArray, dim: int = 0) -> NDArray:
+        job_type = "prior"
+        n_samples = len(indices)
+
+        n_cores = max(min(math.ceil(
+            n_samples / self.MIN_CHUNK_SIZE), self.n_cores), 1)
+        chunks_per_worker = math.ceil(
+            n_samples / n_cores / self.MAX_CHUNK_SIZE)
+        n_chunks = n_cores * chunks_per_worker
+        ind_chunks = chunks(indices, n_chunks)
+
+        for chunk_id, ind in enumerate(ind_chunks):
+            args = (ind, dim)
+            self.q_in[chunk_id % len(self.q_in)].put((job_type, chunk_id, args))
+
+        result_sorted = [None]*n_chunks
+        readers = [q._reader for q in self.q_out]
+
+        n_processed = 0
+        while n_processed < n_chunks:
+            ready = wait(readers)
+            for r in ready:
+                idx = readers.index(r)
+                if self.stop_event.is_set():
+                    break
+                try:
+                    data = self.q_out[idx].get()
+                except Exception:
+                    continue
+                chunk_id, res = data
+                result_sorted[chunk_id] = res
+                n_processed += 1
+
+        if n_processed != n_chunks:
+            raise RuntimeError("MPIntegrand prior computation was interrupted before all chunks were processed.")
+
+        return np.vstack(result_sorted)
+
+    def set_attribute(self, attr_name: str, value: Any) -> None:
+        """
+        Sets an attribute in the main process and all worker processes if it exists.
+        """
+        super().set_attribute(attr_name, value)
+        job_type = "set_attr"
+        for w_id in range(self.n_cores):
+            self.q_in[w_id].put((job_type, None, (attr_name, value)))
+
+    def free(self) -> None:
+        """
+        Terminates all worker processes and frees resources.
+        """
+        if self._freed:
+            return
+
+        self.stop_event.set()
+
+        for w in self.workers:
+            if w.is_alive():
+                w.join(timeout=5)
+
+        alive_workers = 0
+        for w in self.workers:
+            if w.is_alive():
+                alive_workers += 1
+                w.terminate()
+                w.join()
+
+        if alive_workers > 0:
+            shell_print(f"Terminated {alive_workers} / {self.n_cores} alive worker(s).")
+
+        # Explicitly close queue pipes to avoid file-descriptor leaks
+        # when constructing and tearing down many MPIntegrand instances.
+        for q in self.q_in + self.q_out:
+            try:
+                q.close()
+            except Exception:
+                pass
+            try:
+                q.join_thread()
+            except Exception:
+                pass
+
+        # Explicitly close process handles to release sentinel file descriptors.
+        for w in self.workers:
+            try:
+                w.close()
+            except Exception:
+                pass
+
+        self.integrand = None
+        self.param = None
+        self.graph_properties = None
+        self.workers = None
+
+        self._freed = True
+
+    @staticmethod
+    def _integrand_worker(queues: Sequence[mp.Queue],
+                          stop_event,
+                          graph_properties: GraphProperties,
+                          param_kwargs: List[Dict[str, Any]],
+                          integrand_kwargs: Dict[str, Any],
+                          init_kwargs) -> None:
+        integrand = ParameterisedIntegrand(
+            graph_properties,
+            param_kwargs,
+            integrand_kwargs,
+            **init_kwargs
+        )
+        q_in, q_out = queues
+        q_out.put('STARTED')
+        while not stop_event.is_set():
+            try:
+                data = q_in.get(timeout=0.5)
+                # if data == 'STOP':
+                #     break
+            except:
+                continue
+            job_type, chunk_id, args = data
+            job_type: str
+            match job_type.lower():
+                case 'eval':
+                    layer_input, acc_type = args
+                    layer_input: LayerData
+                    layer_input.wake()
+                    acc = integrand.eval_integrand(layer_input, acc_type)
+                    q_out.put((chunk_id, acc))
+                case 'prior':
+                    indices, dim = args
+                    res = integrand.discrete_prior_prob_function(indices, dim)
+                    q_out.put((chunk_id, res))
+                case 'set_attr':
+                    attr_name, value = args
+                    integrand.set_attribute(attr_name, value)
+                case _:
+                    shell_print("CRITICAL WARNING:")
+                    shell_print(
+                        f"Integrand worker has received invalid job type \"{job_type.upper()}\"")
+                    shell_print("Consider terminating the program.")
+
+
+class GaussianIntegrand(Integrand):
     """
     Implements a normalized multivariate gaussian that integrates to unity.
+    Args:
+        offset: Optional mean offset for the gaussian. Can be a single vector for all graphs or a list of vectors, one for each gaussian.
+        sigma: Standard deviation of the gaussian. Can be a list of values, in which case the sum of the corresponding gaussians will be calculated.
+        const_f: If True, the integrand will return a constant value of 1, ignoring the input.
     """
-    IDENTIFIER = "test integrand"
+    IDENTIFIER = "gaussian integrand"
 
     def __init__(self, offset: NDArray | List[List[float]] | List[float] | None = None,
-                 sigma: float | List[float] = 10.0,
+                 sigma: float | List[float] = 1.0,
                  const_f: bool = False,
                  **kwargs):
         super().__init__(**kwargs)
@@ -136,54 +525,23 @@ class TestIntegrand(Integrand):
         return np.exp(-(continuous**2).sum(axis=1) / sigma**2 / 2) / norm_factor
 
 
-class CosineIntegrand(Integrand):
-    IDENTIFIER = "cosine integrand"
+class SineIntegrand(Integrand):
+    IDENTIFIER = "sine integrand"
 
     def __init__(self,
                  omega: int = 1,
-                 n_cosines: int = 1,
-                 sep_pm: bool = False,
-                 self_conditional: bool = False,
+                 n_sines: int = 1,
+                 offset: float = 0.0,
                  **kwargs):
         super().__init__(**kwargs)
+        self.offset = offset
         self.omega = int(omega) or 1
-        self.self_conditional = self_conditional
-        if self_conditional:
-            n_cosines = 2
-        self.continuous_dim = n_cosines - 3*self.graph_properties[0].n_loops
-        self.sep_pm = sep_pm
+        self.continuous_dim = n_sines - 3*self.graph_properties[0].n_loops
         self.momentum_space = False
-        self.target = Result.from_kwargs(real_mean=0.0)
-        self.calls = 0
-        if sep_pm:
-            self.discrete_dims = [2]
+        self.target = Result.from_kwargs(real_mean=self.offset)
 
     def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
-        if self.self_conditional:
-            f_x = np.sin(2*np.pi*self.omega * continuous)
-            f_pos = np.clip(f_x[:, 0], 0, None)
-            f_neg = np.clip(f_x[:, 1], None, 0)
-            training = continuous.shape[0] < 5000
-            if training:
-                return (f_pos - f_neg)**2 / (f_pos + f_neg)
-            else:
-                return f_pos + f_neg
-
-        f_x = np.mean(np.sin(2*np.pi*self.omega * continuous), axis=1, keepdims=True)
-        if not self.sep_pm:
-            return f_x
-
-        discrete = discrete.ravel()
-        f_pos = np.clip(f_x, 0, None)
-        f_neg = np.clip(f_x, None, 0)
-        out = np.zeros((continuous.shape[0], 1), dtype=continuous.dtype)
-        out[discrete == 0] = f_pos[discrete == 0]
-        out[discrete == 1] = f_neg[discrete == 1]
-
-        # Simple cartesian parameterisation
-        # momenta = np.log(continuous / (1 - continuous))
-        # jac = np.prod(1 / (continuous * (1 - continuous)), axis=1, keepdims=True)
-        return out  # * jac
+        return np.mean(np.sin(2*np.pi*self.omega * continuous), axis=1, keepdims=True) + self.offset
 
 
 class GammaLoopIntegrand(Integrand):
@@ -286,28 +644,6 @@ class GammaLoopIntegrand(Integrand):
                 self.gammaloop_state.run(
                     f"set process -p {pid} -i {itg_name} kv sampling.lmb_multichanneling=false")
 
-    def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
-        # When not sampling graphs, prepend graph_id=0 for gammaloop
-        discrete_dims = np.zeros((len(continuous), len(self._gl_discrete_types)), dtype=np.uint64)
-        for dim, tpe in enumerate(self._discrete_types):
-            gl_dim = self._gl_discrete_types[tpe]
-            discrete_dims[:, gl_dim] = discrete[:, dim]
-        numpy_res = np.zeros(len(continuous), dtype=np.complex128)
-        for itg_name, pid in self.outputs.items():
-            res = self.gammaloop_state.evaluate_samples(
-                points=continuous.astype(np.float64), discrete_dims=discrete_dims,
-                momentum_space=self.momentum_space,
-                process_id=pid,
-                integrand_name=itg_name,
-                use_arb_prec=self.use_arb_prec,
-                minimal_output=self.minimal_output,
-            )
-            itg_res = np.array([s.integrand_result for s in res.samples])
-            if not self.momentum_space:
-                itg_res *= np.array([s.parameterization_jacobian for s in res.samples])
-            numpy_res += itg_res
-        return numpy_res.reshape(-1, 1)
-
     def discrete_prior_prob_function(self, indices: NDArray, _: int = 0) -> NDArray:
         """
         Implements a default flat prior, varying the dim depending on sampled graph
@@ -346,6 +682,28 @@ class GammaLoopIntegrand(Integrand):
 
         return prior / np.prod(prior, axis=1, keepdims=True)
 
+    def _evaluate_batch(self, continuous: NDArray, discrete: NDArray) -> NDArray:
+        # When not sampling graphs, prepend graph_id=0 for gammaloop
+        discrete_dims = np.zeros((len(continuous), len(self._gl_discrete_types)), dtype=np.uint64)
+        for dim, tpe in enumerate(self._discrete_types):
+            gl_dim = self._gl_discrete_types[tpe]
+            discrete_dims[:, gl_dim] = discrete[:, dim]
+        numpy_res = np.zeros(len(continuous), dtype=np.complex128)
+        for itg_name, pid in self.outputs.items():
+            res = self.gammaloop_state.evaluate_samples(
+                points=continuous.astype(np.float64), discrete_dims=discrete_dims,
+                momentum_space=self.momentum_space,
+                process_id=pid,
+                integrand_name=itg_name,
+                use_arb_prec=self.use_arb_prec,
+                minimal_output=self.minimal_output,
+            )
+            itg_res = np.array([s.integrand_result for s in res.samples])
+            if not self.momentum_space:
+                itg_res *= np.array([s.parameterization_jacobian for s in res.samples])
+            numpy_res += itg_res
+        return numpy_res.reshape(-1, 1)
+
 
 class KaapoIntegrand(Integrand):
     """
@@ -360,7 +718,7 @@ class KaapoIntegrand(Integrand):
                  apply_pi_factor: bool = True,
                  symbolica_integrand_kwargs: Dict[str, Any] = dict(
                      force_rebuild=False,
-                     stability_tolerance=1e-3,
+                     stability_tolerance=1e-5,
                      stability_abs_tolerance=1e-15,
                      stability_abs_threshold=1e-12,
                      escalate_large_weight_multiplier=-1,
@@ -431,390 +789,3 @@ class KaapoIntegrand(Integrand):
             output *= (2*np.pi)**-(3*self.integrand_fast.n_loops)
 
         return output
-
-
-class ParameterisedIntegrand:
-    def __init__(self,
-                 graph_properties: GraphProperties | List[GraphProperties],
-                 param_kwargs: List[Dict[str, Any]],
-                 integrand_kwargs: Dict[str, Any],
-                 strat_sgn: bool = False,
-                 **kwargs):
-        self.graph_properties = graph_properties if isinstance(graph_properties, list) else [graph_properties]
-        self.param_kwargs = param_kwargs
-        self.integrand_kwargs = integrand_kwargs
-        self.condition_integrand_first = integrand_kwargs.get('condition_integrand_first', False)
-        self.sum_channels = integrand_kwargs.get('sum_channels', False)
-        self.strat_sgn = strat_sgn
-
-        self.integrand = Integrand.get_integrand_instance(self.graph_properties, self.integrand_kwargs)
-        # If the integrand is not in momentum space, we assume it does not require a parameterisation.
-        if not self.integrand.momentum_space:
-            self.param_kwargs = []
-        self.param = LayeredParameterisation(self.graph_properties, self.param_kwargs)
-        self.sum_channels = self.sum_channels and len(self.param.discrete_dims) == 1
-        self.dtype = self.integrand.dtype
-        self.continuous_dim = self._get_continuous_dims()
-        self.discrete_dims = self._get_discrete_dims()
-        if self.param.param.IDENTIFIER == "identity param":
-            self.param.param.chain_continuous_dim_in = self.continuous_dim
-
-        self.training_phase = self.integrand.training_phase
-        self.target = self.integrand.target
-
-    def eval_integrand(self,
-                       layer_input: LayerData,
-                       acc_type: Literal['default', 'training'] = 'default') -> Accumulator:
-        untouched_discrete = layer_input.discrete
-        if self.param.num_layers > 1:
-            untouched_continuous = layer_input.continuous
-        if self.strat_sgn:
-            layer_input.discrete = untouched_discrete[:, 1:]
-            layer_input.update('processing')
-        if self.sum_channels:
-            if len(self.param.discrete_dims) != 1:
-                raise ValueError(
-                    "sum_channels is only supported for a single discrete dimension in the parameterisation.")
-            func_val = np.zeros((layer_input.n_points, 1), dtype=np.complex128)
-            for ch in range(self.param.discrete_dims[0]):
-                channels = np.full((layer_input.n_points, 1), ch, dtype=np.uint64)
-                layer_input.jac, layer_input.momenta, _ = self.param.param._layer_parameterise(
-                    layer_input.continuous, channels)
-                integration_result = self.integrand.evaluate_batch(layer_input)
-                func_val += integration_result.func_val * integration_result.jac
-            layer_input.func_val = func_val
-            layer_input.jac = np.ones_like(func_val, dtype=self.dtype)
-            integration_result = layer_input
-        else:
-            pass_disc_to_integrand = np.zeros(
-                (layer_input.n_points, 0), dtype=np.uint64)
-            if self.condition_integrand_first:
-                n_disc_integrand = len(self.integrand.discrete_dims)
-                pass_disc_to_integrand = layer_input.discrete[:, :n_disc_integrand]
-                layer_input.discrete = layer_input.discrete[:, n_disc_integrand:]
-                layer_input.update('processing')
-            parameterised = self.param.parameterise(layer_input)
-            if self.condition_integrand_first:
-                parameterised.discrete = np.hstack(
-                    [parameterised.discrete, pass_disc_to_integrand])
-                parameterised.update('processing')
-            integration_result = self.integrand.evaluate_batch(parameterised)
-            integration_result.discrete = untouched_discrete
-        if self.param.num_layers > 1:
-            integration_result.continuous = untouched_continuous
-        if self.strat_sgn:
-            strat_ch = untouched_discrete[:, 0]
-            f_compl = integration_result.func_val
-            f_compl[strat_ch == 0] = np.clip(f_compl[strat_ch == 0], a_min=0, a_max=None)
-            f_compl[strat_ch == 1] = np.clip(f_compl[strat_ch == 1], a_min=None, a_max=0)
-            integration_result.func_val = f_compl
-        integration_result.update('processing')
-        acc_kwargs = dict(
-            target=self.integrand.target,
-            training_phase=self.integrand.training_phase,
-            strat_channels=[2] if self.strat_sgn else None,
-        )
-
-        match acc_type:
-            case 'default':
-                return DefaultAccumulator(integration_result, **acc_kwargs)
-            case 'training':
-                return TrainingAccumulator(integration_result, **acc_kwargs)
-            case _:
-                raise NotImplementedError(
-                    f"Accumulator of type '{acc_type}' not implemented in {self.__class__.__name__}.")
-
-    def discrete_prior_prob_function(self, indices: NDArray, dim: int = 0) -> NDArray:
-        if self.strat_sgn and indices.shape[1] == 0:
-            return np.full((indices.shape[0], 2), 0.5, dtype=np.float64)
-
-        if self.strat_sgn:
-            indices = indices[:, 1:]
-            dim -= 1
-
-        if self.sum_channels:
-            return self.integrand.discrete_prior_prob_function(indices, dim)
-
-        if self.condition_integrand_first:
-            n_dim = len(self.integrand.discrete_dims)
-            prior1: Callable = self.integrand.discrete_prior_prob_function
-            prior2: Callable = self.param.discrete_prior_prob_function
-        else:
-            n_dim = len(self.param.discrete_dims)
-            prior1: Callable = self.param.discrete_prior_prob_function
-            prior2: Callable = self.integrand.discrete_prior_prob_function
-
-        if dim < n_dim:
-            return prior1(indices, dim)
-
-        return prior2(indices[:, n_dim:], dim - n_dim)
-
-    def apply_prior_to_discrete(self, discrete: NDArray) -> NDArray:
-        disc_prod = np.array(self.discrete_dims, dtype=np.float64).prod()
-        total_wgt = np.full((discrete.shape[0]), 1.0/disc_prod, dtype=self.dtype)
-        for i in range(discrete.shape[1]):
-            try:
-                disc_prior = self.discrete_prior_prob_function(discrete[:, :i], i)
-                disc_prior /= np.sum(disc_prior, axis=1, keepdims=True)
-                prior_wgt = np.take_along_axis(
-                    disc_prior,
-                    discrete[:, [i]]).ravel()
-                total_wgt = np.divide(total_wgt, prior_wgt, out=np.zeros_like(total_wgt), where=prior_wgt != 0)
-            except Exception as e:
-                shell_print(f"Error computing discrete weight for dimension {i}: {e}")
-                shell_print(f"Discrete samples for this dimension: {discrete[:, i]}")
-                raise e
-
-        return total_wgt
-
-    def _get_discrete_dims(self) -> List[int]:
-        disc = [2] if self.strat_sgn else []
-        if self.sum_channels:
-            return disc + self.integrand.discrete_dims
-
-        if self.condition_integrand_first:
-            return disc + self.integrand.discrete_dims + self.param.discrete_dims
-
-        return disc + self.param.discrete_dims + self.integrand.discrete_dims
-
-    def _get_continuous_dims(self) -> int:
-        return self.integrand.continuous_dim + self.param.continuous_dim
-
-    def set_attribute(self, attr_name: str, value: Any) -> None:
-        if hasattr(self.integrand, attr_name):
-            setattr(self.integrand, attr_name, value)
-        if hasattr(self.param, attr_name):
-            setattr(self.param, attr_name, value)
-
-
-class MPIntegrand(ParameterisedIntegrand):
-    N_UNUSED = 1
-    MAX_CHUNK_SIZE = 100_000
-    MIN_CHUNK_SIZE = 10
-    IDENTIFIER = "multiprocessing integrand"
-
-    def __init__(self,
-                 graph_properties: GraphProperties | List[GraphProperties],
-                 param_kwargs: List[Dict[str, Any]],
-                 integrand_kwargs: Dict[str, Any],
-                 n_cores: int = 1,
-                 n_shards: int = 32,
-                 **kwargs):
-        self.n_cores = min(n_cores, mp.cpu_count() - self.N_UNUSED) if n_cores > 0 else 1
-        n_shards = min(n_shards, self.n_cores)
-        self._ended = False
-
-        ctx = mp.get_context()
-        self.q_in = [ctx.Queue() for _ in range(n_shards)]
-        self.q_out = [ctx.Queue() for _ in range(n_shards)]
-        self.stop_event = ctx.Event()
-        super().__init__(graph_properties,
-                         param_kwargs,
-                         integrand_kwargs,
-                         **kwargs)
-        worker_args = (
-            self.stop_event,
-            graph_properties,
-            param_kwargs,
-            integrand_kwargs,
-            kwargs
-        )
-        self.workers = [
-            ctx.Process(
-                target=self._integrand_worker,
-                args=((self.q_in[w_id % n_shards], self.q_out[w_id % n_shards]), *worker_args),
-                daemon=True) for w_id in range(self.n_cores)
-        ]
-        for w in self.workers:
-            w.start()
-        for w_id in range(self.n_cores):
-            output = self.q_out[w_id % n_shards].get()
-            if not output == 'STARTED':
-                raise ValueError(
-                    f"Unexpected initialization value in queue: {output}")
-
-    @staticmethod
-    def _integrand_worker(queues: Sequence[mp.Queue],
-                          stop_event,
-                          graph_properties: GraphProperties,
-                          param_kwargs: List[Dict[str, Any]],
-                          integrand_kwargs: Dict[str, Any],
-                          init_kwargs) -> None:
-        integrand = ParameterisedIntegrand(
-            graph_properties,
-            param_kwargs,
-            integrand_kwargs,
-            **init_kwargs
-        )
-        q_in, q_out = queues
-        q_out.put('STARTED')
-        while not stop_event.is_set():
-            try:
-                data = q_in.get(timeout=0.5)
-                # if data == 'STOP':
-                #     break
-            except:
-                continue
-            job_type, chunk_id, args = data
-            job_type: str
-            match job_type.lower():
-                case 'eval':
-                    layer_input, acc_type = args
-                    layer_input: LayerData
-                    layer_input.wake()
-                    acc = integrand.eval_integrand(layer_input, acc_type)
-                    q_out.put((chunk_id, acc))
-                case 'prior':
-                    indices, dim = args
-                    res = integrand.discrete_prior_prob_function(indices, dim)
-                    q_out.put((chunk_id, res))
-                case 'set_attr':
-                    attr_name, value = args
-                    integrand.set_attribute(attr_name, value)
-                case _:
-                    shell_print("CRITICAL WARNING:")
-                    shell_print(
-                        f"Integrand worker has received invalid job type \"{job_type.upper()}\"")
-                    shell_print("Consider terminating the program.")
-
-    def eval_integrand(self, layer_input: LayerData,
-                       acc_type: Literal['default', 'training'] = 'default') -> Accumulator:
-        job_type = 'eval'
-
-        n_cores = max(min(math.floor(layer_input.n_points /
-                      self.MIN_CHUNK_SIZE), self.n_cores), 1)
-        chunks_per_worker = math.ceil(
-            layer_input.n_points / n_cores / self.MAX_CHUNK_SIZE)
-        n_chunks = n_cores * chunks_per_worker
-
-        data_chunks = layer_input.as_chunks(n_chunks, n_cores)
-
-        for chunk_id, data_chunk in enumerate(data_chunks):
-            self.q_in[chunk_id % len(self.q_in)].put(
-                (job_type, chunk_id, (data_chunk, acc_type)), block=False)
-
-        chunk_id_return_order = []
-        acc_returned = []
-        readers = [q._reader for q in self.q_out]
-
-        n_processed = 0
-        while n_processed < n_chunks:
-            ready = wait(readers)
-            for r in ready:
-                idx = readers.index(r)
-                if self.stop_event.is_set():
-                    break
-                try:
-                    output = self.q_out[idx].get()
-                except Exception:
-                    continue
-                chunk_id, acc = output
-
-                chunk_id_return_order.append(chunk_id)
-                acc_returned.append(acc)
-                n_processed += 1
-
-        if n_processed != n_chunks:
-            raise RuntimeError("MPIntegrand evaluation was interrupted before all chunks were processed.")
-
-        acc_sorted = [None]*n_chunks
-        for i, sorted_id in enumerate(chunk_id_return_order):
-            acc_sorted[sorted_id] = acc_returned[i]
-
-        return type(acc_sorted[0]).cat(acc_sorted)
-
-    def discrete_prior_prob_function(self, indices: NDArray, dim: int = 0) -> NDArray:
-        job_type = "prior"
-        n_samples = len(indices)
-
-        n_cores = max(min(math.ceil(
-            n_samples / self.MIN_CHUNK_SIZE), self.n_cores), 1)
-        chunks_per_worker = math.ceil(
-            n_samples / n_cores / self.MAX_CHUNK_SIZE)
-        n_chunks = n_cores * chunks_per_worker
-        ind_chunks = chunks(indices, n_chunks)
-
-        for chunk_id, ind in enumerate(ind_chunks):
-            args = (ind, dim)
-            self.q_in[chunk_id % len(self.q_in)].put((job_type, chunk_id, args))
-
-        result_sorted = [None]*n_chunks
-        readers = [q._reader for q in self.q_out]
-
-        n_processed = 0
-        while n_processed < n_chunks:
-            ready = wait(readers)
-            for r in ready:
-                idx = readers.index(r)
-                if self.stop_event.is_set():
-                    break
-                try:
-                    data = self.q_out[idx].get()
-                except Exception:
-                    continue
-                chunk_id, res = data
-                result_sorted[chunk_id] = res
-                n_processed += 1
-
-        if n_processed != n_chunks:
-            raise RuntimeError("MPIntegrand prior computation was interrupted before all chunks were processed.")
-
-        return np.vstack(result_sorted)
-
-    def set_attribute(self, attr_name: str, value: Any) -> None:
-        """
-        Sets an attribute in the main process and all worker processes if it exists.
-        """
-        super().set_attribute(attr_name, value)
-        job_type = "set_attr"
-        for w_id in range(self.n_cores):
-            self.q_in[w_id].put((job_type, None, (attr_name, value)))
-
-    def free(self) -> None:
-        """
-        Terminates all worker processes and frees resources.
-        """
-        if self._ended:
-            return
-
-        self.stop_event.set()
-
-        for w in self.workers:
-            if w.is_alive():
-                w.join(timeout=5)
-
-        alive_workers = 0
-        for w in self.workers:
-            if w.is_alive():
-                alive_workers += 1
-                w.terminate()
-                w.join()
-
-        if alive_workers > 0:
-            shell_print(f"Terminated {alive_workers} / {self.n_cores} alive worker(s).")
-
-        # Explicitly close queue pipes to avoid file-descriptor leaks
-        # when constructing and tearing down many MPIntegrand instances.
-        for q in self.q_in + self.q_out:
-            try:
-                q.close()
-            except Exception:
-                pass
-            try:
-                q.join_thread()
-            except Exception:
-                pass
-
-        # Explicitly close process handles to release sentinel file descriptors.
-        for w in self.workers:
-            try:
-                w.close()
-            except Exception:
-                pass
-
-        self.integrand = None
-        self.param = None
-        self.graph_properties = None
-        self.workers = None
-
-        self._ended = True

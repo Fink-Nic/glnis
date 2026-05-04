@@ -1,4 +1,5 @@
-run_name = "aa_aa_1L_mpmm"
+run_name = "aa_aa@1L hel:mpmm"
+output_dir = "aa_aa/1L/mpmm"
 templates = [
     "settings/aa_aa_1L/aa_aa_1L",
     "settings/templates/flow/size8",

@@ -1,5 +1,5 @@
-run_name = "test@multi_mc_cwnet"
-output_dir = "test/multi_mc_cwnet"
+run_name = "gaussian@multi_mc_cwnet"
+output_dir = "gaussian/multi_mc_cwnet"
 
 templates = [
     "settings/test/base",
@@ -9,10 +9,10 @@ templates = [
 ]
 
 [layered_integrand]
-strat_sgn = false
-sum_channels = true
+strat_sgn = true
+sum_channels = false
 
-[integrand.test]
+[integrand.gaussian]
 sigma = [0.5, 1.0, 2.0]
 
 [integrator.madnis]

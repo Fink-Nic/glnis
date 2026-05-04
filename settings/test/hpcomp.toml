@@ -1,5 +1,5 @@
-run_name = "test@hpcomp"
-output_dir = "test/hpcomp"
+run_name = "gaussian@hpcomp"
+output_dir = "gaussian"
 
 templates = [
     "settings/test/base",

@@ -69,7 +69,7 @@ use_scheduler = true
 pretrain_c_flow = false
 
 [layered_integrand]
-integrand_type = "test"
+integrand_type = "gaussian"
 n_cores = 1
 
 [layered_parameterisation.layer_0]

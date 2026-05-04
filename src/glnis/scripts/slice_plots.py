@@ -7,7 +7,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
 
-from glnis.utils.helpers import shell_print, verify_path
+from glnis.utils.helpers import shell_print, verify_path, Colour
 from glnis.core.accumulator import TrainingAccumulator
 from glnis.scripts.sampler_comparison import (
     SamplerCompData,
@@ -91,13 +91,13 @@ def run_slice_plots(
             SData = pickle.load(f)
         if not (isinstance(SData, SamplerCompData) or isinstance(SData, SlicePlotData)):
             raise ValueError(
-                f"Unrecognized data type in file '{file}'. Expected either SamplerCompData or SlicePlotData, but got {type(SData)}.")
-        shell_print(f"Working on {file}")
+                f"Unrecognized data type in file {Colour.YELLOW}{file}{Colour.END}. Expected either SamplerCompData or SlicePlotData, but got {Colour.RED}{type(SData)}{Colour.END}.")
+        shell_print(f"Working on {Colour.YELLOW}{file}{Colour.END}")
 
     Settings = SettingsParser(SData.settings)
     if settings_file:
         if isinstance(settings_file, str):
-            shell_print(f"Overwriting settings with '{settings_file}'.")
+            shell_print(f"Overwriting plotting settings with {Colour.YELLOW}{settings_file}{Colour.END}.")
         NewSettings = SettingsParser(settings_file)
         Settings.settings["scripts"]["slice_plots"] = NewSettings.settings.get(
             "scripts", dict()).get("slice_plots", dict())
@@ -107,7 +107,7 @@ def run_slice_plots(
         return SData
 
     if len(SData.integrator_states) == 0:
-        shell_print(f"No integrator states found in `SamplerCompData` object, exiting...")
+        shell_print(f"No integrator states found in {Colour.DARKCYAN}SamplerCompData{Colour.END} object, exiting...")
         quit()
 
     # Slice parameters
@@ -117,7 +117,7 @@ def run_slice_plots(
     if not isinstance(slices, list):
         slices = [slices]
     if len(slices) == 0:
-        shell_print(f"No slices defined in settings, exiting...")
+        shell_print(f"{Colour.RED}No slices defined in settings, exiting...{Colour.END}")
         return
     EPS = params.get("EPS", 1e-6)
     seed = params.get("seed", 42)
@@ -130,8 +130,9 @@ def run_slice_plots(
         directory = Path(OUTPUT_DIR, Settings.settings['output_dir'], subroutine)
         if not os.path.exists(str(directory)):
             os.makedirs(str(directory))
-            shell_print(f"Created output folder at {directory}")
-        shell_print(f"Output will be at {directory}")
+            shell_print(f"Created output folder at {Colour.YELLOW}{directory}{Colour.END}")
+        else:
+            shell_print(f"Output will be at {Colour.YELLOW}{directory}{Colour.END}")
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
 
@@ -177,10 +178,11 @@ def run_slice_plots(
 
         if itg is not None and not only_plot:
             if not only_plot:
-                shell_print(f"Using integral estimate {itg:.4e} to normalize function values.")
+                shell_print(
+                    f"Using integral estimate {Colour.DARKCYAN}{itg:.8e}{Colour.END} to normalize function values.")
         else:
             if not only_plot:
-                shell_print(f"No integral estimate found. Function values will not be normalized.")
+                shell_print(f"{Colour.RED}No integral estimate found. Function values will not be normalized.{Colour.END}")
 
         # Initialize the integrators
         for integrator_type, state in SData.integrator_states.items():
@@ -202,7 +204,8 @@ def run_slice_plots(
                     if not only_plot:
                         shell_print(f"No point in plotting slices for 'Naive' integrator. Skipping...")
                 case _:
-                    shell_print(f"Unrecognized integrator type '{integrator_type}' in file. Skipping...")
+                    shell_print(
+                        f"Unrecognized integrator type {Colour.RED}{integrator_type}{Colour.END} in file. Skipping...")
 
         # Will hold integration results to write to text file and plot
         Data = SlicePlotData(graph_properties=integrand.graph_properties,
@@ -221,7 +224,7 @@ def run_slice_plots(
             dirs = slice.get("dirs", [])
             grid = slice.get("grid", [dict()])
             if len(dirs) > 2:
-                shell_print("Only 1D and 2D slices are supported, skipping slice...")
+                shell_print(f"{Colour.RED}Only 1D and 2D slices are supported, skipping slice...{Colour.END}")
                 continue
 
             if from_max_wgt:
@@ -243,7 +246,8 @@ def run_slice_plots(
                             "imag_neg_max_wgt_point", (None, None)
                         )
                     case _:
-                        shell_print(f"'from_max_wgt' must be one of 're+', 're-', 'im+', 'im-'. Skipping slice...")
+                        shell_print(
+                            f"{Colour.RED}'from_max_wgt' must be one of 're+', 're-', 'im+', 'im-'. Skipping slice...{Colour.END}")
                         continue
                 discrete = [int(d) for d in discrete] if discrete is not None else None
                 origin = origin.copy() if origin is not None else None
@@ -253,11 +257,11 @@ def run_slice_plots(
                 discrete = [rng.integers(0, ddim) for ddim in integrand.discrete_dims]
             if not len(origin) == integrand.continuous_dim:
                 shell_print(
-                    f"Integrand has {integrand.continuous_dim} continuous dimensions, but origin has {len(origin)}. Skipping slice...")
+                    f"{Colour.RED}Integrand has {integrand.continuous_dim} continuous dimensions, but origin has {len(origin)}. Skipping slice...{Colour.END}")
                 continue
             if len(integrand.discrete_dims) > len(discrete):
                 shell_print(
-                    f"Integrand has {len(integrand.discrete_dims)} discrete dimensions, but {len(discrete)} were provided. Skipping slice...")
+                    f"{Colour.RED}Integrand has {len(integrand.discrete_dims)} discrete dimensions, but {len(discrete)} were provided. Skipping slice...{Colour.END}")
                 continue
             grid = [LinSpace(**ls) for ls in grid if isinstance(ls, dict)]
             if len(dirs) == 0:
@@ -276,7 +280,7 @@ def run_slice_plots(
             for d in dirs:
                 if len(d) != integrand.continuous_dim:
                     shell_print(
-                        f"Integrand has {integrand.continuous_dim} continuous dimensions, but direction {d} has {len(d)}. Skipping slice...")
+                        f"{Colour.RED}Integrand has {integrand.continuous_dim} continuous dimensions, but direction {d} has {len(d)}. Skipping slice...{Colour.END}")
                     continue
             dirs = [np.array(d) for d in dirs]
             new_slice = Slice(
@@ -292,12 +296,12 @@ def run_slice_plots(
                     Data.slices2d.append(new_slice)
 
         if len(Data.slices1d) == 0 and len(Data.slices2d) == 0:
-            shell_print(f"No valid slices defined in settings, exiting...")
+            shell_print(f"{Colour.RED}No valid slices defined in settings, exiting...{Colour.END}")
             return
 
         if not only_plot:
             shell_print(
-                f"Found valid configs for {len(Data.slices1d)} 1D slices and {len(Data.slices2d)} 2D slices to plot.")
+                f"Found valid configs for {Colour.CYAN}{len(Data.slices1d)}{Colour.END} 1D slices and {Colour.CYAN}{len(Data.slices2d)}{Colour.END} 2D slices to plot.")
 
         # Generate the grids
         for i_1d, s1d in enumerate(Data.slices1d):
@@ -333,7 +337,7 @@ def run_slice_plots(
                 integrator_probs[itype] = prob.ravel()
             s1d.prob = integrator_probs
             if not only_plot:
-                shell_print(f"Generated 1D slice {s1d.name or i_1d}.")
+                shell_print(f"Generated 1D slice {Colour.PURPLE}{s1d.name or i_1d}{Colour.END}.")
 
         for i_2d, s2d in enumerate(Data.slices2d):
             n_samples_2d = s2d.grid[0].num * s2d.grid[1].num
@@ -371,7 +375,7 @@ def run_slice_plots(
                 integrator_probs[itype] = prob.reshape(s2d.func_val.shape)
             s2d.prob = integrator_probs
             if not only_plot:
-                shell_print(f"Generated 2D slice {s2d.name or i_2d}.")
+                shell_print(f"Generated 2D slice {Colour.PURPLE}{s2d.name or i_2d}{Colour.END}.")
 
         free_integrators()
 
@@ -424,7 +428,7 @@ def plot_slices(file: str | SlicePlotData,
         file: Path = verify_path(file)
         with file.open('rb') as f:
             Data: SlicePlotData = pickle.load(f)
-        shell_print(f"Plotting data from '{file}'")
+        shell_print(f"Plotting data from {Colour.YELLOW}{file}{Colour.END}")
 
         directory = file.parent
         filename = file.stem

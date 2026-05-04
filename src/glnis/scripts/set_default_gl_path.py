@@ -1,7 +1,7 @@
 # type: ignore
 
 from pathlib import Path
-from glnis.utils.helpers import verify_path
+from glnis.utils.helpers import verify_path, Colour
 import tomlkit
 
 
@@ -12,19 +12,19 @@ def run_set_default_gl_path(path: str) -> None:
         if not path.is_absolute():
             path = path.resolve()
         if not path.is_dir():
-            raise ValueError(f"Provided path '{path}' is not a directory.")
+            raise ValueError(f"Provided path {Colour.YELLOW}{path}{Colour.END} is not a directory.")
 
         magic_file = path / ".glnis.finder"
         if not magic_file.is_file():
             raise ValueError(
-                f"Provided directory '{path}' does not contain '.glnis.finder'. Please ensure you have provided the correct path to the GammaLoop examples.")
+                f"Provided directory {Colour.YELLOW}{path}{Colour.END} does not contain '.glnis.finder'. Please ensure you have provided the correct path to the GammaLoop examples.")
         path = path
         with open(magic_file, "r") as f:
             # Check for magic number
             first_line = f.readline().strip()
             if not first_line == "658123":
                 raise ValueError(
-                    f"Invalid magic number in '{magic_file}'. Expected '658123', got '{first_line}'.")
+                    f"Invalid magic number in {Colour.YELLOW}{magic_file}{Colour.END}. Expected '658123', got '{first_line}'.")
 
         # Update the default settings file
         with open(default_settings_file, "rb") as f:
@@ -32,7 +32,7 @@ def run_set_default_gl_path(path: str) -> None:
         settings['gammaloop']['state_dir'] = str(path)
         with open(default_settings_file, "w") as f:
             tomlkit.dump(settings, f)
-        print(f"Successfully set path to GammaLoop examples to '{path}'.")
+        print(f"Successfully set path to GammaLoop examples to {Colour.YELLOW}{path}{Colour.END}.")
 
     except Exception as e:
         from traceback import format_exc

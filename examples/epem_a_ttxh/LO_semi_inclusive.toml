@@ -1,7 +1,7 @@
-run_name = "epem_a_ttxh@LO_semi_inclusive"
+run_name = "epem_a_ttxh@LO semi_inclusive"
 output_dir = "epem_a_ttxh/LO_semi_inclusive"
 templates = [
-    "settings/epem_a_ttxh/epem_a_ttxh_LO",
+    "examples/epem_a_ttxh/LO",
     "settings/templates/flow/size7",
     "settings/templates/madnis_bins/size2",
     "settings/templates/transformer/size4",

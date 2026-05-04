@@ -1,21 +1,20 @@
 [cli_settings]
 [cli_settings.state]
-folder = "./examples/cli/epem_a_ttxh/LO/state"
+folder = "./glnis_gammaloop_examples/epem_a_ttxh/LO/state"
 
 [[command_blocks]]
 name = "generate"
 commands = [
   "import model sm-default.json",
   "set global kv global.n_cores.feyngen=10",
-
   "remove processes",
-  """generate xs e+ e- > t t~ h | e+ e- g t t~ h ghG ghG~ a QCD^2==0 QED^2==6 [{{2}} QCD=0]
-      --numerator-grouping group_identical_graphs_up_to_scalar_rescaling
-      --symmetrize-left-right-states true
-      -p epem_a_tth -i LO""",
+  """
+  generate xs e+ e- > t t~ h | e+ e- g t t~ h ghG ghG~ a QCD^2==0 QED^2==6 [{{2}} QCD=0]
+    --numerator-grouping group_identical_graphs_up_to_scalar_rescaling
+    --symmetrize-left-right-states true
+    -p epem_a_tth -i LO""",
   "save dot",
   "duplicate integrand -p epem_a_tth -i LO --output_process_name epem_a_tth --output_integrand_name LO_semi_inclusive",
-
   "save state -o",
 ]
 [default_runtime_settings.kinematics]
@@ -82,44 +81,34 @@ commands = [
   "run set_differential_quantities",
   "run set_differential_observables",
   "run set_differential_selectors",
-
-  """set process string '
+  """
+  set process string '
     [sampling]
     graphs = "monte_carlo"
     orientations = "monte_carlo"
     lmb_multichanneling = true
     lmb_channels = "monte_carlo"
-    '""",
+  '""",
+  """
+  set process -p epem_a_tth -i LO kv
+    integrator.n_increase=0
+    integrator.n_start=50000
+    integrator.n_max=300000
+    integrator.seed=1337
 
-  """set process -p epem_a_tth -i LO kv
-        integrator.n_increase=0
-        integrator.n_start=50000
-        integrator.n_max=300000
-        integrator.seed=1337
-
-    """,
-  # --show-max-weight-info-for-discrete-bins
-  # --batch-size 100000
-  # --no-stream-iterations
-  # --show-max-weight-info-for-discrete-bins
-  # --no-stream-iterations
-  #			 --show-phase both
-  #			 --show-top-discrete-grid
-  #			 --show-discrete-contributions-sum
-  #			 --sort-contributions integral
-  #			 --show-max-weight-info
-  #			 --renderer tabled
-  """integrate -p epem_a_tth -i LO -p epem_a_tth -i LO_semi_inclusive --n-cores 5
-                 --target epem_a_tth@LO=1.563e-3,0.0 epem_a_tth@LO_semi_inclusive=5.329e-4,0.0
-				 --renderer ratatui
-				 --batch-size 10000
-				 --show-phase real
-				 --show-max-weight-info
-				 --show-top-discrete-grid
-				 --show-discrete-contributions-sum
-				 --write-results-for-each-iteration
-                 --restart
-    """,
+  """,
+  """
+  integrate -p epem_a_tth -i LO -p epem_a_tth -i LO_semi_inclusive --n-cores 5
+    --target epem_a_tth@LO=1.563e-3,0.0 epem_a_tth@LO_semi_inclusive=5.329e-4,0.0
+    --renderer ratatui
+    --batch-size 10000
+    --show-phase real
+    --show-max-weight-info
+    --show-top-discrete-grid
+    --show-discrete-contributions-sum
+    --write-results-for-each-iteration
+    --restart
+  """,
 ]
 
 [[command_blocks]]

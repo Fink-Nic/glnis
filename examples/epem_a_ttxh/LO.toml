@@ -8,8 +8,7 @@ templates = [
 
 [gammaloop]
 state = "epem_a_ttxh/LO/state"
-integration_workspace = "examples/cli/epem_a_ttxh/LO/state/integration_workspace"
-integrand_name = "LO"
+integration_workspace = "epem_a_ttxh/LO/state/integration_workspace"
 
 [integrator.madnis]
 batch_size = 10000

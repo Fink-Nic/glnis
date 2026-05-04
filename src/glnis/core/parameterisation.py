@@ -14,6 +14,11 @@ type ParamOutput = Tuple[NDArray, NDArray, NDArray | None]
 
 
 class Parameterisation(ABC):
+    """
+    Abstract class for a parameterisation layer in the parameterisation chain. Handles the structure
+    of the chain and the passing of data along the chain, while the actual parameterisation step is
+    implemented in the _layer_parameterise method of the child classes.
+    """
     N_SPATIAL_DIMS = 3
     IDENTIFIER = "ABCParameterisation"
 
@@ -70,7 +75,7 @@ class Parameterisation(ABC):
             indices: indices of the discrete channel
             dim: current index on dim=1 of generated indices
         Returns:
-            torch tensor of shape (indices.shape[0], self.layer_num_discrete_dims):
+            NDArray of shape (indices.shape[0], self.layer_num_discrete_dims):
             probability of the prior distribution for given indices.
             Default is flat probability distribution,
             zero if indices.shape[0] = self.layer_num_discrete_dims
@@ -86,7 +91,7 @@ class Parameterisation(ABC):
     def get_chain_discrete_dims(self) -> List[int]:
         """
         Returns:
-            List of shape of the discrete dimensions of this and following layers in the
+            List of the discrete dimensions of this and following layers in the
             parameterisation chain.
             Intended to be used to set the discrete dimensions for an Integrator.
         """
@@ -237,16 +242,11 @@ class Parameterisation(ABC):
         """
         return self.N_SPATIAL_DIMS*self.graph_properties.n_loops
 
-    def set_params(self, **kwargs: Dict):
-        """Update the parameters of the parameterisation."""
-        for key, value in kwargs.items():
-            if key in self.__dict__:
-                setattr(self, key, value)
-            else:
-                raise ValueError(f"Invalid parameter: {key}")
-
 
 class LayeredParameterisation:
+    """
+    Factory class for a layered parameterisation. Takes a list of parameterisation settings.
+    """
     IDENTIFIER = "layered parameterisation"
 
     def __init__(self, graph_properties: GraphProperties | List[GraphProperties],
@@ -321,16 +321,23 @@ class LayeredParameterisation:
 
 
 class MomtropParameterisation(Parameterisation):
+    """
+    Wrapper for the momtrop sampler (arxiv.org/abs/2504.09613) rust implementation.
+    """
     IDENTIFIER = "momtrop param"
 
     def __init__(self, overwrite_edge_weight: float | List[float] | bool = False,
                  sample_discrete: bool = True,
                  mask_redundant: bool = True,
-                 compensate_edge_weights: bool = True,
                  **kwargs: Dict[str, Any]):
+        """
+        Args:
+            overwrite_edge_weight (float | List[float] | bool): Sets the propagator weights of the Feynman measure to sample from
+            sample_discrete (bool): Enable to expose the edge indices as a discrete input
+            mask_redundant (bool): If sample_discrete is enabled, will not expose the last (n_edges-1) continuous inputs
+        """
         self.sample_discrete = sample_discrete
         self.mask_redundant = mask_redundant and sample_discrete
-        self.compensate_edge_weights = compensate_edge_weights
         self.graph_properties: GraphProperties = kwargs["graph_properties"]
         match overwrite_edge_weight:
             case bool():
@@ -372,20 +379,13 @@ class MomtropParameterisation(Parameterisation):
             ])
         if discrete.size == 0:
             samples = self.momtrop_sampler.sample_batch(
-                continuous, self.momtrop_edge_data, self.momtrop_sampler_settings, None, )  # self.compensate_edge_weights)
-            # samples = self.momtrop_sampler.sample_batch(
-            #     continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings)
+                continuous, self.momtrop_edge_data, self.momtrop_sampler_settings, None, )
         else:
             samples = self.momtrop_sampler.sample_batch(
                 continuous, self.momtrop_edge_data, self.momtrop_sampler_settings,
-                self._get_graph_from_edges_removed(discrete), )  # self.compensate_edge_weights,)
-            # samples = self.momtrop_sampler.sample_batch(
-            #     continuous.tolist(), self.momtrop_edge_data, self.momtrop_sampler_settings,
-            #     self._get_graph_from_edges_removed(discrete))
+                self._get_graph_from_edges_removed(discrete), )
 
-        # jac = samples.jacobians_array
         jac = np.array(samples.jacobians, dtype=continuous.dtype).reshape(-1, 1)
-        # momentum = samples.loop_momenta_array
         momentum = np.array(
             samples.loop_momenta, dtype=continuous.dtype).reshape(len(continuous), -1)
 
@@ -395,7 +395,7 @@ class MomtropParameterisation(Parameterisation):
                                       ) -> List[List[int]]:
         """
         Args:
-            edges_removed: List of the edge indices that have already been forced
+            edges_removed: List of the edge indices that have already been removed from the graph
         Returns:
             List of shape (n_edges,) that appends the as-yet unforced edges to edges_removed
         """
@@ -436,11 +436,7 @@ class MomtropParameterisation(Parameterisation):
         return result
 
     def _layer_prior_prob_function(self, indices: NDArray) -> NDArray:
-        #
-        rust_result = self.momtrop_sampler.predict_discrete_probs(
-            indices.tolist())
-
-        return np.array(rust_result)
+        return np.array(self.momtrop_sampler.predict_discrete_probs(indices.tolist()))
 
     def _layer_continuous_dim_in(self) -> int:
         if self.mask_redundant:
@@ -457,6 +453,9 @@ class MomtropParameterisation(Parameterisation):
 
 
 class MomtropEdgeWeightsParameterisation(Parameterisation):
+    """
+    Legacy class to compensate the Feynman measure edge weights. Now handled in the momtrop fork, left for testing purposes.
+    """
     IDENTIFIER = "edge weights param"
 
     def __init__(self,

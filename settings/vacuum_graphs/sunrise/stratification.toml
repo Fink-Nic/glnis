@@ -1,5 +1,5 @@
-run_name = "sunrise@sign_stratification"
-output_dir = "sunrise/sign_stratification"
+run_name = "sunrise@stratification"
+output_dir = "sunrise/stratification"
 templates = [
     "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",
@@ -72,7 +72,6 @@ use_scheduler = true
 pretrain_c_flow = false
 loss_type = "variance"
 use_cwnet = true
-uniform_channel_ratio = 0.1
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "rkaapo"
@@ -130,8 +129,10 @@ min_bin_height = 2e-5
 min_bin_derivative = 1e-5
 
 [integrator.madnis.cwnet_kwargs]
+uniform_channel_ratio = 0.1
 layers = 5
 units = 512
+channel_weight_mode = "variance"
 
 [scripts.sampler_comp]
 n_training_steps = 1000
@@ -161,16 +162,9 @@ grid = [
 ]
 
 [[scripts.hyperparam_comparison.comparison]]
-name = "strat_sgn"
+name = "stratification"
 plot_slices = true
 blocks = [
-    [
-        """
-        [integrator.madnis]
-        use_cwnet = true
-        uniform_channel_ratio = 1.0
-        """,
-    ],
     [
         """
         [integrator.madnis]
@@ -192,8 +186,38 @@ blocks = [
         """,
         "settings/templates/made/size5",
     ],
+    [
+        """
+        [integrator.madnis]
+        use_cwnet = true
+        uniform_channel_ratio = 0.1
+        [layered_integrand]
+        num_strat_dim = 2
+        """,
+    ],
+    [
+        """
+        [integrator.madnis]
+        use_cwnet = false
+        [layered_integrand]
+        num_strat_dim = 2
+        """,
+        "settings/templates/transformer/size4",
+    ],
+    [
+        """
+        [integrator.madnis]
+        use_cwnet = false
+        [layered_integrand]
+        num_strat_dim = 2
+        """,
+        "settings/templates/made/size5",
+    ],
 ]
-block_names = ["cwnet_1.0", "cwnet_0.1", "transformer", "made" ]
+block_names = [
+    "sgn_cwnet", "sgn_trans", "sgn_made", 
+    "sgn_lmb_cwnet", "sgn_lmb_trans", "sgn_lmb_made"
+]
 
 [scripts.hpcomp_training_run]
 n_training_steps = 1000

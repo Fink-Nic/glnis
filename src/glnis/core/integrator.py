@@ -1,10 +1,10 @@
 # type: ignore
-from glnis.utils.types import GraphProperties, LayerData
 import vegas
 import numpy as np
 import torch
 import functools
 import io
+
 from copy import deepcopy
 from dataclasses import dataclass
 from abc import ABC
@@ -14,12 +14,11 @@ from torch.types import Tensor
 from symbolica import NumericalIntegrator, Sample, RandomNumberGenerator
 
 import madnis.integrator as madnis_integrator
-from glnis.core.accumulator import (
-    DefaultAccumulator, TrainingAccumulator
-)
+from glnis.core.accumulator import DefaultAccumulator, TrainingAccumulator
 from glnis.core.integrand import MPIntegrand
 from glnis.core.parser import SettingsParser
 from glnis.utils.helpers import shell_print, error_fmter
+from glnis.utils.types import GraphProperties, LayerData
 
 
 def _block_if_ended(method):
@@ -53,69 +52,10 @@ class Integrator(ABC):
         self.step = 0
         self._ended = False
 
-    @classmethod
-    def from_state(cls, state: 'Integrator.IntegratorState', integrand: MPIntegrand) -> 'Integrator':
-        # if type(cls) is Integrator:
-        match type(state):
-            case Integrator.IntegratorState:
-                cls = NaiveIntegrator
-            case VegasIntegrator.VegasState:
-                cls = VegasIntegrator
-            case HavanaIntegrator.HavanaState:
-                cls = HavanaIntegrator
-            case MadnisIntegrator.MadnisState:
-                cls = MadnisIntegrator
-            case _:
-                raise ValueError("Unknown state type for integrator import.")
-
-        instance = cls.__new__(cls)
-        instance.__dict__.update(state.obj_dict)
-        instance.integrand = integrand
-        instance.import_state(state)
-
-        return instance
-
     @_block_if_ended
     def get_samples(self, n_points: int, *args, **kwargs) -> LayerData:
         """Returns a LayerData object containing the samples to be fed into the integrand."""
         return self._get_samples(n_points, *args, **kwargs)
-
-    def _get_samples(self, n_points: int, *args, **kwargs) -> LayerData:
-        layer_input = self.init_layer_data(n_points)
-        layer_input.continuous = self.rng.random((n_points, self.continuous_dim))
-        discrete = self.rng.uniform(
-            size=(n_points, len(self.discrete_dims)))
-        layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
-        layer_input.update(self.IDENTIFIER)
-
-        return layer_input
-
-    @_block_if_ended
-    def export_state(self) -> 'Integrator.IntegratorState':
-        """Exports the state of the integrator, e.g. for checkpointing or analysis."""
-        state = self._export_state()
-        state.obj_dict.pop('integrand', None)
-        state.obj_dict.pop('rng', None)
-        return state
-
-    def _export_state(self) -> 'Integrator.IntegratorState':
-        return Integrator.IntegratorState(
-            obj_dict=self.__dict__.copy(),
-            rng_state=deepcopy(self.rng.bit_generator.state))
-
-    @_block_if_ended
-    def import_state(self, state: 'Integrator.IntegratorState'):
-        """
-        Imports the state of the integrator from a previous export.
-        Upon importing, the integrand must be set up to match the imported state.
-        """
-        self.__dict__.update(state.obj_dict)
-        self.rng = np.random.default_rng()  # reinitialize to reset state
-        self.rng.bit_generator.state = deepcopy(state.rng_state)
-        self._import_state(state)
-
-    def _import_state(self, state: 'Integrator.IntegratorState'):
-        pass
 
     @_block_if_ended
     def integrate(
@@ -160,6 +100,84 @@ class Integrator(ABC):
               callback: Callable[['Integrator.TrainingStatus'], None] | None = None) -> str | None:
         shell_print(f"Training not available for Integrator {self.IDENTIFIER}.")
 
+    @_block_if_ended
+    def export_state(self) -> 'Integrator.IntegratorState':
+        """Exports the state of the integrator, e.g. for checkpointing or analysis."""
+        state = self._export_state()
+        state.obj_dict.pop('integrand', None)
+        state.obj_dict.pop('rng', None)
+        return state
+
+    @_block_if_ended
+    def import_state(self, state: 'Integrator.IntegratorState'):
+        """
+        Imports the state of the integrator from a previous export.
+        Upon importing, the integrand must be set up to match the imported state.
+        """
+        self.__dict__.update(state.obj_dict)
+        self.rng = np.random.default_rng()  # reinitialize to reset state
+        self.rng.bit_generator.state = deepcopy(state.rng_state)
+        self._import_state(state)
+
+    @_block_if_ended
+    def probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
+        """Returns the probability of sampling the given discrete and continuous points under the current state of the sampler."""
+        return self._probe_prob(discrete, continuous)
+
+    def init_layer_data(self, n_points: int) -> LayerData:
+        """
+        Initializes a LayerData object with the appropriate dimensions and dtype for the integrand.
+        """
+        return LayerData(
+            n_points,
+            n_mom=3*self.integrand.graph_properties[0].n_loops,
+            n_cont=self.continuous_dim,
+            n_disc=self.num_discrete_dims,
+            dtype=self.dtype,
+        )
+
+    @_block_if_ended
+    def display_info(self) -> None:
+        from glnis.utils.helpers import Colour
+        info = self.get_info()
+        shell_print("Integrator information:")
+        for key, value in info.items():
+            shell_print(f"    {Colour.CYAN}{key}{Colour.END}: {value}")
+
+    @_block_if_ended
+    def get_info(self) -> Dict[str, Any]:
+        return self._get_info()
+
+    def free(self) -> None:
+        """Performs any necessary cleanup after integration is done."""
+        if self._ended:
+            return
+        self.integrand.free()
+        self.integrand = None
+        self._ended = True
+
+    @classmethod
+    def from_state(cls, state: 'Integrator.IntegratorState', integrand: MPIntegrand) -> 'Integrator':
+        # if type(cls) is Integrator:
+        match type(state):
+            case Integrator.IntegratorState:
+                cls = NaiveIntegrator
+            case VegasIntegrator.VegasState:
+                cls = VegasIntegrator
+            case HavanaIntegrator.HavanaState:
+                cls = HavanaIntegrator
+            case MadnisIntegrator.MadnisState:
+                cls = MadnisIntegrator
+            case _:
+                raise ValueError("Unknown state type for integrator import.")
+
+        instance = cls.__new__(cls)
+        instance.__dict__.update(state.obj_dict)
+        instance.integrand = integrand
+        instance.import_state(state)
+
+        return instance
+
     def _cont_to_discr(self, continuous: NDArray
                        ) -> Tuple[NDArray, NDArray]:
         n = len(continuous)
@@ -175,50 +193,48 @@ class Integrator(ABC):
             cdf = np.cumsum(unnorm_probs, axis=1)
             norm = cdf[:, [-1]]
             cdf = cdf / norm
-            r = continuous[:, [i]]  # self.rng.random((n, 1))
+            r = continuous[:, [i]]
             indices[:, i] = np.sum(cdf < r, axis=1, dtype=np.uint64)
             prob = prob * \
                 np.take_along_axis(unnorm_probs, indices[:, [i]], axis=1) / norm
 
         return indices, (1/prob)
 
-    def init_layer_data(self, n_points: int) -> LayerData:
-        return LayerData(
-            n_points,
-            n_mom=3*self.integrand.graph_properties[0].n_loops,
-            n_cont=self.continuous_dim,
-            n_disc=self.num_discrete_dims,
-            dtype=self.dtype,
-        )
+    def _get_samples(self, n_points: int, *args, **kwargs) -> LayerData:
+        layer_input = self.init_layer_data(n_points)
+        layer_input.continuous = self.rng.random((n_points, self.continuous_dim))
+        discrete = self.rng.uniform(
+            size=(n_points, len(self.discrete_dims)))
+        layer_input.discrete, layer_input.wgt = self._cont_to_discr(discrete)
+        layer_input.update(self.IDENTIFIER)
 
-    @_block_if_ended
-    def probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
-        """Returns the probability of sampling the given discrete and continuous points under the current sampling distribution."""
-        return self._probe_prob(discrete, continuous)
+        return layer_input
 
     def _probe_prob(self, discrete: NDArray, continuous: NDArray | None = None) -> NDArray:
         return np.ones((len(discrete),), dtype=self.dtype)
 
+    def _import_state(self, state: 'Integrator.IntegratorState'):
+        pass
+
+    def _export_state(self) -> 'Integrator.IntegratorState':
+        return Integrator.IntegratorState(
+            obj_dict=self.__dict__.copy(),
+            rng_state=deepcopy(self.rng.bit_generator.state))
+
     @staticmethod
-    def from_dicts(
+    def from_kwargs(
             graph_properties: GraphProperties | List[GraphProperties],
             parameterisation_kwargs: List[Dict[str, Any]],
             integrand_kwargs: Dict[str, Any],
             integrator_kwargs: Dict[str, Any],) -> 'Integrator':
 
-        n_cores = integrand_kwargs.pop('n_cores', 1)
-        n_shards = integrand_kwargs.pop('n_shards', 32)
-        strat_sgn = integrand_kwargs.pop('strat_sgn', False)
-        integrator_type: str | None = integrator_kwargs.pop('integrator_type', None)
-
         integrand = MPIntegrand(
             graph_properties=graph_properties,
             param_kwargs=parameterisation_kwargs,
             integrand_kwargs=integrand_kwargs,
-            n_cores=n_cores,
-            n_shards=n_shards,
-            strat_sgn=strat_sgn,
         )
+
+        integrator_type: str | None = integrator_kwargs.pop('integrator_type', None)
 
         match integrator_type.lower() if integrator_type is not None else None:
             case 'naive':
@@ -235,21 +251,13 @@ class Integrator(ABC):
     @staticmethod
     def from_settings(settings: str | Dict) -> 'Integrator':
         Parser = SettingsParser(settings)
-        graph_properties = Parser.get_graph_properties()
-        parameterisation_kwargs = Parser.get_parameterisation_kwargs()
-        integrand_kwargs = Parser.get_integrand_kwargs()
-        integrator_kwargs = Parser.get_integrator_kwargs()
 
-        return Integrator.from_dicts(
-            graph_properties=graph_properties,
-            parameterisation_kwargs=parameterisation_kwargs,
-            integrand_kwargs=integrand_kwargs,
-            integrator_kwargs=integrator_kwargs
+        return Integrator.from_kwargs(
+            graph_properties=Parser.get_graph_properties(),
+            parameterisation_kwargs=Parser.get_parameterisation_kwargs(),
+            integrand_kwargs=Parser.get_integrand_kwargs(),
+            integrator_kwargs=Parser.get_integrator_kwargs()
         )
-
-    @_block_if_ended
-    def get_info(self) -> Dict[str, Any]:
-        return self._get_info()
 
     def _get_info(self) -> Dict[str, Any]:
         info = {
@@ -258,25 +266,10 @@ class Integrator(ABC):
             "Input dimension": self.input_dim,
             "Continuous dimension": self.continuous_dim,
             "Discrete dimension": self.discrete_dims,
-            "Random seed": self.seed
+            "Random seed": self.seed,
+            "Integrand Cores": self.integrand.n_cores,
         }
         return info
-
-    @_block_if_ended
-    def display_info(self) -> None:
-        from glnis.utils.helpers import Colour
-        info = self.get_info()
-        shell_print("Integrator information:")
-        for key, value in info.items():
-            shell_print(f"    {Colour.CYAN}{key}{Colour.END}: {value}")
-
-    def free(self) -> None:
-        """Performs any necessary cleanup after integration is done."""
-        if self._ended:
-            return
-        self.integrand.free()
-        self.integrand = None
-        self._ended = True
 
     @staticmethod
     def _default_callback(status: 'Integrator.TrainingStatus') -> None:
@@ -411,8 +404,8 @@ class VegasIntegrator(Integrator):
 
     def _get_info(self) -> Dict[str, Any]:
         info = super()._get_info()
-        info["bins"] = self.bins
-        info["alpha"] = self.alpha
+        info["Bins"] = self.bins
+        info["Alpha"] = self.alpha
         return info
 
     @dataclass(kw_only=True)
@@ -567,11 +560,11 @@ class HavanaIntegrator(Integrator):
     def _get_info(self) -> Dict[str, Any]:
         info = super()._get_info()
         info["Stream ID"] = self.stream_id
-        info["bins"] = self.bins
-        info["max_prob_ratio"] = self.max_prob_ratio
-        info["uniform_disc_grid"] = self.uniform_disc_grid
-        info["discrete_learning_rate"] = self.discrete_learning_rate
-        info["continuous_learning_rate"] = self.continuous_learning_rate
+        info["Bins"] = self.bins
+        info["Max Probability Ratio"] = self.max_prob_ratio
+        info["Using Uniform Discrete Grid"] = self.uniform_disc_grid
+        info["Discrete Learning Rate"] = self.discrete_learning_rate
+        info["Continuous Learning Rate"] = self.continuous_learning_rate
         return info
 
 
@@ -580,56 +573,54 @@ class MadnisIntegrator(Integrator):
 
     def __init__(
             self,
-        integrand: MPIntegrand,
-        batch_size: int = 1024,
-        learning_rate: float = 1e-3,
-        use_scheduler: bool = True,
-        scheduler_type: Literal["cosineannealing"] | List[str] | None = None,
-        scheduler_kwargs: Dict[str, Any] = dict(),
-        loss_type: Literal["test", "variance", "variance_softclip",
-                           "kl_divergence", "kl_divergence_softclip"] = "kl_divergence",
-        loss_kwargs: Dict[str, Any] = dict(),
-        discrete_dims_position: Literal["first", "last"] = "first",
-        discrete_model: Literal["transformer",
-                                "made"] = "transformer",
-        transformer_kwargs: Dict[str, Any] = dict(
-            embedding_dim=64,
-            feedforward_dim=64,
-            heads=4,
-            mlp_units=64,
-            transformer_layers=2,),
-        made_kwargs: Dict[str, Any] = dict(
-            layers=3,
-            nodes_per_feature=8,
-        ),
-        flow_kwargs: Dict[str, Any] = dict(
-            uniform_latent=True,
-            permutations="log",
-            layers=3,
-            units=32,
-            bins=10,
-            min_bin_width=1e-3,
-            min_bin_height=1e-3,
-            min_bin_derivative=1e-3,),
-        pretrain_c_flow: bool = False,
-        pretraining_kwargs: Dict[str, Any] = dict(
-            nitn=10,
-            neval=10000,
-            bins_mult=4,
-            alpha=0.7,
-        ),
-        max_batch_size: int = 100_000,
-        use_gpu: bool = True,
-        gpu_id: int = 0,
-        use_cwnet: bool = False,
-        cwnet_kwargs: Dict[str, Any] = dict(
-            layers=4,
-            units=128,
-        ),
-        train_channel_weights: bool = True,
-        uniform_channel_ratio: float = 0.1,
-        channel_weight_mode: Literal["variance", "mean"] = "variance",
-        **kwargs,
+            integrand: MPIntegrand,
+            batch_size: int = 1000,
+            learning_rate: float = 1e-3,
+            use_scheduler: bool = True,
+            scheduler_type: Literal["cosineannealing"] | List[str] | None = None,
+            loss_type: Literal["test", "variance", "variance_softclip",
+                               "kl_divergence", "kl_divergence_softclip"] = "kl_divergence",
+            discrete_dims_position: Literal["first", "last"] = "first",
+            discrete_model: Literal["transformer", "made"] = "transformer",
+            use_cwnet: bool = False,
+            max_batch_size: int = 100_000,
+            use_gpu: bool = True,
+            gpu_id: int = 0,
+            pretrain_c_flow: bool = False,
+            flow_kwargs: Dict[str, Any] = dict(
+                uniform_latent=True,
+                permutations="log",
+                layers=3,
+                units=64,
+                bins=10,
+                min_bin_width=1e-3,
+                min_bin_height=1e-3,
+                min_bin_derivative=1e-3,),
+            transformer_kwargs: Dict[str, Any] = dict(
+                embedding_dim=64,
+                feedforward_dim=64,
+                heads=4,
+                mlp_units=64,
+                transformer_layers=2,),
+            made_kwargs: Dict[str, Any] = dict(
+                layers=3,
+                nodes_per_feature=64,
+            ),
+            cwnet_kwargs: Dict[str, Any] = dict(
+                layers=4,
+                units=128,
+                uniform_channel_ratio=0.1,
+                channel_weight_mode="variance",
+            ),
+            scheduler_kwargs: Dict[str, Any] = dict(),
+            loss_kwargs: Dict[str, Any] = dict(),
+            pretraining_kwargs: Dict[str, Any] = dict(
+                nitn=10,
+                neval=10000,
+                bins_mult=4,
+                alpha=0.7,
+            ),
+            **kwargs,
     ):
         super().__init__(integrand, **kwargs)
         torch.set_default_dtype(torch.float64)
@@ -639,8 +630,8 @@ class MadnisIntegrator(Integrator):
         self.gpu_id = gpu_id
         self.device = self._get_device()
         self.use_cwnet = use_cwnet and self.num_discrete_dims > 0
-        self.uniform_channel_ratio = uniform_channel_ratio
-        self.channel_weight_mode = channel_weight_mode
+        self.uniform_channel_ratio = cwnet_kwargs.pop("uniform_channel_ratio", 0.1) if self.use_cwnet else 0.0
+        self.channel_weight_mode = cwnet_kwargs.pop("channel_weight_mode", "variance") if self.use_cwnet else None
 
         self.use_scheduler = use_scheduler
         self.scheduler_type = scheduler_type
@@ -651,6 +642,7 @@ class MadnisIntegrator(Integrator):
         self.loss_type = loss_type
         self.loss_kwargs = loss_kwargs
 
+        self.discrete_model = discrete_model if self.num_discrete_dims <= int(self.use_cwnet) else "made"
         discrete_flow_kwargs = transformer_kwargs if discrete_model == "transformer" else made_kwargs
 
         madnis_integrand = madnis_integrator.Integrand(
@@ -660,7 +652,7 @@ class MadnisIntegrator(Integrator):
             discrete_dims=self.discrete_dims[int(self.use_cwnet):],
             discrete_dims_position=self.discrete_dims_position,
             discrete_prior_prob_function=self._madnis_discrete_prior_prob_function,
-            has_channel_weight_prior=False,
+            has_channel_weight_prior=self.use_cwnet,
         )
         if self.use_cwnet:
             self.madnis = madnis_integrator.Integrator(
@@ -673,8 +665,8 @@ class MadnisIntegrator(Integrator):
                 learning_rate=learning_rate,
                 flow_kwargs=flow_kwargs,
                 uniform_channel_ratio=self.uniform_channel_ratio,
-                # train_channel_weights=train_channel_weights,
-                # cwnet_kwargs=cwnet_kwargs,
+                train_channel_weights=self.use_cwnet,
+                cwnet_kwargs=cwnet_kwargs,
             )
         else:
             self.madnis = madnis_integrator.Integrator(
@@ -751,6 +743,29 @@ class MadnisIntegrator(Integrator):
         finally:
             signal.signal(signal.SIGINT, old_handler)
 
+    def free(self) -> None:
+        """Performs any necessary cleanup after integration is done."""
+        super().free()
+        # Move modules off GPU and drop references so repeated runs do not accumulate memory.
+        if hasattr(self, "madnis") and self.madnis is not None:
+            if self.device.type == 'cuda':
+                try:
+                    self.madnis.flow.to('cpu')
+                    if self.madnis.cwnet is not None:
+                        self.madnis.cwnet.to('cpu')
+                except Exception:
+                    # Best-effort cleanup; continue with reference release.
+                    pass
+
+            self.madnis.optimizer = None
+            self.madnis.scheduler = None
+            self.madnis = None
+
+            if self.device.type == 'cuda':
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, 'ipc_collect'):
+                    torch.cuda.ipc_collect()
+
     def _get_samples(self, n_points: int) -> LayerData:
         layer_input = self.init_layer_data(n_points)
         # LayerData objects return a view of the fields, so we can fill them directly,
@@ -775,20 +790,15 @@ class MadnisIntegrator(Integrator):
                 madnis_batch.x, madnis_batch.channels)
             wgt[n_eval:n_eval+n, :] = 1 / madnis_batch.q_sample.numpy(force=True).reshape(-1, 1)
 
-            # if self.num_discrete_dims == 1:
-            #     print(f"channel 0: {madnis_batch.x[:, 1][madnis_batch.x[:, 0] == 0].mean()}")
-            #     print(f"channel 1: {madnis_batch.x[:, 1][madnis_batch.x[:, 0] == 1].mean()}")
             if madnis_batch.channels is not None:
-                # We multiply by the number of channels to compensate for the lack of discrete prior call
+                # We multiply by the number of channels to compensate for the CWNET normalization
                 wgt[n_eval:n_eval+n, :] *= torch.gather(
                     self.madnis._get_alphas(madnis_batch), index=madnis_batch.channels[:, None], dim=1
                 )[:, 0].numpy(force=True).reshape(-1, 1) * self.discrete_dims[0]
                 # Next, weigh by N_i / N to restore the actual multichanneling alphas
                 channels = madnis_batch.channels.numpy(force=True)
-                # print(f"channel 0: {madnis_batch.x[madnis_batch.channels == 0].mean()}")
-                # print(f"channel 1: {madnis_batch.x[madnis_batch.channels == 1].mean()}")
                 channel_counts = np.bincount(channels, minlength=self.discrete_dims[0])
-                wgt[n_eval:n_eval+n, :] /= (channel_counts[channels] / n).reshape(-1, 1)
+                wgt[n_eval:n_eval+n, :] *= (n / channel_counts[channels]).reshape(-1, 1)
 
             n_eval += n
 
@@ -811,7 +821,7 @@ class MadnisIntegrator(Integrator):
         if self.madnis.integrand.has_channel_weight_prior:
             disc_prior = self.integrand.discrete_prior_prob_function(
                 np.zeros((x_all.shape[0], 0), dtype=np.uint64), 0)
-            disc_prior /= np.sum(disc_prior, axis=1, keepdims=True) * self.discrete_dims[0]
+            disc_prior /= np.sum(disc_prior, axis=1, keepdims=True) / self.discrete_dims[0]
             prior_wgt = np.take_along_axis(disc_prior, layer_input.discrete[:, [0]])
             torch_prior = torch.from_numpy(prior_wgt.astype(np.float64)).to(self.device)
             return torch_output, torch_prior
@@ -971,49 +981,27 @@ class MadnisIntegrator(Integrator):
                 self.madnis.flow.discrete_flow.channel_remap_function = ch_remap
         torch.set_rng_state(state.torch_rng_state)
 
-    def free(self) -> None:
-        """Performs any necessary cleanup after integration is done."""
-        super().free()
-        # Move modules off GPU and drop references so repeated runs do not accumulate memory.
-        if hasattr(self, "madnis") and self.madnis is not None:
-            if self.device.type == 'cuda':
-                try:
-                    self.madnis.flow.to('cpu')
-                    if self.madnis.cwnet is not None:
-                        self.madnis.cwnet.to('cpu')
-                except Exception:
-                    # Best-effort cleanup; continue with reference release.
-                    pass
-
-            self.madnis.optimizer = None
-            self.madnis.scheduler = None
-            self.madnis = None
-
-            if self.device.type == 'cuda':
-                torch.cuda.empty_cache()
-                if hasattr(torch.cuda, 'ipc_collect'):
-                    torch.cuda.ipc_collect()
-
     def _get_info(self) -> Dict[str, Any]:
         info = super()._get_info()
-        info["scheduler_type"] = self.scheduler_type
-        info["device"] = str(self.device)
+        info["Scheduler"] = self.scheduler_type
+        info["Device"] = str(self.device)
         if self.num_discrete_dims > int(self.use_cwnet):
+            info["Discrete Model"] = self.discrete_model
             trainable_disc_flow = sum(p.numel() for p in self.madnis.flow.discrete_flow.parameters() if p.requires_grad)
             total_disc_flow = sum(p.numel() for p in self.madnis.flow.discrete_flow.parameters())
-            info["discrete flow trainable parameters"] = trainable_disc_flow
-            info["discrete flow total parameters"] = total_disc_flow
+            info["Discrete flow trainable parameters"] = trainable_disc_flow
+            info["Discrete flow total parameters"] = total_disc_flow
 
             trainable_cont_flow = sum(p.numel()
                                       for p in self.madnis.flow.continuous_flow.parameters() if p.requires_grad)
             total_cont_flow = sum(p.numel() for p in self.madnis.flow.continuous_flow.parameters())
-            info["continuous flow trainable parameters"] = trainable_cont_flow
-            info["continuous flow total parameters"] = total_cont_flow
+            info["Continuous flow trainable parameters"] = trainable_cont_flow
+            info["Continuous flow total parameters"] = total_cont_flow
 
         trainable_flow = sum(p.numel() for p in self.madnis.flow.parameters() if p.requires_grad)
         total_flow = sum(p.numel() for p in self.madnis.flow.parameters())
-        info["flow trainable parameters"] = trainable_flow
-        info["flow total parameters"] = total_flow
+        info["Flow trainable parameters"] = trainable_flow
+        info["Flow total parameters"] = total_flow
 
         if self.madnis.cwnet is not None:
             trainable_cwnet = sum(p.numel() for p in self.madnis.cwnet.parameters() if p.requires_grad)
@@ -1041,14 +1029,11 @@ class MadnisIntegrator(Integrator):
                 return None
 
     def _get_device(self) -> torch.device:
-        if not self.use_gpu:
-            return torch.device('cpu')
-        if not torch.cuda.is_available():
-            shell_print("No CUDA device found. Using CPU.")
+        if not self.use_gpu or not torch.cuda.is_available():
             return torch.device('cpu')
 
         n_dvc = torch.cuda.device_count()
-        gpu_id = max(self.gpu_id, n_dvc)
+        gpu_id = min(self.gpu_id, n_dvc - 1)
         reordered_list = list(range(n_dvc))
         reordered_list.pop(gpu_id)
         reordered_list.insert(0, gpu_id)
@@ -1057,6 +1042,7 @@ class MadnisIntegrator(Integrator):
             if (7, 0) <= (major, minor) < (12, 0):
                 return torch.device(f'cuda:{i}')
         shell_print("CUDA devices found but none are compatible. Using CPU.")
+        return torch.device('cpu')
 
     def _get_loss(self):
         from glnis.core import losses

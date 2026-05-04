@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from pickle import dump, load
 
-from glnis.utils.helpers import shell_print, verify_path, _finite_float
+from glnis.utils.helpers import shell_print, verify_path, _finite_float, Colour, time_fmter
 from glnis.utils.types import Result
 from glnis.scripts.sampler_comparison import (
     run_sampler_comp, SamplerCompData, TrainingProgress, MADNIS_KEY
@@ -120,7 +120,7 @@ def run_hyperparam_comparison(
 
     from glnis.core.parser import SettingsParser
 
-    shell_print(f"Working on settings {file}")
+    shell_print(f"Working on settings {Colour.YELLOW}{file}{Colour.END}")
     MasterSettings = SettingsParser(file)
 
     if recovery_file:
@@ -131,15 +131,16 @@ def run_hyperparam_comparison(
                 raise ValueError(f"Expected a HParamCompData object in the recovery file, but got {type(Data)}")
         Data.settings = MasterSettings.settings
         directory = recovery_file.parent
-        shell_print(f"Recovered data from '{recovery_file}' with {Data._total_comparisons} comparisons.")
+        shell_print(
+            f"Recovered data from {Colour.YELLOW}{recovery_file}{Colour.END} with {Colour.BLUE}{Data._total_comparisons}{Colour.END} comparisons.")
     else:
         PROJECT_ROOT = Path(__file__).parents[3]
         OUTPUT_DIR = "outputs"
         directory = Path(PROJECT_ROOT, OUTPUT_DIR, MasterSettings.settings['output_dir'], subroutine)
         if not directory.exists():
             directory.mkdir(parents=True)
-            shell_print(f"Created output folder at {directory}")
-        shell_print(f"Output will be at {directory}")
+            shell_print(f"Created output folder at {Colour.YELLOW}{directory}{Colour.END}")
+        shell_print(f"Output will be at {Colour.YELLOW}{directory}{Colour.END}")
         filename = Path(directory, datetime.now().strftime("%Y_%m_%d-%H_%M_%S"))
         Data = HParamCompData(filename=str(filename), settings=MasterSettings.settings)
 
@@ -160,7 +161,7 @@ def run_hyperparam_comparison(
         if not isinstance(blocks, list):
             blocks = [[blocks]]
         if len(blocks) == 0:
-            shell_print(f"No blocks to run in comparison '{comp_name}', skipping...")
+            shell_print(f"No blocks to run in comparison {Colour.PURPLE}{comp_name}{Colour.END}, skipping...")
             continue
         if not isinstance(blocks[0], list):
             blocks = [blocks]
@@ -174,14 +175,16 @@ def run_hyperparam_comparison(
         for block_name, templates in zip(block_names, blocks):
             block_name = str(block_name)
             if Data.check_if_done(comp_name, block_name):
-                shell_print(f"Comparison '{comp_name}' and block '{block_name}' already done, skipping...")
+                shell_print(
+                    f"Comparison {Colour.PURPLE}{comp_name}{Colour.END} and block {Colour.CYAN}{block_name}{Colour.END} already done, skipping...")
                 continue
             NewSettings = MasterSettings.settings_with_additional_templates(templates)
             fd_before = _open_fd_count()
             if fd_before is not None:
                 limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
                 shell_print(f"FD diagnostic before run: {fd_before}{limit_msg}")
-            shell_print(f"Starting comparison '{comp_name}' and block '{block_name}'")
+            shell_print(
+                f"Starting comparison {Colour.PURPLE}{comp_name}{Colour.END} and block {Colour.CYAN}{block_name}{Colour.END}")
             shell_print(hline)
             shell_print(hline)
 
@@ -224,8 +227,9 @@ def run_hyperparam_comparison(
                 shell_print(hline)
                 if plot_slices:
                     shell_print(
-                        f"Finished slice plots for comparison '{comp_name}' and block '{block_name}' in {slice_time:.2f} seconds.")
-                shell_print(f"Finished comparison '{comp_name}' and block '{block_name}' in {run_time:.2f} seconds.")
+                        f"Finished slice plots for comparison {Colour.PURPLE}{comp_name}{Colour.END} and block {Colour.CYAN}{block_name}{Colour.END} in {Colour.BLUE}{time_fmter(slice_time)}{Colour.END}")
+                shell_print(
+                    f"Finished comparison {Colour.PURPLE}{comp_name}{Colour.END} and block {Colour.CYAN}{block_name}{Colour.END} in {Colour.BLUE}{time_fmter(run_time)}{Colour.END}")
                 if fd_after_run is not None:
                     delta = fd_after_run - (fd_before if fd_before is not None else fd_after_run)
                     limit_msg = f"/{fd_limit}" if fd_limit is not None else ""
@@ -236,18 +240,20 @@ def run_hyperparam_comparison(
                     shell_print(f"FD diagnostic after slices: {fd_after_slices}{limit_msg} (delta={delta:+d})")
 
             except Exception as e:
-                shell_print(f"Error during comparison '{comp_name}' and block '{block_name}': {e}")
+                shell_print(
+                    f"Error during comparison {Colour.PURPLE}{comp_name}{Colour.END} and block {Colour.CYAN}{block_name}{Colour.END}: {e}")
                 from traceback import print_exc
                 print_exc()
                 failed_comparisons[comp_name] = (block_name, e)
                 continue
 
         if len(failed_comparisons) > 0:
-            shell_print(f"Failed {len(failed_comparisons)} comparison blocks:")
+            shell_print(f"{Colour.RED}Failed {len(failed_comparisons)} comparison blocks:{Colour.END}")
             for comp, (block, error) in failed_comparisons.items():
-                shell_print(f"  Comparison '{comp}' and block '{block}' with error: {error}")
+                shell_print(
+                    f"  Comparison {Colour.PURPLE}{comp}{Colour.END} and block {Colour.CYAN}{block}{Colour.END} with error: {error}")
         else:
-            shell_print(f"All comparison blocks finished successfully!")
+            shell_print(f"{Colour.GREEN}All comparison blocks finished successfully!{Colour.END}")
 
     if no_output:
         return Data
@@ -272,13 +278,13 @@ def plot_hyperparam_comparison(file: str) -> None:
         if not isinstance(Data, HParamCompData):
             raise ValueError(f"Expected a HParamCompData object in the file, but got {type(Data)}")
 
-    shell_print(f"Plotting data from '{file}'")
+    shell_print(f"Plotting data from {Colour.YELLOW}{file}{Colour.END}")
 
     directory = file.parent
     filename = file.stem
 
     for comp_name, blocks in Data.sorted_by_comp_and_name.items():
-        shell_print(f"Plotting comparison '{comp_name}'...")
+        shell_print(f"Plotting comparison {Colour.PURPLE}{comp_name}{Colour.END}...")
         subdirectory = Path(directory, comp_name.replace(" ", "_"))
 
         target = list(blocks.values())[0].target
@@ -469,7 +475,8 @@ def plot_hyperparam_comparison(file: str) -> None:
             fig_disc.savefig(
                 Path(subdirectory, filename + "_discrete_probs.png"), dpi=300, bbox_inches="tight"
             )
-        shell_print(f"Finished plotting comparison '{comp_name}'. Plots saved to '{subdirectory}'.")
+        shell_print(
+            f"Finished plotting comparison {Colour.PURPLE}{comp_name}{Colour.END}. Plots saved to {Colour.YELLOW}{subdirectory}{Colour.END}.")
 
     n_show = 5
     # Overall observables comparison
@@ -512,4 +519,5 @@ def plot_hyperparam_comparison(file: str) -> None:
             Path(directory, f"{filename}_summary_{name.lower().replace(' ', '_')}.png"), dpi=300, bbox_inches="tight"
         )
         plt.close(fig4)
-        shell_print(f"Finished plotting summary {name}. Plot saved to '{directory}'.")
+        shell_print(
+            f"Finished plotting summary {Colour.PURPLE}{name}{Colour.END}. Plot saved to {Colour.YELLOW}{directory}{Colour.END}.")

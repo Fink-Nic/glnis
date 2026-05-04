@@ -1,5 +1,5 @@
 # type:ignore
-from typing import Any, Literal
+from typing import Literal
 
 import madnis.integrator as madnis_integrator
 import torch

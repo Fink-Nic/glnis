@@ -1,5 +1,5 @@
-run_name = "cosine@single"
-output_dir = "cosine/single"
+run_name = "sine"
+output_dir = "sine"
 
 templates = [
     "settings/templates/flow/size5",
@@ -59,9 +59,9 @@ from_state = false
 integrator_type = "madnis"
 
 [integrator.madnis]
-loss_type = "kl_divergence"
+loss_type = "variance"
 use_cwnet = true
-uniform_channel_ratio = 0.1
+uniform_channel_ratio = 0.0
 
 [integrator.madnis.flow_kwargs]
 bins = 5
@@ -70,11 +70,12 @@ min_bin_height = 2e-5
 min_bin_derivative = 1e-5
 
 [layered_integrand]
-integrand_type = "cosine"
+integrand_type = "sine"
 strat_sgn = true
 
-[integrand.cosine]
-n_cosines = 1
+[integrand.sine]
+n_sines = 1
+offset = 0.1
 
 [scripts.sampler_comp]
 n_training_steps = 50

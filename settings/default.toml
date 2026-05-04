@@ -11,7 +11,7 @@
 # parameterisation_type = "spherical"
 # [layered_parameterisation.Y75]
 # parameterisation_type = "mc_layer"
-# When using templates, stick to layer_0, layer_1, ...
+# When using templates, stick to [layered_parameterisation.layer_0], layer_1, ...
 # -------------------------------------------------------------------------------------------
 
 run_name = "default" 
@@ -28,9 +28,9 @@ state_dir = "/home/nic/Master/glnis/glnis_gammaloop_examples"
 # Name of the state inside state_dir. Can be absolute path to overwrite state_dir.
 state = "default"
 integrand_name = "default"
-# Name of the gammaloop integration state, if any
+# Name of the gammaloop integration state, if any. Can be absolute, or inside state folder
 integration_workspace = "default"
-# Name of the integration results file inside the integration_state_name folder
+# Name of the integration results file inside the integration_workspace folder
 result_file = "integration_result.json"
 get_target_from_gammaloop = true # If false, will always use [integration_target]
 # Whether to take gammaloop integration result as integration_target, even if target exists within result_file
@@ -58,11 +58,13 @@ use_f128 = false
 n_cores = 1
 n_shards = 32 # Maximum number of I/O queues. If n_shards < n_cores, some workers will share queues.
 training_phase = "real" # Can be one of "real", "imag", "abs"
-condition_integrand_first = true # Reorders discrete dimensions to be first
+condition_integrand_first = true # Reorders discrete dimensions
 sum_channels = false # Explicit sum over parameterisation channels (only for one discrete parameterisation input, e.g. lmbs)
+strat_sgn = false # Whether to stratify the integrand by sign
+num_strat_dim = 0 # Will stratify discrete_dims[:num_strat_dim] inputs. Enabling strat_sgn will set this to at least 1
 
 [layered_parameterisation.layer_0]
-parameterisation_type = "momtrop"
+parameterisation_type = "spherical"
 
 [integrator.naive]
 
@@ -80,14 +82,16 @@ continuous_learning_rate = 1.5
 [integrator.madnis]
 batch_size = 1000
 learning_rate = 1e-3
-discrete_model = "transformer"
 use_scheduler = true
 scheduler_type = "cosineannealing"
 loss_type = "kl_divergence_softclip"
 discrete_dims_position = "first" # Whether to sample discrete or continuous first
-pretrain_c_flow = false # Use vegas grid to pretrain the continuous flow
+discrete_model = "transformer"
+use_cwnet = false # Enable to use MadNIS' channel weight network for the first discrete input. Will set discrete model to "made".
 max_batch_size = 100_000 # Maximum number of samples drawn from the flow at once. Decrease if memory issues
 use_gpu = true # If available
+gpu_id = 0 # If multiple are available
+pretrain_c_flow = false # Use vegas grid to pretrain the continuous flow
 
 [integrator.madnis.scheduler_kwargs]
 [integrator.madnis.loss_kwargs]
@@ -97,7 +101,7 @@ use_gpu = true # If available
 uniform_latent = true
 permutations = "log"
 layers = 3
-units = 32
+units = 64
 bins = 10
 min_bin_width = 1e-3
 min_bin_height = 1e-3
@@ -114,13 +118,28 @@ mlp_layers = 2
 
 [integrator.madnis.made_kwargs]
 layers = 3
-nodes_per_feature = 8
+nodes_per_feature = 64
+
+[integrator.madnis.cwnet_kwargs]
+layers = 4
+units = 128
+uniform_channel_ratio = 0.1 # Ratio of samples spread uniformly across channels
+channel_weight_mode = "variance" # variance or mean
 
 [integrator.madnis.pretraining_kwargs]
 nitn = 10
 neval = 10000
 bins_mult = 4 # vegas grids will have int(bins_mult * flow_kwargs.bins) bins
 alpha = 0.7
+
+[integrand.gaussian]
+sigma = 1.0 # Can be List[float] for a sum of gaussians. Will always be normalized to 1
+const_f = false # If true, will return 1. Was useful for bughunting before I had LayerData objects.
+
+[integrand.sine] # Maps [0,1]^n_sines -> [offset-n_sines, offset+n_sines], x -> sin(2pi * int(omega) * x) + offset
+omega = 1 
+n_sines = 1 # Increase continuous input dimension, sine is computed on each separately
+offset = 0.0 
 
 [integrand.gammaloop]
 # Can set a state manually here, else will use settings from [gammaloop_state]
@@ -142,11 +161,6 @@ minimal_output = true # Disable to enable rich output (which will not be used)
 read_only_state = true # Disable if you want to save changes to the state (not recommended)
 log_level_off = true # Disable to set log level to 'info'. For debugging.
 
-[integrand.test]
-# Can be List[float] for a sum of gaussians. Will always be normalized to 1
-sigma = 10.0
-const_f = false # If true, will return 1. Was useful for bughunting before I had LayerData objects.
-
 [integrand.kaapo]
 path_to_example = "default"
 # Params are [m_UV, mu, beta]
@@ -160,11 +174,11 @@ stability_tolerance = 1e-5
 stability_abs_tolerance = 1e-15
 stability_abs_threshold = 1e-12
 escalate_large_weight_multiplier = 0.9
-escalate_small_momentum_multiplier = 1e-3
+escalate_small_momentum_multiplier = 1e-2
 escalate_large_momentum_multiplier = 1e3
-rotation_seed = 42
+rotation_seed = 1337
 n_shots = 3
-build_eagerly = true
+build_eagerly = false
 sum_orientations = true
 runtime_summation = false
 
@@ -176,7 +190,7 @@ stability_abs_threshold = 1e-12
 escalate_large_weight_multiplier = -1.0
 escalate_small_momentum_multiplier = -1.0
 escalate_large_momentum_multiplier = -1.0
-rotation_seed = 42
+rotation_seed = 1337
 n_shots = 1
 sum_orientations = true
 runtime_summation = false
@@ -197,7 +211,7 @@ vary_a = false # Enable to expose 'a' as an additional trainable parameter, for 
 a_min = 0.2 # If vary_a, a may go from a_min to 1
 angle_shift = 0.0 # Shift applied to x-space input of angular components
 
-# Leverages symmetry of ti examples (only depend on sc.prods) to reduce continuous input dimension by 3
+# Leverages symmetry of ti examples (only depend on scalar products) to reduce continuous input dimension by 3
 [parameterisation.rkaapo]
 mu = [3.141592653589793, 3.141592653589793, 0.0]
 a = 0.5
@@ -207,12 +221,11 @@ a_min = 0.2
 angle_shift = 0.0
 
 [parameterisation.mc_layer]
-# Choose from 'ose' and 'fermi', for euclidean-propagator-like terms and fermi surface terms, respectively
+# Choose from 'ose' and 'fermi', for on-shell-energy-like terms and fermi surface terms, respectively
 subtype = "ose"
 ose_exponent = 1.0
 fermi_exponent = 1.0
-# Edges with zero chemical potential will have their fermi suface term set to one.
-set_bosonic_edge_to_one = true
+set_bosonic_edge_to_one = true # Edges with zero chemical potential will have their fermi suface term set to one.
 
 [parameterisation.momtrop]
 # '\nu_e' exponent. Can be one of the following:
@@ -221,7 +234,7 @@ set_bosonic_edge_to_one = true
 # list[float]: Specify a weight for each edge. Length must match the number of internal edges.
 overwrite_edge_weight = false
 sample_discrete = true
-mask_redundant = true # Will mask the redundant continuous input dimensions if sample_discrete
+mask_redundant = true # Will mask the redundant continuous input dimensions if sample_discrete is enabled
 
 # Sigmoid-like mapping layer, applied to all continuous inputs. May be useful to magnify hcube edge regions
 [parameterisation.s] 
@@ -236,16 +249,15 @@ uniform_continuous = false # enable to to generate uniform continuous output, to
 from_state = true # If true, will attempt to get the dot graph from the gammaloop state
 overwrite_lmb_heuristics = false # If true, will always use all lmbs
 overwrite_graph_properties = false # If true, will set graph properties to [graph.graph_properties]
+momtrop_edge_weight = "default" # Alternative to setting them in [parameterisation.momtrop], default is likely to lead to divergent subgraphs
 # If from_state is false, use the following settings instead
 dot_path = ""
-momtrop_edge_weight = "default" # Alternative to setting them in [parameterisation.momtrop], default is likely to lead to divergent subgraphs
-external_momenta = []
+external_momenta = [] # List[List[float]]
 
 [model]
 # If true, will attempt to get the model from the gammaloop state
 from_state = true
-# If from_state is false, will use this path instead
-model_path = "default"
+model_path = "default" # Else, will use this path
 
 # Parameters used in the splcomp subcommand 
 [scripts.sampler_comp]
@@ -258,6 +270,7 @@ n_plot_snapshot = 100 # Training steps between drawing n_samples samples for a s
 n_plot_loss = 10 # Training steps between plotting the loss
 n_plot_disc = 10 # Training steps between plotting the discrete probabilities
 plot_disc = true 
+take_prelim_snapshot = false # Will take a snapshot before training for each integrator
 
 # Paramters used in the tprog subcommand
 [scripts.training_prog]
@@ -318,6 +331,7 @@ include = [
     "real_mean",
     "real_rsd",
     "abs_real_rsd",
+    "non_strat_real_rsd",
     "real_tvar",
 ]
 [[scripts.hyperparam_comparison.summary]]
@@ -327,6 +341,7 @@ include = [
     "imag_mean",
     "imag_rsd",
     "abs_imag_rsd",
+    "non_strat_imag_rsd",
     "imag_tvar",
 ]
 [[scripts.hyperparam_comparison.summary]]

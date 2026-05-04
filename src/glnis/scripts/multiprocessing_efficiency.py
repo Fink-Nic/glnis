@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from glnis.utils.helpers import shell_print, verify_path
+from glnis.utils.helpers import shell_print, verify_path, Colour
 from glnis.scripts.sampler_comparison import SamplerCompData, NAIVE_KEY, MADNIS_KEY
 
 
@@ -59,7 +59,7 @@ def run_multiprocessing_efficiency(
             quit()
         else:
             raise ValueError(
-                f"Expected file at '{file}' to contain either a settings.toml file, SamplerCompData or MPEfficiencyData object, but found {type(SData)}.")
+                f"Expected file at {Colour.YELLOW}{file}{Colour.END} to contain either a settings.toml file, SamplerCompData or MPEfficiencyData object, but found {Colour.RED}{type(SData)}{Colour.END}.")
         Settings = SettingsParser(SData.settings)
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
@@ -97,7 +97,7 @@ def run_multiprocessing_efficiency(
         )
         if integrator_state is None:
             print(
-                f"WARNING: Could not find '{(NAIVE_KEY if use_naive else MADNIS_KEY)}' state at '{file}'. Will use untrained {('Naive' if use_naive else 'MadNIS')} instance.")
+                f"WARNING: Could not find {Colour.RED}{(NAIVE_KEY if use_naive else MADNIS_KEY)}{Colour.END} state at {Colour.YELLOW}{file}{Colour.END}. Will use untrained {Colour.BLUE}{('Naive' if use_naive else 'MadNIS')}{Colour.END} instance.")
         else:
             integrator.import_state(integrator_state)
             print("Successfully imported integrator state")
@@ -167,11 +167,11 @@ def plot_multiprocessing_efficiency(file: str) -> None:
         file = Path(PROJECT_ROOT, file)
     if not file.exists():
         raise FileNotFoundError(
-            f"Unable to find pickled object at '{file}'. Path must be either absolute, or relative to the glnis root folder.")
+            f"Unable to find pickled object at {Colour.YELLOW}{file}{Colour.END}. Path must be either absolute, or relative to the glnis root folder.")
     with file.open('rb') as f:
         Data: MPEfficiencyData = pickle.load(f)
 
-    shell_print(f"Plotting data from '{file}'")
+    shell_print(f"Plotting data from {Colour.YELLOW}{file}{Colour.END}")
 
     directory = file.parent
     filename = file.stem

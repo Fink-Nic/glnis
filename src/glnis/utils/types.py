@@ -4,7 +4,7 @@ import functools
 from time import perf_counter
 from numpy.typing import NDArray, DTypeLike
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, List, Literal
+from typing import Dict, Iterable, List
 from glnis.utils.helpers import chunks
 
 
@@ -156,38 +156,6 @@ class LayerData:
             processing=perf_counter() - self._timestamp)
         self._timestamp = perf_counter()
 
-    def _to_layer_data(self: 'LayerData', value: LayerResult) -> NDArray:
-        """
-        Converts input to numpy NDArray of type self.dtype. Complex values must be passed
-        separately as real and complex parts. Used in property setters.
-
-        :param value: User data
-        :type value: Tensor | NDArray | None
-        :return:
-        :rtype: NDArray
-        """
-        if value is None:
-            return np.zeros(dtype=self.dtype, shape=(self.n_points, 0))
-
-        match value:
-            case list():
-                output = np.array(value, dtype=self.dtype)
-            case np.ndarray():
-                output = value.astype(self.dtype)
-            case _:
-                raise ValueError(
-                    "LayerData objects accept only numpy ndarray, list or None.")
-
-        return output.reshape(self.n_points, -1)
-
-    def _update_processing_times(self: 'LayerData', identifier: str = 'unspecified') -> None:
-        processing_time = perf_counter() - self._timestamp
-        if identifier in self._processing_times:
-            self._processing_times[identifier] += processing_time
-        else:
-            self._processing_times[identifier] = processing_time
-        self._timestamp = perf_counter()
-
     @staticmethod
     def _timer(func):
         @functools.wraps(func)
@@ -198,23 +166,6 @@ class LayerData:
             return value
 
         return wrapper_timer
-
-    @_timer
-    def _set_data(self: 'LayerData',
-                  name: str,
-                  value: LayerResult,) -> None:
-        # state will only be updated when update is called
-        self._pending_data[name] = self._to_layer_data(value)
-
-    @_timer
-    def _get_data(self: 'LayerData', name: str):
-        if name in self._pending_data.keys():
-            self.update(name+'_getter')
-
-        idx = LayerData.POSITIONS[name]
-        offset = self._structure[:idx].sum()
-        dim = self._active_structure[idx]
-        return self._data[:, offset:offset+dim]
 
     @_timer
     def update(self, identifier: str = 'unspecified') -> None:
@@ -258,10 +209,6 @@ class LayerData:
         self._update_processing_times(identifier)
 
     def get_processing_times(self) -> Dict[str, float]:
-        """
-        :return: Copy of the processing_times dict
-        :rtype: Dict[str, float]
-        """
         if len(self._pending_data) > 0:
             self.update('processing_times_getter')
         processing_times = dict(self._processing_times)
@@ -277,6 +224,10 @@ class LayerData:
 
     @_timer
     def as_chunks(self, n_chunks: int, n_cores: int = 1) -> Iterable['LayerData']:
+        """
+        Yields the data in n_chunks chunks, as LayerData objects. If the data is split across multiple cores,
+        but was sampled on a single core, use the n_cores argument to properly keep track of relative CPU time.
+        """
         if len(self._pending_data) > 0:
             self.update('as_chunks')
 
@@ -369,31 +320,82 @@ class LayerData:
     def discrete(self: 'LayerData', value: LayerResult):
         self._set_data('discrete', value)
 
+    def _to_layer_data(self: 'LayerData', value: LayerResult) -> NDArray:
+        """
+        Converts input to numpy NDArray of type self.dtype. Complex values must be passed
+        separately as real and complex parts. Used in property setters.
+
+        :param value: User data
+        :type value: Tensor | NDArray | None
+        :return:
+        :rtype: NDArray
+        """
+        if value is None:
+            return np.zeros(dtype=self.dtype, shape=(self.n_points, 0))
+
+        match value:
+            case list():
+                output = np.array(value, dtype=self.dtype)
+            case np.ndarray():
+                output = value.astype(self.dtype)
+            case _:
+                raise ValueError(
+                    "LayerData objects accept only numpy ndarray, list or None.")
+
+        return output.reshape(self.n_points, -1)
+
+    def _update_processing_times(self: 'LayerData', identifier: str = 'unspecified') -> None:
+        processing_time = perf_counter() - self._timestamp
+        if identifier in self._processing_times:
+            self._processing_times[identifier] += processing_time
+        else:
+            self._processing_times[identifier] = processing_time
+        self._timestamp = perf_counter()
+
+    @_timer
+    def _set_data(self: 'LayerData',
+                  name: str,
+                  value: LayerResult,) -> None:
+        # state will only be updated when update is called
+        self._pending_data[name] = self._to_layer_data(value)
+
+    @_timer
+    def _get_data(self: 'LayerData', name: str):
+        if name in self._pending_data.keys():
+            self.update(name+'_getter')
+
+        idx = LayerData.POSITIONS[name]
+        offset = self._structure[:idx].sum()
+        dim = self._active_structure[idx]
+        return self._data[:, offset:offset+dim]
+
 
 @dataclass
 class SinglePhaseResult:
     """
     Implements the Welford's online algorithm for mean and error calculation, which allows for numerically stable updates of the mean and error as new data points are added. This is particularly useful in the context of Monte Carlo integration, where we want to accumulate results from multiple samples without having to store all individual sample values.
     Attributes:
-        mean (float): The current mean of the samples.
-        error (float): The current standard
+        mean (float): The current mean of the monte carlo estimate.
+        error (float): The current error of the monte carlo estimate.
+        rsd (float): The relative standard deviation of the monte carlo estimate.
+        tvar (float): The relative time variance of the monte carlo estimate, calculated as RSD^2 * time per sample.
     """
     mean: float = 0
-    _n_points: int = 0
+    _n: int = 0
     _total_time: float = 0
     _m2: float = 0  # Internal variable for error calculation
 
     @property
     def std(self: 'SinglePhaseResult') -> float:
-        if self._n_points < 2:
+        if self._n < 2:
             return 0.0  # Not enough data to calculate error
-        return np.sqrt(self._m2 / (self._n_points - 1))
+        return np.sqrt(self._m2 / (self._n - 1))
 
     @property
     def error(self: 'SinglePhaseResult') -> float:
-        if self._n_points == 0:
+        if self._n < 2:
             return 0.0
-        return np.sqrt(self._m2 / (self._n_points - 1) / self._n_points)
+        return np.sqrt(self._m2 / (self._n - 1) / self._n)
 
     @property
     def rsd(self: 'SinglePhaseResult') -> float:
@@ -403,19 +405,19 @@ class SinglePhaseResult:
 
     @property
     def tvar(self: 'SinglePhaseResult') -> float:
-        if self._n_points == 0:
+        if self._n == 0:
             return 0.0
-        time_per_sample = self._total_time / self._n_points
+        time_per_sample = self._total_time / self._n
         return self.rsd**2 * time_per_sample
 
     def combine_with(self: 'SinglePhaseResult', other: 'SinglePhaseResult') -> None:
-        delta = other.mean - self.mean
-        total_points = self._n_points + other._n_points
+        total_points = self._n + other._n
         if total_points == 0:
             return  # No data to combine
-        self.mean += delta * other._n_points / total_points
-        self._m2 += other._m2 + delta**2 * self._n_points * other._n_points / total_points
-        self._n_points = total_points
+        delta = other.mean - self.mean
+        self.mean += delta * other._n / total_points
+        self._m2 += other._m2 + delta**2 * self._n * other._n / total_points
+        self._n = total_points
         self._total_time += other._total_time
 
     def combine_with_stratified(self: 'SinglePhaseResult', other: 'SinglePhaseResult') -> None:
@@ -424,23 +426,27 @@ class SinglePhaseResult:
         Objects obtained this way should combine all stratified results at once, and be fully recalculated
         from strata each time a sample batch is added.
         """
-        total_points = self._n_points + other._n_points
+        total_points = self._n + other._n
         if total_points == 0:
-            return  # No data to combine
-        self.mean = (self.mean * self._n_points + other.mean * other._n_points) / total_points if total_points > 0 else 0
-        self._m2 = (self.error**2 + other.error**2) * total_points * (total_points - 1) if total_points > 1 else 0
-        self._n_points = total_points
+            return
+        self.mean = (self.mean * self._n + other.mean * other._n) / total_points if total_points > 0 else 0
+        # Achieves combined.error**2 = self.error**2 + other.error**2
+        self._m2 = (
+            (self._m2 / (self._n - 1) / self._n if self._n > 1 else 0.0)
+            + (other._m2 / (other._n - 1) / other._n if other._n > 1 else 0.0)
+        ) * (total_points - 1) * total_points if total_points > 1 else 0
+        self._n = total_points
         self._total_time += other._total_time
 
     @classmethod
     def from_values(cls: 'SinglePhaseResult', values: NDArray, total_time: float = 0) -> 'SinglePhaseResult':
-        result = cls()
-        result.mean = np.mean(values).item()
-        result._n_points = len(values)
-        result._total_time = total_time
-        if result._n_points > 1:
-            result._m2 = np.sum((values - result.mean)**2).item()
-        return result
+        n = values.size
+        return cls(
+            _n=n,
+            _total_time=total_time,
+            mean=np.mean(values).item() if n > 0 else 0.0,
+            _m2=np.sum((values - np.mean(values))**2).item() if n > 1 else 0.0,
+        )
 
     @classmethod
     def cat(cls: 'SinglePhaseResult', results: List['SinglePhaseResult']) -> 'SinglePhaseResult':
@@ -452,12 +458,41 @@ class SinglePhaseResult:
 
 @dataclass
 class Result:
+    """
+    Holds the results of the integration, including the number of points, total time taken, and the results for the real and 
+    imaginary parts of the integral, as well as their absolute values. The results for each phase are stored in `SinglePhaseResult` 
+    objects, which allow for stable updates of the mean and error as new data points are added. The Result class also provides methods 
+    for combining results from different batches of samples, either using standard combination rules or stratified sampling combination rules.
+    Attributes:
+        n_points (int): The total number of points sampled.
+        total_time (float): The total time taken for the integration.
+        real (SinglePhaseResult): The result calculated on the real part of the integrand.
+        imag (SinglePhaseResult): The result calculated on the imaginary part of the integrand.
+        abs_real (SinglePhaseResult): The result calculated on the absolute value of the real part of the integrand.
+        abs_imag (SinglePhaseResult): The result calculated on the absolute value of the imaginary part of the integrand.
+    """
     n_points: int = 0
     total_time: float = 0
     real: SinglePhaseResult = field(default_factory=SinglePhaseResult)
     imag: SinglePhaseResult = field(default_factory=SinglePhaseResult)
     abs_real: SinglePhaseResult = field(default_factory=SinglePhaseResult)
     abs_imag: SinglePhaseResult = field(default_factory=SinglePhaseResult)
+
+    def combine_with(self: 'Result', other: 'Result') -> None:
+        self.n_points += other.n_points
+        self.total_time += other.total_time
+        self.real.combine_with(other.real)
+        self.imag.combine_with(other.imag)
+        self.abs_real.combine_with(other.abs_real)
+        self.abs_imag.combine_with(other.abs_imag)
+
+    def combine_with_stratified(self: 'Result', other: 'Result') -> None:
+        self.n_points += other.n_points
+        self.total_time += other.total_time
+        self.real.combine_with_stratified(other.real)
+        self.imag.combine_with_stratified(other.imag)
+        self.abs_real.combine_with_stratified(other.abs_real)
+        self.abs_imag.combine_with_stratified(other.abs_imag)
 
     @classmethod
     def from_kwargs(cls, **kwargs) -> 'Result':
@@ -468,25 +503,25 @@ class Result:
             total_time=total_time,
             real=SinglePhaseResult(
                 mean=kwargs.get('real_mean', 0),
-                _n_points=n,
+                _n=n,
                 _total_time=total_time,
                 _m2=kwargs.get('real_error', 0)**2 * n*(n-1) if n > 1 else 0
             ),
             imag=SinglePhaseResult(
                 mean=kwargs.get('imag_mean', 0),
-                _n_points=n,
+                _n=n,
                 _total_time=total_time,
                 _m2=kwargs.get('imag_error', 0)**2 * n*(n-1) if n > 1 else 0
             ),
             abs_real=SinglePhaseResult(
                 mean=kwargs.get('abs_real_mean', 0),
-                _n_points=n,
+                _n=n,
                 _total_time=total_time,
                 _m2=kwargs.get('abs_real_error', 0)**2 * n*(n-1) if n > 1 else 0
             ),
             abs_imag=SinglePhaseResult(
                 mean=kwargs.get('abs_imag_mean', 0),
-                _n_points=n,
+                _n=n,
                 _total_time=total_time,
                 _m2=kwargs.get('abs_imag_error', 0)**2 * n*(n-1) if n > 1 else 0
             ),
@@ -495,6 +530,7 @@ class Result:
     @classmethod
     def from_values(cls, real_values: NDArray, imag_values: NDArray, total_time: float = 0) -> 'Result':
         n_points = real_values.size
+        assert n_points == imag_values.size, "Real and imaginary values must have the same number of points."
         return cls(
             n_points=n_points,
             total_time=total_time,
@@ -525,22 +561,6 @@ class Result:
             abs_imag_mean=legacy_result.abs_imag_mean,
             abs_imag_error=legacy_result.abs_imag_error,
         )
-
-    def combine_with(self: 'Result', other: 'Result') -> None:
-        self.n_points += other.n_points
-        self.total_time += other.total_time
-        self.real.combine_with(other.real)
-        self.imag.combine_with(other.imag)
-        self.abs_real.combine_with(other.abs_real)
-        self.abs_imag.combine_with(other.abs_imag)
-
-    def combine_with_stratified(self: 'Result', other: 'Result') -> None:
-        self.n_points += other.n_points
-        self.total_time += other.total_time
-        self.real.combine_with_stratified(other.real)
-        self.imag.combine_with_stratified(other.imag)
-        self.abs_real.combine_with_stratified(other.abs_real)
-        self.abs_imag.combine_with_stratified(other.abs_imag)
 
     def to_legacy(self: 'Result') -> 'IntegrationResult':
         return IntegrationResult(

@@ -1,4 +1,5 @@
-run_name = "aa_aa_1L"
+run_name = "aa_aa@1L"
+output_dir = "aa_aa/1L"
 templates = [
     "settings/templates/flow/size8",
     "settings/templates/madnis_bins/size2",
@@ -7,9 +8,9 @@ templates = [
 
 [gammaloop_state]
 state_dir = "/home/nfink/gammaloop"
-state_name = "examples/cli/aa_aa/1L/state"
-integration_state_name = "examples/cli/aa_aa/1L/state/integration_workspace"
-integration_result_file = "integration_result.json"
+state = "examples/cli/aa_aa/1L/state"
+integration_workspace = "examples/cli/aa_aa/1L/state/integration_workspace"
+result_file = "integration_result.json"
 
 [integrator.madnis]
 batch_size = 100000

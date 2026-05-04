@@ -1,5 +1,5 @@
-run_name = "test@multi_mc"
-output_dir = "test/multi_mc"
+run_name = "gaussian@multi_mc"
+output_dir = "gaussian/multi_mc"
 
 templates = [
     "settings/test/base",
@@ -9,7 +9,7 @@ templates = [
     "settings/templates/transformer/size3",
 ]
 
-[integrand.test]
+[integrand.gaussian]
 sigma = [0.5, 1.0, 2.0]
 
 [integrator.madnis]
