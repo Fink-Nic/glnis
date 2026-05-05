@@ -10,6 +10,7 @@ from glnis.utils.helpers import shell_print, Colour
 
 def run_settings_test(file: str, show_graph_properties: bool = False) -> None:
     signal.signal(signal.SIGINT, signal.default_int_handler)
+    integrator = None
     try:
         Settings = SettingsParser(file)
 
@@ -46,12 +47,15 @@ def run_settings_test(file: str, show_graph_properties: bool = False) -> None:
 
     except KeyboardInterrupt:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
-        integrator.free()
+        if integrator is not None:
+            integrator.free()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
+        if integrator is not None:
+            integrator.free()
         from traceback import print_exc
         print_exc()
-        integrator.free()
         raise
     finally:
-        integrator.free()
+        if integrator is not None:
+            integrator.free()

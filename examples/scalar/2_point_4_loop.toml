@@ -27,7 +27,7 @@ integrator_type = "madnis"
 integrand_type = "gammaloop"
 training_phase = "imag"
 use_f128 = true
-n_cores = 32
+n_cores = 64
 
 [layered_parameterisation.layer_0]
 parameterisation_type = "momtrop"
@@ -82,13 +82,11 @@ blocks = [
     sample_discrete = true
     mask_redundant = true
     """],
-    ["settings/templates/parameterisation/mc_lmb_spherical_no_heur"],
 ]
 block_names = [
     "cont", 
     "disc", 
     "both", 
-    "lmb_mc",
 ]
 [[scripts.hyperparam_comparison.comparison]]
 name = "transformer network"
@@ -125,4 +123,4 @@ n_plot_snapshot = 50
 n_plot_loss = 1 # Training steps between plotting the loss
 n_plot_disc = 5
 plot_disc = true 
-take_prelim_snapshot = false
+take_prelim_snapshot = true

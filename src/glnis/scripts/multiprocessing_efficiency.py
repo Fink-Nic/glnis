@@ -43,6 +43,7 @@ def run_multiprocessing_efficiency(
     from multiprocessing import cpu_count
 
     signal.signal(signal.SIGINT, signal.default_int_handler)
+    integrator = None
 
     file = verify_path(file)
     use_cpu = use_cpu and not use_naive
@@ -144,16 +145,19 @@ def run_multiprocessing_efficiency(
         plot_multiprocessing_efficiency(file)
 
     except KeyboardInterrupt:
-        shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
-        integrator.free()
+        shell_print(f"\nCaught KeyboardInterrupt — stopping workers")
+        if integrator is not None:
+            integrator.free()
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
+        if integrator is not None:
+            integrator.free()
         from traceback import print_exc
         print_exc()
-        integrator.free()
         raise
     finally:
-        integrator.free()
+        if integrator is not None:
+            integrator.free()
 
 
 def plot_multiprocessing_efficiency(file: str) -> None:

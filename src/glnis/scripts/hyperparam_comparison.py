@@ -27,7 +27,7 @@ class RunData:
     def __setstate__(self, state):
         # Handle legacy IntegrationResult objects for backward compatibility
         target = state.get('target')
-        if isinstance(target, Result):
+        if target and not isinstance(target, Result):
             state['target'] = Result.from_legacy(target)
         self.__dict__.update(state)
 
@@ -59,9 +59,9 @@ class HParamCompData:
 
         all_obs_dict = dict(run_data.observables)
         all_obs_dict['run_time'] = run_data.run_time
-        all_obs_dict['discrete_params'] = run_data.madnis_info.get('discrete flow total parameters', 0)
-        all_obs_dict['continuous_params'] = run_data.madnis_info.get('continuous flow total parameters', 0)
-        all_obs_dict['total_params'] = run_data.madnis_info.get('flow total parameters', 0)
+        all_obs_dict['discrete_params'] = run_data.madnis_info.get('Discrete flow total parameters', 0)
+        all_obs_dict['continuous_params'] = run_data.madnis_info.get('Continuous flow total parameters', 0)
+        all_obs_dict['total_params'] = run_data.madnis_info.get('Flow total parameters', 0)
 
         for obs_name, value in all_obs_dict.items():
             value = _finite_float(value)

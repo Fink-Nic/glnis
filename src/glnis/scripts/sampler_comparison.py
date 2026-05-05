@@ -119,14 +119,12 @@ def run_sampler_comp(
     integrators: dict[str, Integrator] = dict()
     cleanup_done = False
 
-    def end_all_integrators() -> None:
+    def free_integrators() -> None:
         nonlocal cleanup_done
         if cleanup_done:
             return
         for integrator in integrators.values():
             integrator.free()
-        # Force prompt cleanup of cycles (e.g. mp queues/process wrappers)
-        # in repeated run_sampler_comp calls.
         gc.collect()
         cleanup_done = True
 
@@ -337,7 +335,7 @@ def run_sampler_comp(
             Data.observables[identifier].update(acc.get_observables())
 
         # IMPORTANT: close the worker functions, or your script will hang
-        end_all_integrators()
+        free_integrators()
 
         if no_output:
             return Data
@@ -355,15 +353,15 @@ def run_sampler_comp(
 
     except KeyboardInterrupt as e:
         shell_print(f"\nCaught KeyboardInterrupt — stopping workers: {e}")
-        end_all_integrators()
+        free_integrators()
         raise
     except Exception as e:
         shell_print(f"\nCaught Exception — stopping workers: {e}")
         print_exc()
-        end_all_integrators()
+        free_integrators()
         raise
     finally:
-        end_all_integrators()
+        free_integrators()
 
 
 def plot_sampler_comp(file: str,

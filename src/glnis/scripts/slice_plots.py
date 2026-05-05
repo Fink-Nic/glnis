@@ -137,10 +137,17 @@ def run_slice_plots(
     signal.signal(signal.SIGINT, signal.default_int_handler)
 
     integrators: Dict[str, Integrator] = dict()
+    cleanup_done = False
 
     def free_integrators():
+        nonlocal cleanup_done
+        if cleanup_done:
+            return
         for integrator in integrators.values():
             integrator.free()
+        gc.collect()
+        cleanup_done = True
+
     try:
         # Initialize the integrand to be shared across integrators
         graph_properties = Settings.get_graph_properties()

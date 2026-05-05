@@ -624,7 +624,6 @@ class MadnisIntegrator(Integrator):
     ):
         super().__init__(integrand, **kwargs)
         torch.set_default_dtype(torch.float64)
-        torch.manual_seed(self.seed)
 
         self.use_gpu = use_gpu
         self.gpu_id = gpu_id
@@ -632,6 +631,9 @@ class MadnisIntegrator(Integrator):
         self.use_cwnet = use_cwnet and self.num_discrete_dims > 0
         self.uniform_channel_ratio = cwnet_kwargs.pop("uniform_channel_ratio", 0.1) if self.use_cwnet else 0.0
         self.channel_weight_mode = cwnet_kwargs.pop("channel_weight_mode", "variance") if self.use_cwnet else None
+        torch.manual_seed(self.seed)
+        if self.device.type == 'cuda':
+            torch.cuda.manual_seed(self.seed)
 
         self.use_scheduler = use_scheduler
         self.scheduler_type = scheduler_type
@@ -945,7 +947,8 @@ class MadnisIntegrator(Integrator):
         return self.MadnisState(
             obj_dict=obj_dict,
             rng_state=deepcopy(self.rng.bit_generator.state),
-            torch_rng_state=torch.get_rng_state(),
+            torch_cpu_rng_state=torch.get_rng_state(),
+            torch_gpu_rng_state=torch.cuda.get_rng_state() if self.device.type == 'cuda' else None,
             madnis_blob=madnis_blob,
         )
 
@@ -979,7 +982,15 @@ class MadnisIntegrator(Integrator):
             self.madnis.flow.discrete_flow.prior_prob_function = self._madnis_discrete_prior_prob_function
             if hasattr(self.madnis.flow.discrete_flow, 'channel_remap_function'):
                 self.madnis.flow.discrete_flow.channel_remap_function = ch_remap
-        torch.set_rng_state(state.torch_rng_state)
+        if self.device.type == 'cuda':
+            if state.torch_gpu_rng_state is None:
+                shell_print("Warning: No GPU RNG state found in the saved state. GPU computations may not be reproducible.")
+            torch.cuda.set_rng_state(state.torch_gpu_rng_state)
+        else:
+            if state.torch_gpu_rng_state is not None:
+                shell_print(
+                    "Warning: GPU RNG state found in the saved state but current device is CPU. Computations may not be reproducible")
+        torch.set_rng_state(state.torch_cpu_rng_state)
 
     def _get_info(self) -> Dict[str, Any]:
         info = super()._get_info()
@@ -1040,6 +1051,7 @@ class MadnisIntegrator(Integrator):
         for i in reordered_list:
             major, minor = torch.cuda.get_device_capability(i)
             if (7, 0) <= (major, minor) < (12, 0):
+                torch.cuda.set_device(i)
                 return torch.device(f'cuda:{i}')
         shell_print("CUDA devices found but none are compatible. Using CPU.")
         return torch.device('cpu')
@@ -1073,8 +1085,16 @@ class MadnisIntegrator(Integrator):
 
     @dataclass(kw_only=True)
     class MadnisState(Integrator.IntegratorState):
-        torch_rng_state: Tensor
+        torch_cpu_rng_state: Tensor
+        torch_gpu_rng_state: Tensor | None
         madnis_blob: bytes
+
+        def __setstate__(self, state_dict):
+            legacy_rng_state = state_dict.pop('torch_rng_state', None)
+            if legacy_rng_state is not None:
+                state_dict['torch_cpu_rng_state'] = legacy_rng_state
+                state_dict['torch_gpu_rng_state'] = None
+            self.__dict__.update(state_dict)
 
     @dataclass
     class TrainingStatus:

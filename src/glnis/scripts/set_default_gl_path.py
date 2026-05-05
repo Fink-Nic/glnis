@@ -34,8 +34,7 @@ def run_set_default_gl_path(path: str) -> None:
             tomlkit.dump(settings, f)
         print(f"Successfully set path to GammaLoop examples to {Colour.YELLOW}{path}{Colour.END}.")
 
-    except Exception as e:
-        from traceback import format_exc
-        print(format_exc())
-        print(f"Error: {e}")
-        return
+    except Exception:
+        from traceback import print_exc
+        print_exc()
+        raise
