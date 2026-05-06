@@ -145,6 +145,7 @@ def run_slice_plots(
             return
         for integrator in integrators.values():
             integrator.free()
+        import gc
         gc.collect()
         cleanup_done = True
 
@@ -451,10 +452,14 @@ def plot_slices(file: str | SlicePlotData,
     fraction = 0.062  # Default fraction for colorbar size
     padding = -0.02  # Default padding between plot and colorbar
 
-    def slice_rsd(func_val: NDArray, prob: NDArray) -> float:
+    def slice_rsd(func_val: NDArray, prob: NDArray, mean: float | None = None) -> float:
+        if Data.itg is not None:
+            mean = Data.itg
+            func_val *= Data.itg
         vals = func_val / prob
-        mean = np.nanmean(func_val)
+        mean = np.nanmean(func_val) if mean is None else mean
         weighted_variance = np.nanmean((vals - mean)**2 * prob)
+
         return np.sqrt(weighted_variance) / abs(mean) if mean != 0 else 0
 
     for i, slice in enumerate(Data.slices1d):

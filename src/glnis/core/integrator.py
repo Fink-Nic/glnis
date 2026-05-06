@@ -583,6 +583,9 @@ class MadnisIntegrator(Integrator):
             discrete_dims_position: Literal["first", "last"] = "first",
             discrete_model: Literal["transformer", "made"] = "transformer",
             use_cwnet: bool = False,
+            train_continuous_flow: bool = True,
+            train_discrete_flow: bool = True,
+            train_cwnet: bool = True,
             max_batch_size: int = 100_000,
             use_gpu: bool = True,
             gpu_id: int = 0,
@@ -682,6 +685,27 @@ class MadnisIntegrator(Integrator):
                 flow_kwargs=flow_kwargs,
             )
         self.max_batch_size = max_batch_size
+
+        if not train_cwnet and self.use_cwnet:
+            self.madnis.cwnet.eval()
+            for param in self.madnis.cwnet.parameters():
+                param.requires_grad = False
+
+        if not train_continuous_flow:
+            if hasattr(self.madnis.flow, 'continuous_flow'):
+                self.madnis.flow.continuous_flow.eval()
+                for param in self.madnis.flow.continuous_flow.parameters():
+                    param.requires_grad = False
+            else:
+                self.madnis.flow.eval()
+                for param in self.madnis.flow.parameters():
+                    param.requires_grad = False
+
+        if not train_discrete_flow and hasattr(self.madnis.flow, 'discrete_flow'):
+            if self.madnis.flow.discrete_flow is not None:
+                self.madnis.flow.discrete_flow.eval()
+                for param in self.madnis.flow.discrete_flow.parameters():
+                    param.requires_grad = False
 
         if pretrain_c_flow:
             bins = max(int(pretraining_kwargs.get('bins_mult', 4)*flow_kwargs.get('bins', 100)), 200)

@@ -70,9 +70,8 @@ blocks = [
     [layered_parameterisation.layer_0]
     parameterisation_type = "momtrop"
     sample_discrete = true
-    [layered_parameterisation.layer_1]
-    parameterisation_type = "identity"
-    uniform_continuous = true
+    [integrator.madnis]
+    train_continuous_flow = false
     """],
     ["""
     [layered_parameterisation.layer_0]
@@ -80,13 +79,11 @@ blocks = [
     sample_discrete = true
     mask_redundant = true
     """],
-    ["settings/templates/parameterisation/mc_lmb_spherical_no_heur"],
 ]
 block_names = [
     "cont", 
     "disc", 
     "both", 
-    "lmb_mc",
 ]
 [[scripts.hyperparam_comparison.comparison]]
 name = "transformer network"

@@ -66,9 +66,8 @@ blocks = [
     [layered_parameterisation.layer_0]
     parameterisation_type = "momtrop"
     sample_discrete = true
-    [layered_parameterisation.layer_1]
-    parameterisation_type = "identity"
-    uniform_continuous = true
+    [integrator.madnis]
+    train_continuous_flow = false
     """],
     ["""
     [layered_parameterisation.layer_0]
