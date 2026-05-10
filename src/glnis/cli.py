@@ -89,6 +89,14 @@ def main() -> None:
     gen_ti_examples.add_argument('--force_rebuild', action='store_true', default=False,
                                  help="Rebuild the evaluators, if they already exist.")
 
+    state_to_gammaboard = subparsers.add_parser(
+        "stogb", help="Convert a MadNIS state file to the format expected by the GammaBoard API.")
+    state_to_gammaboard.add_argument(
+        '--state_file', '-f', type=str,
+        help="The file containing the MadNIS state data (a .pkl file containing a SamplerCompData object).")
+    state_to_gammaboard.add_argument('--output', '-o', type=str,
+                                     help="The output file path for the converted state data (a .pkl file).")
+
     args = parser.parse_args()
 
     match args.command:
@@ -138,5 +146,9 @@ def main() -> None:
         case "genti":
             from glnis.scripts.generate_thermal_integrand_evaluators import run_generate_thermal_integrand_evaluators
             run_generate_thermal_integrand_evaluators(force_rebuild=args.force_rebuild,)
+        case "stogb":
+            from glnis.scripts.madnis_state_to_gammaboard_api import madnis_state_to_gammaboard_api
+            madnis_state_to_gammaboard_api(state_file=args.state_file,
+                                           output=args.output,)
         case _:
             raise ValueError(f"Unknown command {args.command}")

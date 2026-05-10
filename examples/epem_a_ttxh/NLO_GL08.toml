@@ -37,52 +37,7 @@ n_samples = 100000
 n_samples_after_training = 10000000
 
 [[scripts.hyperparam_comparison.comparison]]
-name = "gl_param"
-blocks = [
-    [
-        """
-        [integrand.gammaloop]
-        momentum_space = true
-        sample_lmbs = false
-        sample_orientations = false
-        integrand_name = "NLO"
-        """,
-        "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
-    ],
-    [
-        """
-        [integrand.gammaloop]
-        momentum_space = true
-        sample_lmbs = "summed"
-        sample_orientations = false
-        integrand_name = "NLO"
-        """,
-        "settings/templates/parameterisation/mc_lmb_spherical",
-    ],
-    [
-        """
-        [integrand.gammaloop]
-        momentum_space = true
-        sample_lmbs = false
-        sample_orientations = true
-        integrand_name = "NLO"
-        """,
-        "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
-    ],
-    [
-        """
-        [integrand.gammaloop]
-        momentum_space = true
-        sample_lmbs = "summed"
-        sample_orientations = true
-        integrand_name = "NLO"
-        """,
-        "settings/templates/parameterisation/mc_lmb_spherical",
-    ],
-]
-block_names = ["no_heur", "heur", "no_heur_orientations", "heur_orientations"]
-[[scripts.hyperparam_comparison.comparison]]
-name = "gl"
+name = "disc input"
 blocks = [
     [
         """
@@ -92,6 +47,16 @@ blocks = [
         sample_orientations = false
         integrand_name = "NLO"
         """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        momentum_space = true
+        sample_lmbs = false
+        sample_orientations = false
+        integrand_name = "NLO"
+        """,
+        "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
     ],
     [
         """
@@ -110,9 +75,10 @@ blocks = [
         sample_orientations = true
         integrand_name = "NLO"
         """,
+        "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
     ],
 ]
-block_names = ["smlmb", "smlmb+or", "nolmb+or", ]
+block_names = ["none", "lmb", "or", "lmb+or", ]
 
 [scripts.hpcomp_training_run]
 n_training_steps = 2000

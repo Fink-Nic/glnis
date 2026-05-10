@@ -1,30 +1,30 @@
-run_name = "epem_a_ttxh@NLO"
-output_dir = "epem_a_ttxh/NLO/GL18"
+run_name = "gg_hhh@1L"
+output_dir = "gg_hhh/1L"
 templates = [
     "settings/templates/flow/size9",
     "settings/templates/madnis_bins/size1",
-    "settings/templates/transformer/size4",
+    "settings/templates/transformer/size3",
     "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
 ]
 
 [gammaloop]
-state = "epem_a_ttxh/NLO/GL18/state"
-integration_workspace = "epem_a_ttxh/NLO/GL18/state/integration_workspace"
-integrand_name = "NLO"
-get_target_from_gammaloop = true
-prefer_gammaloop_over_target = true
+state = "gg_hhh/1L/state"
+integration_workspace = "gg_hhh/1L/state/integration_workspace"
+# get_target_from_gammaloop = true
+# prefer_gammaloop_over_target = true
 
 [integration_target]
-imag_mean = 1.3472e-04
+real_mean = 1.89203604685291554e-6
+imag_mean = -5.46603099163412881e-6
 
 [integrator.madnis]
-batch_size = 50000
-learning_rate = 4e-4
+batch_size = 10000
+learning_rate = 6e-4
 
 [layered_integrand]
 integrand_type = "gammaloop"
-training_phase = "imag"
-n_cores = 128
+training_phase = "real"
+n_cores = 64
 
 [integrand.gammaloop]
 momentum_space = false
@@ -34,12 +34,8 @@ integrand_name = "NLO"
 
 [scripts.sampler_comp]
 n_training_steps = 1000
-n_samples = 1_000_000
-n_samples_after_training = 50_000_000
-
-
-# Insane mwp: -d 0 -x 1.7147417998191233e-01 9.0554355263726949e-01 5.3215314082085108e-01 2.3370648009749315e-01 7.5648297947370036e-01 4.7542936758342952e-01 1.9357281770300003e-01 8.0434383445181290e-01 3.8307304041202112e-01
-
+n_samples = 100000
+n_samples_after_training = 10000000
 
 [[scripts.hyperparam_comparison.comparison]]
 name = "disc input"
