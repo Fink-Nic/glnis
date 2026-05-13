@@ -1,0 +1,86 @@
+run_name = "bugblatter@t030"
+output_dir = "bugblatter/t030/optimized"
+
+templates = [
+    "settings/vacuum_graphs/bugblatter/base",
+    "settings/vacuum_graphs/bugblatter/tseries_param",
+]
+
+[integration_target]
+n_points = 416000000
+real_mean = -0.00000688441782011863
+real_error = 0.0000000200846984630986
+
+[integrator.madnis]
+batch_size = 20000
+learning_rate = 5e-4
+scheduler_type = "cosineannealing"
+discrete_model = "transformer"
+use_f64 = false
+
+[integrator.madnis.flow_kwargs]
+uniform_latent = true
+permutations = "log"
+layers = 4
+units = 2000
+bins = 12
+min_bin_width = 5e-4
+min_bin_height = 1e-5
+min_bin_derivative = 1e-5
+
+[integrator.madnis.transformer_kwargs]
+embedding_dim  = 128
+feedforward_dim = 512
+heads = 2
+transformer_layers = 2
+mlp_layers = 4
+mlp_units = 1024
+
+[integrand.kaapo]
+params = [0.190270777045349, 1.0, 33.0223348259205]
+
+[scripts.sampler_comp]
+n_training_steps = 4000 # Number of MadNIS training steps
+nitn = 20 # Number of Vegas / Havana training steps (total training samples are equal to MadNIS)
+n_samples = 1000000 # Number of samples to compute the snapshot with
+n_samples_after_training = 100000000 # Number of samples drawn after the training to compute the final result
+n_log = 20 # Training steps between callback of loss to console
+n_plot_snapshot = 100 # Training steps between drawing n_samples samples for a snapshot
+n_plot_loss = 5 # Training steps between plotting the loss
+n_plot_disc = 5 # Training steps between plotting the discrete probabilities
+plot_disc = true
+take_prelim_snapshot = false
+
+[scripts.sampler_comp.plotting]
+n_show_best_worst_discrete = 5
+
+[[scripts.slice_plots.slice]]
+name = "re+ ch0"
+origin = [0.20013326, 0.59014007, 0.78253325, 0.29709536, 0.18888523, 0.55665165, 0.03500766, 0.0898766, 0.96604104]
+discrete = [0]
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 400}, 
+]
+[[scripts.slice_plots.slice]]
+name = "re- ch0"
+origin = [0.62536978, 0.60682705, 0.95990891, 0.3369098, 0.67494028, 0.02992192, 0.49277553, 0.51869195, 0.23059354]
+discrete = [0]
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 400}, 
+]
+[[scripts.slice_plots.slice]]
+name = "re+"
+from_max_wgt = "re+"
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 400}, 
+]
+[[scripts.slice_plots.slice]]
+name = "re-"
+from_max_wgt = "re-"
+dirs = [0, 1] 
+grid = [
+    {start = 0, stop = 1, num = 400}, 
+]

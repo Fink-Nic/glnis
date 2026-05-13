@@ -1,8 +1,8 @@
 run_name = "gg_hhh@1L"
 output_dir = "gg_hhh/1L"
 templates = [
-    "settings/templates/flow/size9",
-    "settings/templates/madnis_bins/size1",
+    "settings/templates/flow/size7",
+    "settings/templates/madnis_bins/size2",
     "settings/templates/transformer/size3",
     "settings/templates/parameterisation/mc_lmb_spherical_no_heur",
 ]
@@ -10,6 +10,7 @@ templates = [
 [gammaloop]
 state = "gg_hhh/1L/state"
 integration_workspace = "gg_hhh/1L/state/integration_workspace"
+integrand_name = "1L"
 # get_target_from_gammaloop = true
 # prefer_gammaloop_over_target = true
 
@@ -18,7 +19,7 @@ real_mean = 1.89203604685291554e-6
 imag_mean = -5.46603099163412881e-6
 
 [integrator.madnis]
-batch_size = 10000
+batch_size = 50000
 learning_rate = 6e-4
 
 [layered_integrand]
@@ -30,12 +31,108 @@ n_cores = 64
 momentum_space = false
 sample_lmbs = "summed"
 sample_orientations = false
-integrand_name = "NLO"
 
 [scripts.sampler_comp]
 n_training_steps = 1000
-n_samples = 100000
-n_samples_after_training = 10000000
+n_samples = 1000000
+n_samples_after_training = 50000000
+
+[[scripts.slice_plots.slice]]
+name = "re+ / re- radial+az"
+origin = [0.58189109, 0.18321128, 0.95367471]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000}, 
+]
+
+[[scripts.slice_plots.slice]]
+name = "re+ / re- radial+pol"
+origin = [0.58189109, 0.18321128, 0.95367471]
+dirs = [0, 2]
+grid = [
+    {start = 0, stop = 1, num = 1000}, 
+]
+
+[[scripts.slice_plots.slice]]
+name = "re+ / re- az+pol"
+origin = [0.58189109, 0.18321128, 0.95367471]
+dirs = [1, 2]
+grid = [
+    {start = 0, stop = 1, num = 1000}, 
+]
+
+[[scripts.hyperparam_comparison.comparison]]
+name = "gaussian_width"
+blocks = [
+    [
+        """
+        [integrand.gammaloop]
+        run_commands = ["set default-runtime kv subtraction.local_ct_settings.uv_localisation.gaussian_width=0.05"]
+        """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        run_commands = ["set default-runtime kv subtraction.local_ct_settings.uv_localisation.gaussian_width=0.20"]
+        """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        run_commands = ["set default-runtime kv subtraction.local_ct_settings.uv_localisation.gaussian_width=1.0"]
+        """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        run_commands = ["set default-runtime kv subtraction.local_ct_settings.uv_localisation.gaussian_width=4.0"]
+        """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        run_commands = ["set default-runtime kv subtraction.local_ct_settings.uv_localisation.gaussian_width=20.0"]
+        """,
+    ],
+]
+block_names = [".05", ".20", "1", "4", "20"]
+plot_slices = true
+[[scripts.hyperparam_comparison.comparison]]
+name = "sliver_width"
+blocks = [
+    [
+        """
+        [integrand.gammaloop]
+        run_commands = ["set default-runtime kv subtraction.local_ct_settings.uv_localisation.sliver_width=0.5"]
+        """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        run_commands = ["set default-runtime kv subtraction.local_ct_settings.uv_localisation.sliver_width=2.0"]
+        """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        run_commands = ["set default-runtime kv subtraction.local_ct_settings.uv_localisation.sliver_width=10.0"]
+        """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        run_commands = ["set default-runtime kv subtraction.local_ct_settings.uv_localisation.sliver_width=40.0"]
+        """,
+    ],
+    [
+        """
+        [integrand.gammaloop]
+        run_commands = ["set default-runtime kv subtraction.local_ct_settings.uv_localisation.sliver_width=20.0"]
+        """,
+    ],
+]
+block_names = [".5", "2", "10", "40", "200"]
+plot_slices = true
 
 [[scripts.hyperparam_comparison.comparison]]
 name = "disc input"
@@ -80,13 +177,39 @@ blocks = [
     ],
 ]
 block_names = ["none", "lmb", "or", "lmb+or", ]
+plot_slices = false
 
 [scripts.hpcomp_training_run]
-n_training_steps = 2000
+n_training_steps = 1000
 n_samples = 1_000_000
-n_samples_after_training = 10_000_000
+n_samples_after_training = 50_000_000
 n_log = 50
-n_plot_snapshot = 200
-n_plot_loss = 10
+n_plot_snapshot = 100
+n_plot_loss = 5
 plot_disc = true
 n_plot_disc = 2
+take_prelim_snapshot = false
+
+[[scripts.hpcomp_slice_plots.slice]]
+name = "re+ / re- radial+az"
+origin = [0.58189109, 0.18321128, 0.95367471]
+dirs = [0, 1]
+grid = [
+    {start = 0, stop = 1, num = 1000}, 
+]
+
+[[scripts.hpcomp_slice_plots.slice]]
+name = "re+ / re- radial+pol"
+origin = [0.58189109, 0.18321128, 0.95367471]
+dirs = [0, 2]
+grid = [
+    {start = 0, stop = 1, num = 1000}, 
+]
+
+[[scripts.hpcomp_slice_plots.slice]]
+name = "re+ / re- az+pol"
+origin = [0.58189109, 0.18321128, 0.95367471]
+dirs = [1, 2]
+grid = [
+    {start = 0, stop = 1, num = 1000}, 
+]

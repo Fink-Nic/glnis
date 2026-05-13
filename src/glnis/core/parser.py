@@ -101,8 +101,13 @@ class SettingsParser:
         result_path = Path(self.settings['gammaloop']['integration_workspace'])
         if not result_path.exists():
             result_path = Path(self.settings['gammaloop']['state_dir'],
-                               self.settings['gammaloop']['integration_workspace'],
-                               self.settings['gammaloop']['result_file'])
+                               self.settings['gammaloop']['integration_workspace'])
+        if not result_path.exists():
+            result_path = Path(self.settings['gammaloop']['state_dir'],
+                               self.settings['gammaloop']['state'],
+                               self.settings['gammaloop']['integration_workspace'])
+        result_path = Path(result_path, self.settings['gammaloop']['result_file'])
+
         if not result_path.exists():
             return None
 
@@ -116,7 +121,7 @@ class SettingsParser:
         if not self.settings['gammaloop']['get_target_from_gammaloop'] or gammaloop_result is None:
             return Result.from_kwargs(**self.settings.get('integration_target', {}))
         try:
-            integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
+            integrand_name = self.settings['gammaloop']['integrand_name']
             if integrand_name not in self._outputs:
                 integrand_name = list(self._outputs)[0]
             slots = gammaloop_result['slots']
@@ -129,7 +134,7 @@ class SettingsParser:
             target = candidate.get('target')
             if self.settings['gammaloop']['prefer_gammaloop_over_target'] or target is None:
                 if gl_res is not None:
-                    return Result(
+                    return Result.from_kwargs(
                         n_points=gl_res['neval'],
                         real_mean=gl_res['result']['re'],
                         imag_mean=gl_res['result']['im'],
@@ -177,7 +182,7 @@ class SettingsParser:
             return GraphProperties(**self.settings['graph']['graph_properties'])
 
         if self._graph_from_state:
-            integrand_name = self.settings['integrand']['gammaloop']['integrand_name']
+            integrand_name = self.settings['gammaloop']['integrand_name']
             if integrand_name not in self._outputs:
                 integrand_name = list(self._outputs)[0]
             process_id = self._outputs[integrand_name]

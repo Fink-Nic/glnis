@@ -425,7 +425,7 @@ class HavanaIntegrator(Integrator):
                  stream_id: int = 0,
                  use_uniform: bool = False,
                  max_prob_ratio: float = 100,
-                 n_continuous_bins: int = 128,
+                 n_continuous_bins: int = 500,
                  discrete_learning_rate: float = 1.5,
                  continuous_learning_rate: float = 1.5,
                  **kwargs,):
@@ -587,6 +587,7 @@ class MadnisIntegrator(Integrator):
             train_discrete_flow: bool = True,
             train_cwnet: bool = True,
             max_batch_size: int = 100_000,
+            use_f64: bool = True,
             use_gpu: bool = True,
             gpu_id: int = 0,
             pretrain_c_flow: bool = False,
@@ -626,7 +627,7 @@ class MadnisIntegrator(Integrator):
             **kwargs,
     ):
         super().__init__(integrand, **kwargs)
-        torch.set_default_dtype(torch.float64)
+        torch.set_default_dtype(torch.float64 if use_f64 else torch.float32)
 
         self.use_gpu = use_gpu
         self.gpu_id = gpu_id
@@ -1056,10 +1057,10 @@ class MadnisIntegrator(Integrator):
                     self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
             case 'reducelronplateau':
                 return torch.optim.lr_scheduler.ReduceLROnPlateau(
-                    self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
+                    self.madnis.optimizer, **self.scheduler_kwargs)
             case 'linear':
                 return torch.optim.lr_scheduler.LinearLR(
-                    self.madnis.optimizer, T_max=T_max, **self.scheduler_kwargs)
+                    self.madnis.optimizer, total_iters=T_max, **self.scheduler_kwargs)
             case _:
                 return None
 

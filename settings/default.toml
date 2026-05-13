@@ -1,6 +1,5 @@
 # -------------------------------------------------------------------------------------------
 # Default settings file. 
-# Setting files should not include parameters that are not specified in here.
 # -------------------------------------------------------------------------------------------
 # The type of integrator/integrand/parameterisation is specified under [layered_X.X_type]
 # Parameters specified under [layered_X] take precedence over those in [X.X_type]
@@ -29,7 +28,7 @@ state_dir = "/home/nic/Master/glnis/glnis_gammaloop_examples"
 state = "default"
 integrand_name = "default"
 # Name of the gammaloop integration state, if any. Can be absolute, or inside state folder
-integration_workspace = "default"
+integration_workspace = "integration_workspace"
 # Name of the integration results file inside the integration_workspace folder
 result_file = "integration_result.json"
 get_target_from_gammaloop = true # If false, will always use [integration_target]
@@ -75,7 +74,7 @@ alpha = 0.7 # learning rate
 [integrator.havana]
 use_uniform = false
 max_prob_ratio = 100
-n_continuous_bins = 128
+n_continuous_bins = 500
 discrete_learning_rate = 1.5
 continuous_learning_rate = 1.5
 
@@ -92,6 +91,7 @@ train_continuous_flow = true
 train_discrete_flow = true
 train_cwnet = true
 max_batch_size = 100_000 # Maximum number of samples drawn from the flow at once. Decrease if memory issues
+use_f64 = true
 use_gpu = true # If available
 gpu_id = 0 # If multiple are available
 pretrain_c_flow = false # Use vegas grid to pretrain the continuous flow
@@ -274,6 +274,9 @@ n_plot_loss = 10 # Training steps between plotting the loss
 n_plot_disc = 10 # Training steps between plotting the discrete probabilities
 plot_disc = true 
 take_prelim_snapshot = false # Will take a snapshot before training for each integrator
+
+[scripts.sampler_comp.plotting]
+n_show_best_worst_discrete = 3
 
 # Paramters used in the tprog subcommand
 [scripts.training_prog]

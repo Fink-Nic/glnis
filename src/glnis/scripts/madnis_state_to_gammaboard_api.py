@@ -1,3 +1,4 @@
+# type: ignore
 
 def madnis_state_to_gammaboard_api(state_file: str, output: str):
     import pickle

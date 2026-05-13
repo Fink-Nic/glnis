@@ -539,7 +539,7 @@ def plot_sampler_comp(file: str,
         )
 
     n_spl = len(Data.observables)
-    if n_spl > 1:
+    if n_spl:
         fig, axs = plt.subplots(4, 2, sharex=True, layout="constrained",
                                 height_ratios=(3, 1, 1, 1), figsize=(10, 8))
         axs: NDArray[plt.Axes]
